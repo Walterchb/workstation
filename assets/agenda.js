@@ -9,9 +9,24 @@
   const quickDrafts = new Map();
   const bulkDrafts = new Map();
   const reuseDrafts = new Map();
+  const dayViews = new Map();
+  const rank = {Alta:0, Media:1, Baja:2};
+  const groups = [
+    {status:"En proceso", label:"En proceso", key:"progress"},
+    {status:"Pendiente", label:"Pendientes", key:"pending"},
+    {status:"Culminado", label:"Culminadas", key:"complete"}
+  ];
+  const modes = [["quick","Entrada rápida"],["excel","Pegar desde Excel"],["reuse","Reutilizar"]];
+  function dayView(date, tasks = []) {
+    if (!dayViews.has(date)) {
+      const folded = new Set(tasks.some(task => task.status !== "Culminado") ? ["Culminado"] : []);
+      dayViews.set(date, {open:!tasks.length, mode:"quick", folded});
+    }
+    return dayViews.get(date);
+  }
   let showComments = false;
   let filter = "Todas";
-  let order = "plan";
+  let order = "group";
   let lastDate = "";
 
   function timestampMinutes(value) {
@@ -54,7 +69,6 @@
           </label>
           <button type="button" data-jd-act="next" title="Día siguiente" aria-label="Día siguiente">${icon("chevron-right", 16)}</button>
         </div>
-        <button type="button" class="btn primary jd-add" data-jd-act="add">${icon("plus", 17)} Actividad</button>
       </div>
     </div>`;
   }
@@ -119,71 +133,109 @@
     return filter === "Todas" || task.status === filter || (filter === "Imprevistas" && task.origin === "Imprevista") || (filter === "Sin cumplir" && !task.done);
   }
 
-  function tableRow(task, ctx, goal) {
-    const isActive = !!openSegment(task);
+  function tableRow(task, ctx, goal, nextId) {
+    const active = openSegment(task);
     const isToday = ctx.date === M().today();
     const taskId = esc(task.id);
     const title = esc(task.title);
-    const statusIndex = statuses.indexOf(task.status);
-    const timerAction = isToday && (isActive || task.status !== "Culminado");
-    const timerLabel = isActive ? "Pausar" : task.segments.length ? "Reanudar" : "Iniciar";
-    const detail = task.segments.length === 1 ? task.segments[0].start + " – " + (task.segments[0].end || "En curso") :
-      isActive ? "Desde " + openSegment(task).start : task.segments.length + " bloques";
-    return `<tr class="${isActive ? "jd-active-row" : ""}">
+    const isNext = task.id === nextId && !active;
+    const timerAction = isToday && (active || task.status !== "Culminado");
+    const timerLabel = active ? "Pausar" : task.segments.length ? "Reanudar" : "Iniciar";
+    const priorityClass = ["high","medium","low"][rank[task.priority]];
+    const elapsed = active && isToday ? Math.max(0, timestampMinutes(M().timeNow()) - timestampMinutes(active.start)) : 0;
+    const total = M().minutes(task) + elapsed;
+    const segment = task.segments[0];
+    const detail = active ? "Desde las " + active.start : task.segments.length > 1 ? task.segments.length + " tramos" :
+      segment ? segment.start + " – " + segment.end : "";
+    const meta = [
+      goal ? `<span class="jd-goal" title="${esc(goal.title)}"><i style="--goal-color:${safeColor(goal.color)}"></i>${esc(goal.title)}</span>` : "",
+      task.origin === "Imprevista" ? '<small class="jd-unplanned">Imprevista</small>' : "",
+      active ? '<small class="jd-live-tag">En ejecución</small>' : isNext ? '<small class="jd-next-tag">Siguiente del plan</small>' : ""
+    ].filter(Boolean).join("");
+    return `<tr class="jd-activity-row${active ? " jd-active-row" : isNext ? " jd-next-row" : ""}">
       <td class="jd-check-cell"><label class="jd-check"><input type="checkbox" data-jd-done data-id="${taskId}" aria-label="Avance cumplido de ${title}" ${task.done ? "checked" : ""}><span>${ctx.icon("check", 13)}</span></label></td>
       <td class="jd-task-cell"><button class="jd-title" type="button" data-jd-act="edit" data-id="${taskId}">${title}</button>
         ${task.context ? `<div class="jd-context">${esc(task.context)}</div>` : ""}
+        ${meta ? `<div class="jd-row-meta">${meta}</div>` : ""}
         ${showComments && task.comment ? `<div class="jd-comment"><strong>Comentario</strong> ${esc(task.comment)}</div>` : ""}
-        ${task.priority === "Alta" ? '<small class="jd-priority">Prioridad alta</small>' : ""}
-        ${task.origin === "Imprevista" ? '<small class="jd-unplanned">Imprevista</small>' : ""}
       </td>
-      <td class="jd-goal-cell"><span class="jd-goal" title="${esc(goal?.title || "Sin objetivo")}"><i style="--goal-color:${safeColor(goal?.color)}"></i>${esc(goal?.title || "Sin objetivo")}</span></td>
-      <td class="jd-status-cell"><label class="jd-status jd-status-${statusClasses[statusIndex] || "pending"}"><i></i><span aria-hidden="true">${esc(task.status)}</span><select aria-label="Estado de ${title}" data-jd-status data-id="${taskId}">${statuses.map(status => `<option ${status === task.status ? "selected" : ""}>${status}</option>`).join("")}</select></label></td>
-      <td class="jd-duration-cell"><b>${task.segments.length ? esc(M().duration(M().minutes(task))) : "—"}</b>
-        ${task.segments.length ? `<small>${esc(detail)}</small>` : ""}</td>
+      <td class="jd-priority-cell"><span class="jd-priority jd-priority-${priorityClass}">${esc(task.priority)}</span></td>
+      <td class="jd-status-cell"><label class="jd-status jd-status-${statusClasses[statuses.indexOf(task.status)]}"><i></i><span aria-hidden="true">${esc(task.status)}</span><select aria-label="Estado de ${title}" data-jd-status data-id="${taskId}">${statuses.map(status => `<option ${status === task.status ? "selected" : ""}>${status}</option>`).join("")}</select></label></td>
+      <td class="jd-duration-cell"><b${active ? ' title="Incluye el tramo abierto"' : ""}>${task.segments.length ? esc(M().duration(total)) : "—"}</b>
+        ${detail ? `<small>${esc(detail)}</small>` : ""}</td>
       <td class="jd-actions-cell"><div>
-        ${timerAction ? `<button class="jd-row-act ${isActive ? "jd-pause" : "jd-start"}" type="button" title="${timerLabel}" aria-label="${timerLabel} ${title}" data-jd-act="${isActive ? "pause" : "start"}" data-id="${taskId}">${ctx.icon(isActive ? "pause" : "play", 15)}</button>` : ""}
+        ${timerAction ? `<button class="jd-row-act ${active ? "jd-pause" : "jd-start"}" type="button" title="${timerLabel}" aria-label="${timerLabel} ${title}" data-jd-act="${active ? "pause" : "start"}" data-id="${taskId}">${ctx.icon(active ? "pause" : "play", 14)}<span>${timerLabel}</span></button>` : ""}
         <button type="button" class="jd-row-act jd-edit" title="Editar actividad y horas" aria-label="Editar ${title}" data-jd-act="edit" data-id="${taskId}">${ctx.icon("pencil", 15)}</button>
-      </div></td>
-    </tr>`;
+      </div></td></tr>`;
+  }
+
+  function captureArea(ctx, view) {
+    if (!view.open) return '<div id="jd-capture" hidden></div>';
+    const draft = quickDrafts.get(ctx.date) || {};
+    const paste = bulkDrafts.get(ctx.date) || {};
+    const originOptions = value => '<option>Planificada</option><option' + (value === "Imprevista" ? " selected" : "") + '>Imprevista</option>';
+    let body;
+    if (view.mode === "quick") {
+      body = `<form class="jd-quick" data-jd-form>
+        <span class="jd-quick-plus" aria-hidden="true">${ctx.icon("plus", 17)}</span>
+        <input name="title" maxlength="180" required aria-label="Nombre de actividad rápida" placeholder="Nombre de la actividad" value="${esc(draft.title)}" autocomplete="off">
+        <input name="context" maxlength="2000" aria-label="Contexto de actividad rápida" placeholder="Contexto (opcional)" value="${esc(draft.context)}" autocomplete="off">
+        <select name="origin" aria-label="Origen de actividad rápida">${originOptions(draft.origin)}</select>
+        <button type="submit" title="Agregar y continuar (Enter)" aria-label="Agregar actividad rápida">${ctx.icon("corner-down-left", 15)}</button></form>`;
+    } else if (view.mode === "excel") {
+      body = `<div class="jd-import"><form data-jd-bulk><label for="jd-paste">Pega las columnas Actividad y Contexto, una fila por actividad.</label>
+        <textarea id="jd-paste" name="rows" placeholder="Pega las filas aquí" aria-label="Actividades y contextos de Excel">${esc(paste.raw)}</textarea>
+        <div><select name="origin" aria-label="Origen de las actividades pegadas">${originOptions(paste.origin || draft.origin)}</select><span data-jd-count role="status"></span><button type="submit" disabled>Agregar filas</button></div></form></div>`;
+    } else body = '<div class="jd-import jd-reuse" data-jd-reuse-content></div>';
+    return `<section class="jd-capture" id="jd-capture" aria-label="Agregar actividades"><div class="jd-capture-head"><div class="jd-capture-tabs" role="group" aria-label="Método de ingreso">${modes.map(([key,label]) =>
+      `<button type="button" data-jd-act="mode" data-mode="${key}" aria-pressed="${view.mode === key}">${label}</button>`).join("")}</div>
+      <button class="jd-full-form" type="button" data-jd-act="add">${ctx.icon("file-text",15)} Ficha completa</button></div>
+      <div class="jd-capture-body">${body}</div></section>`;
+  }
+
+  function workTable(tasks, ctx, view) {
+    const visible = tasks.filter(matchFilter);
+    if (order === "priority") visible.sort((a,b) => rank[a.priority] - rank[b.priority]);
+    if (!visible.length) {
+      return `<div class="jd-empty">${ctx.icon(tasks.length ? "filter" : "list", 24)}
+        <strong>${tasks.length ? "Ninguna actividad coincide con el filtro" : "Tu jornada está lista para planificar"}</strong>
+        ${tasks.length ? '<button type="button" data-jd-act="clear">Ver todas las actividades</button>' : "<span>Agrega la primera actividad de este día.</span>"}</div>`;
+    }
+    const goals = new Map(ctx.state.goals.map(goal => [goal.id, goal]));
+    const nextId = ctx.date >= M().today() ? tasks.find(task => task.origin === "Planificada" && task.status === "Pendiente" && !task.done)?.id : "";
+    const rowsHtml = rows => rows.map(task => tableRow(task, ctx, goals.get(task.goalId), nextId)).join("");
+    const colKeys = ["check", "task", "priority", "status", "time", "actions"];
+    let body;
+    if (order !== "group") body = `<tbody>${rowsHtml(visible)}</tbody>`;
+    else {
+      body = groups.map(({status, label, key}) => {
+        const rows = visible.filter(task => task.status === status);
+        if (!rows.length) return "";
+        rows.sort((a,b) => Number(!!openSegment(b)) - Number(!!openSegment(a)));
+        const folded = view.folded.has(status);
+        return `<tbody class="jd-group-header"><tr class="jd-group-row jd-group-${key}"><th colspan="6">
+          <button type="button" class="jd-group-toggle" id="jd-button-${key}" data-jd-act="group" data-status="${status}" aria-expanded="${!folded}" aria-controls="jd-content-${key}">
+          ${ctx.icon(folded ? "chevron-right" : "chevron-down",15)}<span class="jd-group-label">${label}</span><span class="jd-group-count">${rows.length}</span></button>
+          </th></tr></tbody><tbody id="jd-content-${key}" aria-labelledby="jd-button-${key}" ${folded ? "hidden" : ""}>${rowsHtml(rows)}</tbody>`;
+      }).join("");
+    }
+    return `<div class="jd-table-scroll"><table class="jd-table jd-work-table" aria-label="Registro de actividades"><colgroup>${colKeys.map(key => `<col class="jd-col-${key}">`).join("")}</colgroup>
+      <thead><tr><th scope="col" class="jd-check-cell"><span title="Avance cumplido">${ctx.icon("check",14)}<span class="jd-sr">Avance cumplido</span></span></th><th scope="col">Actividad</th><th scope="col">Prioridad</th><th scope="col">Estado</th><th scope="col">Tiempo real</th><th scope="col" class="jd-actions-cell">Acciones</th></tr></thead>${body}</table></div>`;
   }
 
   function activitySection(tasks, ctx) {
-    const draft = quickDrafts.get(ctx.date) || {};
-    const paste = bulkDrafts.get(ctx.date) || {};
-    const visible = tasks.filter(matchFilter);
-    if (order === "priority") {
-      const rank = {Alta: 0, Media: 1, Baja: 2};
-      visible.sort((a, b) => rank[a.priority] - rank[b.priority]);
-    }
-    const goals = new Map(ctx.state.goals.map(goal => [goal.id, goal]));
-    const options = ["Todas", ...statuses, "Imprevistas", "Sin cumplir"];
-    const head = `<div class="jd-section-heading"><div class="jd-table-title"><h2>Actividades del día</h2><span>${tasks.length}</span></div>
-      <div class="jd-table-tools"><button class="jd-comments-toggle" type="button" data-jd-act="comments" aria-pressed="${showComments}" title="Mostrar u ocultar los comentarios de las actividades">${ctx.icon("eye", 14)} Comentarios</button><label class="jd-filter"><select aria-label="Ordenar actividades" data-jd-order><option value="plan">Orden del plan</option><option value="priority" ${order === "priority" ? "selected" : ""}>Prioridad</option></select></label>
-      <label class="jd-filter">${ctx.icon("filter", 14)}<select aria-label="Filtrar actividades" data-jd-filter>${options.map(option => `<option ${option === filter ? "selected" : ""}>${option}</option>`).join("")}</select></label></div></div>`;
-    const capture = `<form class="jd-quick" data-jd-form>
-      <span class="jd-quick-plus" aria-hidden="true">${ctx.icon("plus", 17)}</span>
-      <input name="title" maxlength="180" required aria-label="Nombre de actividad rápida" placeholder="Nueva actividad…" value="${esc(draft.title)}" autocomplete="off">
-      <input name="context" maxlength="2000" aria-label="Contexto de actividad rápida" placeholder="Contexto (opcional)" value="${esc(draft.context)}" autocomplete="off">
-      <select name="origin" aria-label="Origen de actividad rápida"><option>Planificada</option><option ${draft.origin === "Imprevista" ? "selected" : ""}>Imprevista</option></select>
-      <button type="submit" title="Agregar actividad" aria-label="Agregar actividad rápida">${ctx.icon("corner-down-left", 15)}</button>
-    </form>`;
-    const bulk = `<details class="jd-import" data-jd-import ${paste.open ? "open" : ""}><summary>Pegar desde Excel</summary>
-      <form data-jd-bulk><label for="jd-paste">Copia las columnas Actividad y Contexto. Cada fila será una actividad.</label>
-      <textarea id="jd-paste" name="rows" placeholder="Pega las filas aquí" aria-label="Actividades y contextos de Excel">${esc(paste.raw)}</textarea>
-      <div><span data-jd-count role="status">Se usará el origen elegido arriba.</span><button type="submit" disabled>Agregar filas</button></div></form></details>`;
-    const reuse = `<details class="jd-import jd-reuse" data-jd-reuse ${reuseDrafts.get(ctx.date)?.open ? "open" : ""}><summary>Reutilizar actividades</summary><div data-jd-reuse-content></div></details>`;
-    let table;
-    if (visible.length) {
-      table = `<div class="jd-table-scroll"><table class="jd-table">
-        <thead><tr><th class="jd-check-cell"><span title="Avance cumplido" aria-label="Avance cumplido">${ctx.icon("check", 14)}</span></th>
-        <th>Actividad / contexto</th><th class="jd-goal-cell">Objetivo</th><th>Estado</th><th>Tiempo</th><th class="jd-actions-cell"><span class="jd-sr">Acciones</span></th></tr></thead>
-        <tbody>${visible.map(task => tableRow(task, ctx, goals.get(task.goalId))).join("")}</tbody></table></div>`;
-    } else {
-      table = `<div class="jd-empty">${ctx.icon(tasks.length ? "filter" : "list", 25)}<strong>${tasks.length ? "Ninguna actividad coincide con el filtro" : "Tu jornada está lista para planificar"}</strong>
-        ${tasks.length ? '<button type="button" data-jd-act="clear">Ver todas las actividades</button>' : "<span>Escribe tu primera actividad y pulsa Enter.</span>"}</div>`;
-    }
-    return `<section class="jd-activities panel" aria-label="Actividades del día">${head}${capture}<div class="jd-shortcuts">${bulk}${reuse}</div>${table}</section>`;
+    const view = dayView(ctx.date, tasks);
+    const filters = [["Todas","Todas"],["Pendiente","Pendientes"],["En proceso","En proceso"],["Culminado","Culminadas"],["Imprevistas","Imprevistas"],["Sin cumplir","Sin cumplir"]];
+    const countLabel = filter === "Todas" ? String(tasks.length) : tasks.filter(matchFilter).length + " de " + tasks.length;
+    const orders = [["group","Por estado"],["plan","Orden del plan"],["priority","Por prioridad"]];
+    const options = (pairs, selected) => pairs.map(([value,label]) => `<option value="${value}" ${value === selected ? "selected" : ""}>${label}</option>`).join("");
+    return `<section class="jd-activities panel" aria-labelledby="jd-title"><div class="jd-section-heading"><div class="jd-table-title"><h2 id="jd-title">Actividades del día</h2><span>${countLabel}</span></div>
+      <button type="button" class="btn primary jd-add" data-jd-act="capture" aria-label="${view.open ? "Cerrar captura" : "Agregar actividad"}" aria-expanded="${view.open}" aria-controls="jd-capture">${ctx.icon(view.open ? "x" : "plus",16)} <span>${view.open ? "Cerrar" : "Agregar"}<span class="jd-wide-text">${view.open ? " captura" : " actividad"}</span></span></button></div>
+      ${captureArea(ctx, view)}<div class="jd-controls"><div class="jd-table-tools">
+        <label class="jd-filter">${ctx.icon("layers",14)}<select aria-label="Ordenar actividades" data-jd-order>${options(orders, order)}</select></label>
+        <label class="jd-filter">${ctx.icon("filter",14)}<select aria-label="Filtrar actividades" data-jd-filter>${options(filters, filter)}</select></label>
+        <button class="jd-comments-toggle" type="button" data-jd-act="comments" aria-label="Comentarios" aria-pressed="${showComments}" title="Mostrar u ocultar los comentarios">${ctx.icon("eye",14)}<span class="jd-wide-text">Comentarios</span></button>
+      </div></div>${workTable(tasks, ctx, view)}</section>`;
   }
 
   async function toggleTimer(ctx, id, pause) {
@@ -216,6 +268,7 @@
       message = "Bloque iniciado a las " + time + ".";
     });
     if (saved) ctx.toast(message);
+    return saved;
   }
 
   function rowsFromClipboard(text) {
@@ -246,9 +299,9 @@
   }
 
   function installReuse(el, ctx) {
-    const details = el.querySelector("[data-jd-reuse]");
-    const body = details.querySelector("[data-jd-reuse-content]");
-    const draft = reuseDrafts.get(ctx.date) || {open:false, source:"", ids:new Set()};
+    const body = el.querySelector("[data-jd-reuse-content]");
+    if (!body) return;
+    const draft = reuseDrafts.get(ctx.date) || {source:"", ids:new Set()};
     reuseDrafts.set(ctx.date, draft);
 
     function draw() {
@@ -314,118 +367,167 @@
         });
         if (saved) {
           draft.ids.clear();
-          draft.open = false;
+          dayView(ctx.date).open = false;
+          dayView(ctx.date).folded.delete("Pendiente");
           filter = "Todas";
           ctx.render();
-          el.querySelector("[data-jd-reuse] summary")?.focus();
+          focusControl(el, ctx, '[data-jd-act="capture"]');
           ctx.toast(count === 1 ? "Actividad copiada al plan." : count + " actividades copiadas al plan.");
         }
       };
     }
-    details.ontoggle = () => {
-      if (!details.isConnected) return;
-      draft.open = details.open;
-      if (details.open && !body.childElementCount) draw();
-    };
-    if (details.open) draw();
+    draw();
+  }
+
+  function focusControl(el, ctx, selector) {
+    if (el.querySelector(".jd-view")?.dataset.date !== ctx.date) return;
+    (el.querySelector(selector) || el.querySelector("[data-jd-filter]"))?.focus({preventScroll:true});
+  }
+
+  function refreshFocus(el, ctx, selector) {
+    ctx.render();
+    focusControl(el, ctx, selector);
   }
 
   function installEvents(el, ctx) {
+    const view = dayView(ctx.date);
+    const captureButton = '[data-jd-act="capture"]';
+    const modeInput = () => ({quick:"[data-jd-form] input[name=title]", excel:"#jd-paste", reuse:'[data-mode="reuse"]'})[view.mode];
     el.onclick = async event => {
       const button = event.target.closest("[data-jd-act]");
       if (!button) return;
-      const id = button.dataset.id;
-      switch (button.dataset.jdAct) {
+      const {id, jdAct} = button.dataset;
+      switch (jdAct) {
+        case "capture":
+          view.open = !view.open;
+          refreshFocus(el, ctx, view.open ? modeInput() : captureButton);
+          break;
+        case "mode":
+          view.mode = button.dataset.mode;
+          refreshFocus(el, ctx, '[data-mode="' + view.mode + '"]');
+          break;
+        case "group": {
+          const status = button.dataset.status;
+          if (view.folded.has(status)) view.folded.delete(status);
+          else view.folded.add(status);
+          refreshFocus(el, ctx, "#" + button.id);
+          break;
+        }
         case "add": ctx.openTask(null, {date:ctx.date}); break;
         case "edit": ctx.openTask(id); break;
-        case "previous": ctx.setDate(M().shiftDate(ctx.date, -1)); break;
-        case "next": ctx.setDate(M().shiftDate(ctx.date, 1)); break;
-        case "today": ctx.setDate(M().today()); break;
-        case "comments": showComments = !showComments; ctx.render(); break;
-        case "clear": filter = "Todas"; ctx.render(); break;
-        case "pause": await toggleTimer(ctx, id, true); break;
-        case "start": await toggleTimer(ctx, id, false); break;
+        case "previous": ctx.setDate(M().shiftDate(ctx.date, -1)); el.querySelector('[data-jd-act="previous"]')?.focus({preventScroll:true}); break;
+        case "next": ctx.setDate(M().shiftDate(ctx.date, 1)); el.querySelector('[data-jd-act="next"]')?.focus({preventScroll:true}); break;
+        case "today": ctx.setDate(M().today()); el.querySelector("[data-jd-date]")?.focus({preventScroll:true}); break;
+        case "comments": showComments = !showComments; refreshFocus(el,ctx,'[data-jd-act="comments"]'); break;
+        case "clear": filter = "Todas"; refreshFocus(el,ctx,"[data-jd-filter]"); break;
+        case "pause":
+        case "start": {
+          if (jdAct === "start") view.folded.delete("En proceso");
+          const saved = await toggleTimer(ctx, id, jdAct === "pause");
+          if (saved && jdAct === "start" && (filter === "Pendiente" || filter === "Culminado")) {
+            filter = "En proceso";
+            ctx.render();
+          }
+          focusControl(el,ctx,'.jd-row-act:not(.jd-edit)[data-id="' + CSS.escape(id) + '"]');
+          break;
+        }
       }
     };
     el.onchange = async event => {
       const control = event.target;
       if (control.matches("[data-jd-date]")) {
-        if (/^\d{4}-\d{2}-\d{2}$/.test(control.value)) ctx.setDate(control.value);
+        if (/^\d{4}-\d{2}-\d{2}$/.test(control.value)) {
+          ctx.setDate(control.value);
+          el.querySelector("[data-jd-date]")?.focus({preventScroll:true});
+        }
       } else if (control.matches("[data-jd-order]")) {
         order = control.value;
-        ctx.render();
+        refreshFocus(el,ctx,"[data-jd-order]");
       } else if (control.matches("[data-jd-filter]")) {
         filter = control.value;
-        ctx.render();
+        if (statuses.includes(filter)) view.folded.delete(filter);
+        refreshFocus(el,ctx,"[data-jd-filter]");
       } else if (control.matches("[data-jd-done],[data-jd-status]")) {
+        const isCheck = control.matches("[data-jd-done]");
+        if (!isCheck) view.folded.delete(control.value);
         const saved = await ctx.mutate(state => {
           const task = state.tasks.find(item => item.id === control.dataset.id);
           if (!task) throw new Error("La actividad ya no existe.");
-          if (control.matches("[data-jd-done]")) task.done = control.checked;
+          if (isCheck) task.done = control.checked;
           else {
             if (openSegment(task) && control.value !== "En proceso") throw new Error("Pausa el bloque antes de cambiar el estado.");
             task.status = control.value;
           }
         });
         if (!saved) ctx.render();
+        focusControl(el,ctx,(isCheck ? "[data-jd-done]" : "[data-jd-status]") + '[data-id="' + CSS.escape(control.dataset.id) + '"]');
       }
     };
+
     const form = el.querySelector("[data-jd-form]");
-    const saveDraft = () => quickDrafts.set(ctx.date, Object.fromEntries(new FormData(form)));
+    if (form) {
+      const saveDraft = () => quickDrafts.set(ctx.date, Object.fromEntries(new FormData(form)));
+      form.oninput = form.onchange = saveDraft;
+      form.elements.title.onpaste = event => {
+        const content = event.clipboardData?.getData("text/plain") || "";
+        if (!/[\t\n]/.test(content.trimEnd())) return;
+        event.preventDefault();
+        saveDraft();
+        bulkDrafts.set(ctx.date, {raw:content, origin:form.elements.origin.value});
+        view.mode = "excel";
+        refreshFocus(el,ctx,"#jd-paste");
+      };
+      form.onsubmit = async event => {
+        event.preventDefault();
+        const data = Object.fromEntries(new FormData(form));
+        const title = String(data.title).trim();
+        if (!title) { form.elements.title.focus(); return; }
+        const saved = await ctx.mutate(state => {
+          state.tasks.push(M().task({date:ctx.date, title, context:String(data.context).trim(), origin:data.origin}));
+        });
+        if (saved) {
+          quickDrafts.set(ctx.date,{origin:data.origin});
+          filter = "Todas";
+          view.folded.delete("Pendiente");
+          refreshFocus(el,ctx,"[data-jd-form] input[name=title]");
+          ctx.toast("Actividad agregada.");
+        }
+      };
+    }
     const bulk = el.querySelector("[data-jd-bulk]");
-    const details = el.querySelector("[data-jd-import]");
+    if (!bulk) return;
     function previewBulk() {
       const output = bulk.querySelector("[data-jd-count]");
       const button = bulk.querySelector("button");
       try {
         const rows = rowsFromClipboard(bulk.elements.rows.value);
-        output.textContent = rows.length ? rows.length + (rows.length === 1 ? " actividad" : " actividades") + " · " + form.elements.origin.value : "Se usará el origen elegido arriba.";
+        output.textContent = rows.length ? rows.length + (rows.length === 1 ? " actividad" : " actividades") : "";
         button.disabled = !rows.length;
       } catch (error) {
         output.textContent = error.message;
         button.disabled = true;
       }
     }
-    const storeBulk = () => bulkDrafts.set(ctx.date, {raw:bulk.elements.rows.value, open:details.open});
-    details.ontoggle = () => { if (details.isConnected) storeBulk(); };
-    bulk.elements.rows.oninput = () => { storeBulk(); previewBulk(); };
+    bulk.oninput = bulk.onchange = () => {
+      bulkDrafts.set(ctx.date,{raw:bulk.elements.rows.value,origin:bulk.elements.origin.value});
+      previewBulk();
+    };
     previewBulk();
     bulk.onsubmit = async event => {
       event.preventDefault();
       const rows = rowsFromClipboard(bulk.elements.rows.value);
       if (!rows.length) return;
-      const origin = form.elements.origin.value;
+      const origin = bulk.elements.origin.value;
       const saved = await ctx.mutate(state => {
         for (const row of rows) state.tasks.push(M().task({date:ctx.date, title:row[0], context:row[1] || "", origin}));
       });
-      if (saved) { bulkDrafts.delete(ctx.date); filter = "Todas"; ctx.render(); ctx.toast(rows.length + (rows.length === 1 ? " actividad agregada." : " actividades agregadas.")); }
-    };
-    form.elements.title.onpaste = event => {
-      const content = event.clipboardData?.getData("text/plain") || "";
-      if (!/[\t\n]/.test(content.trimEnd())) return;
-      event.preventDefault();
-      details.open = true;
-      bulk.elements.rows.value = content;
-      storeBulk();
-      previewBulk();
-      bulk.elements.rows.focus();
-    };
-    form.oninput = saveDraft;
-    form.onchange = () => { saveDraft(); previewBulk(); };
-    form.onsubmit = async event => {
-      event.preventDefault();
-      const data = Object.fromEntries(new FormData(form));
-      const title = String(data.title).trim();
-      if (!title) { form.elements.title.focus(); return; }
-      const saved = await ctx.mutate(state => {
-        state.tasks.push(M().task({date:ctx.date, title, context:String(data.context).trim(), origin:data.origin}));
-      });
       if (saved) {
-        quickDrafts.delete(ctx.date);
+        bulkDrafts.set(ctx.date, {raw:"", origin});
         filter = "Todas";
-        ctx.render();
-        el.querySelector("[data-jd-form] input[name=title]")?.focus();
-        ctx.toast("Actividad agregada.");
+        view.folded.delete("Pendiente");
+        view.open = false;
+        refreshFocus(el,ctx,captureButton);
+        ctx.toast(rows.length + (rows.length === 1 ? " actividad agregada." : " actividades agregadas."));
       }
     };
   }
@@ -433,7 +535,15 @@
   function render(el, ctx) {
     if (ctx.date !== lastDate) { lastDate = ctx.date; filter = "Todas"; }
     const tasks = ctx.state.tasks.filter(task => task.date === ctx.date);
-    el.innerHTML = `<div class="jd-view">${topSection(ctx)}${metrics(tasks, ctx)}${timeline(tasks, ctx)}${activitySection(tasks, ctx)}</div>`;
+    const view = dayView(ctx.date, tasks);
+    if (view.statusById) {
+      for (const task of tasks) {
+        if (!view.statusById.has(task.id)) filter = "Todas";
+        if (view.statusById.get(task.id) !== task.status) view.folded.delete(task.status);
+      }
+    }
+    view.statusById = new Map(tasks.map(task => [task.id,task.status]));
+    el.innerHTML = `<div class="jd-view" data-date="${esc(ctx.date)}">${topSection(ctx)}${metrics(tasks, ctx)}${activitySection(tasks, ctx)}${timeline(tasks, ctx)}</div>`;
     installEvents(el, ctx);
     installReuse(el, ctx);
   }

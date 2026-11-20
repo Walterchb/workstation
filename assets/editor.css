@@ -8,7 +8,7 @@
   color:var(--navy,#092c40);
   background:#fff;
   border:1px solid var(--line,#dbe4e9);
-  border-radius:18px;
+  border-radius:5px;
   box-shadow:0 28px 100px rgb(9 36 54 / 25%);
   overflow:hidden;
 }
@@ -28,7 +28,7 @@
 .je-wide {grid-column:1 / -1;}
 .je-field {display:flex;flex-direction:column;gap:6px;min-width:0;color:var(--navy,#092c40);}
 .je-field>span,.je-check>span {font-size:.875rem;font-weight:700;line-height:1.4;}
-.je-field input,.je-field select,.je-field textarea {font:inherit;font-size:.9375rem;width:100%;min-width:0;min-height:40px;color:#153044;border:1px solid #cbd7dd;border-radius:8px;background-color:#fff;padding:8px 11px;line-height:1.4;}
+.je-field input,.je-field select,.je-field textarea {font:inherit;font-size:.9375rem;width:100%;min-width:0;min-height:40px;color:#153044;border:1px solid #cbd7dd;border-radius:5px;background-color:#fff;padding:8px 11px;line-height:1.4;}
 .je-field select {appearance:none;padding-right:31px;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23465c6c' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 11px center;}
 .je-field textarea {resize:vertical;min-height:60px;}
 .je-field input::placeholder,.je-field textarea::placeholder {color:#657785;}
@@ -46,9 +46,9 @@
 .je-log-fields {border-top:1px solid var(--line,#dbe4e9);padding-top:19px;margin-top:18px;}
 .je-check {align-self:end;display:flex;align-items:center;gap:9px;min-height:40px;cursor:pointer;}
 .je-check input {width:17px;height:17px;min-height:0;margin:0;accent-color:var(--teal,#007e77);}
-.je-continuation {border:1px solid #b9d9d5;background:#f1f8f7;border-radius:9px;margin-top:18px;padding:14px;display:grid;grid-template-columns:minmax(150px,.7fr) minmax(0,1.3fr);gap:14px;align-items:center;}
+.je-continuation {border:1px solid #b9d9d5;background:#f1f8f7;border-radius:5px;margin-top:18px;padding:14px;display:grid;grid-template-columns:minmax(150px,.7fr) minmax(0,1.3fr);gap:14px;align-items:center;}
 .je-continuation p {font-size:.83rem;line-height:1.5;margin:0;color:#365854;}
-.je-error {font-size:.87rem;line-height:1.45;color:#882421;background:#fff3f1;border-radius:7px;padding:10px 12px;margin:12px 0 0;}
+.je-error {font-size:.87rem;line-height:1.45;color:#882421;background:#fff3f1;border-radius:5px;padding:10px 12px;margin:12px 0 0;}
 .je-foot,.je-confirm {flex-shrink:0;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:16px 26px;border-top:1px solid var(--line,#dbe4e9);background:#fcfdfd;}
 .je-foot-actions,.je-save-actions {display:flex;align-items:center;gap:13px;}
 .je-save-actions {gap:8px;}
@@ -58,7 +58,7 @@
 .je-danger {background:#a52f29;color:white;border:1px solid #a52f29;}
 .je-form[aria-busy="true"] {opacity:.7;}
 @media(max-width:630px) {
-  .je-dialog {width:min(100% - 16px,620px);max-height:calc(100dvh - 16px);border-radius:13px;}
+  .je-dialog {width:min(100% - 16px,620px);max-height:calc(100dvh - 16px);border-radius:5px;}
   .je-form {max-height:calc(100dvh - 18px);}
   .je-head {padding:18px 17px 13px;}
   .je-tabs {padding-inline:17px;gap:18px;}
