@@ -44,7 +44,7 @@
     dialog.setAttribute('aria-labelledby','help-title');
     dialog.innerHTML='<div class="dialog-top"><h2 id="help-title">Cómo usar Jornada</h2><button class="icon-btn" aria-label="Cerrar ayuda">'+icon('x')+'</button></div>'+
       '<div class="help-list"><div><strong>Al planificar</strong><p>En Mi jornada, abre Editar actividades. Escribe una actividad y su contexto por fila. Puedes insertar otra entre dos tareas si cambian tus prioridades.</p></div>'+
-      '<div><strong>Al trabajar</strong><p>Registra el inicio y el cierre en la hoja, marca lo que hiciste y anota el resultado. Al guardar, cada tramo aparece en el horario. Las actividades sin hora conservan su orden del plan.</p></div>'+
+      '<div><strong>Al trabajar</strong><p>Registra las horas y los comentarios en Editar actividades. En el horario puedes cambiar el estado y marcar «¿Se hizo?» de forma independiente. Marca la casilla cuando hayas cumplido el avance que planificaste para hoy, incluso si el encargo continúa.</p></div>'+
       '<div><strong>Al revisar con gerencia</strong><p>En Objetivos puedes seguir los avances de varios días. En Análisis elige el período para revisar las horas, los resultados y las evidencias, o preparar el informe gerencial.</p></div></div>'+
       '<div class="help-actions"><a class="btn" href="./GUIA.html" target="_blank" rel="noopener">'+icon('book',16)+' Guía de instalación y uso</a></div>';
     dialog.querySelector('button').onclick=()=>dialog.close();
@@ -102,8 +102,26 @@
     } finally {saving=false;updateStatus();}
   }
 
+  async function updateTaskField(day,id,field,value) {
+    const valid=field==='status' ? model.statuses.includes(value) : field==='done' && typeof value==='boolean';
+    if(!valid){notify('Revisa el valor seleccionado.');return false;}
+    const activity=state.tasks.find(task=>task.date===day && task.id===id);
+    if(!activity){notify('La actividad ya no está disponible en esta jornada.');return false;}
+    if(activity[field]===value)return true;
+    if(field==='status' && value!=='En proceso' && activity.segments.some(segment=>!segment.end)){
+      notify('Hay un tramo abierto. Registra su hora de cierre en Editar actividades antes de cambiar el estado.');
+      return false;
+    }
+    return mutate(copy=>{
+      const row=copy.tasks.find(task=>task.id===id);
+      row[field]=value;
+    });
+  }
+
   function getContext() {
-    return {state,date,setDate,mutate,toast:notify,render,icon,navigate,
+    const day=date;
+    return {state,date:day,setDate,mutate,toast:notify,render,icon,navigate,
+      updateTaskField:(id,field,value)=>updateTaskField(day,id,field,value),
       openTask:(id=null,defaults={})=>window.JEditor.open(id,defaults,getContext())};
   }
 
@@ -225,12 +243,11 @@
     render();
     clearInterval(clockHandle);
     clockHandle=setInterval(()=>{
-      if(view!=='agenda'||date!==model.today()||document.querySelector('dialog[open]'))return;
+      if(saving||view!=='agenda'||date!==model.today()||document.querySelector('dialog[open]'))return;
       if(!state?.tasks.some(t=>t.date===date&&t.segments.some(s=>!s.end)))return;
       const stage=root.querySelector('.stage');
-      const onEditButton=document.activeElement?.matches('[data-edit-day]');
+      if(stage.contains(document.activeElement) && document.activeElement.matches('select,input,button,summary'))return;
       window.JAgenda.render(stage,getContext());
-      if(onEditButton)stage.querySelector('[data-edit-day]')?.focus({preventScroll:true});
     },60000);
   }
 
