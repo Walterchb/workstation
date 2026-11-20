@@ -43,8 +43,8 @@
     dialog.className='shell-dialog';
     dialog.setAttribute('aria-labelledby','help-title');
     dialog.innerHTML='<div class="dialog-top"><h2 id="help-title">Cómo usar Jornada</h2><button class="icon-btn" aria-label="Cerrar ayuda">'+icon('x')+'</button></div>'+
-      '<div class="help-list"><div><strong>Al planificar</strong><p>Escribe la actividad y su contexto en Mi jornada. Abre la ficha para elegir prioridad y objetivo. Si algo surge durante el día, regístralo como imprevisto.</p></div>'+
-      '<div><strong>Al trabajar</strong><p>Pulsa Iniciar cuando empieces y Pausar cuando cambies de tarea. Puedes retomar la actividad o editar sus horas. Marca el avance de hoy y anota lo que entregaste.</p></div>'+
+      '<div class="help-list"><div><strong>Al planificar</strong><p>En Mi jornada, abre Editar actividades. Escribe una actividad y su contexto por fila. Puedes insertar otra entre dos tareas si cambian tus prioridades.</p></div>'+
+      '<div><strong>Al trabajar</strong><p>Registra el inicio y el cierre en la hoja, marca lo que hiciste y anota el resultado. Al guardar, cada tramo aparece en el horario. Las actividades sin hora conservan su orden del plan.</p></div>'+
       '<div><strong>Al revisar con gerencia</strong><p>En Objetivos puedes seguir los avances de varios días. En Análisis elige el período para revisar las horas, los resultados y las evidencias, o preparar el informe gerencial.</p></div></div>'+
       '<div class="help-actions"><a class="btn" href="./GUIA.html" target="_blank" rel="noopener">'+icon('book',16)+' Guía de instalación y uso</a></div>';
     dialog.querySelector('button').onclick=()=>dialog.close();
@@ -85,8 +85,7 @@
   async function mutate(change) {
     if(saving) {notify('Hay un cambio guardándose. Inténtalo de nuevo en un momento.');return false;}
     saving=true;
-    const mode=root.querySelector('.work-mode');
-    if(mode)mode.textContent='Guardando…';
+    updateStatus();
     try {
       const copy=JSON.parse(JSON.stringify(state));
       change(copy);
@@ -106,6 +105,34 @@
   function getContext() {
     return {state,date,setDate,mutate,toast:notify,render,icon,navigate,
       openTask:(id=null,defaults={})=>window.JEditor.open(id,defaults,getContext())};
+  }
+
+  function dateTools() {
+    return '<nav class="jd-heading-tools" aria-label="Fecha de la jornada">'+
+      '<button class="jd-today" type="button" data-go-today>Ir a hoy</button>'+
+      '<div class="jd-date-nav"><button type="button" data-step="-1" aria-label="Día anterior" title="Día anterior">'+icon('chevron-left',16)+'</button>'+
+      '<label class="jd-picker">'+icon('calendar',16)+'<span class="date-long"></span><span class="date-short"></span>'+
+      '<input type="date" aria-label="Elegir fecha de la jornada"></label>'+
+      '<button type="button" data-step="1" aria-label="Día siguiente" title="Día siguiente">'+icon('chevron-right',16)+'</button></div></nav>';
+  }
+
+  function updateDateTools() {
+    const tools=root.querySelector('.jd-heading-tools');
+    const label=model.formatDate(date);
+    const short=model.formatDate(date,{day:'numeric',month:'short'}).replace(/\./g,'');
+    const long=model.formatDate(date,{weekday:'short',day:'numeric',month:'short',year:'numeric'}).replace(/\./g,'');
+    tools.querySelector('.date-long').textContent=long;
+    tools.querySelector('.date-short').textContent=short;
+    tools.querySelector('input').value=date;
+    tools.querySelector('.jd-picker').title=label;
+    tools.querySelector('[data-go-today]').hidden=date===model.today() && view==='agenda';
+  }
+
+  function showDay(next) {
+    if(!next)return;
+    view='agenda';
+    setDate(next);
+    window.scrollTo(0,0);
   }
 
   function renderCalendar() {
@@ -138,10 +165,10 @@
   }
 
   function updateStatus() {
-    const badge=root.querySelector('.work-mode');
+    const badge=root.querySelector('.account-mode');
     if(!badge||!session)return;
     const demo=session.mode==='demo';
-    badge.innerHTML=icon(demo?'flask':'lock',14)+(demo?'Demo local':'Cuenta privada');
+    badge.textContent=saving?'Guardando…':(demo?'Demo local':'Cuenta privada');
     badge.title=demo?'Datos de ejemplo guardados en este navegador':'Tus registros se guardan en Supabase';
     const active=state?.tasks.find(t=>t.segments.some(s=>!s.end));
     const running=root.querySelector('.work-running');
@@ -150,7 +177,6 @@
       const s=active.segments.find(s=>!s.end);
       running.innerHTML=icon('timer',15)+'<span>Desde '+esc(s.start)+'</span>';
       running.title='Tramo abierto · '+active.title+' · '+active.date;
-      running.onclick=()=>getContext().openTask(active.id);
     }
   }
 
@@ -165,7 +191,7 @@
     el.onclick=null;el.onchange=null;
     if(view==='agenda') window.JAgenda.render(el,getContext());
     else window.JInsights.render(el,getContext(),view);
-    renderCalendar(); updateStatus();
+    renderCalendar(); updateStatus(); updateDateTools();
   }
 
   function shell() {
@@ -177,10 +203,14 @@
       '<div class="brandbar">'+mark+'<span>Jornada</span><button class="close-menu" aria-label="Cerrar menú">'+icon('x')+'</button></div>'+
       '<nav class="rail-nav" aria-label="Vistas principales">'+[['agenda','calendar-days'],['goals','target'],['analysis','bar-chart']].map(([v,i])=>'<button data-view="'+v+'">'+icon(i,19)+titles[v]+'</button>').join('')+'</nav>'+
       '<section class="cal-wrap" aria-label="Calendario de jornadas"></section>'+
-      '<div class="rail-bottom"><button class="rail-link" data-help>'+icon('help',18)+' Guía de uso</button><div class="rail-user"><span class="monogram">'+esc(initials)+'</span><div class="usercopy"><b title="'+esc(email)+'">'+esc(userName)+'</b>Espacio personal</div>'+
+      '<div class="rail-bottom"><button class="rail-link" data-help>'+icon('help',18)+' Guía de uso</button><div class="rail-user"><span class="monogram">'+esc(initials)+'</span><div class="usercopy"><b title="'+esc(email)+'">'+esc(userName)+'</b><span class="account-mode" role="status"></span></div>'+
       (demo?'':'<button data-logout aria-label="Cerrar sesión" title="Cerrar sesión">'+icon('logout',18)+'</button>')+'</div></div></aside>'+
       '<div class="shell-content"><header class="workbar"><div class="toolbar-left"><button class="hamburger icon-btn" aria-label="Abrir menú" aria-controls="side-menu" aria-expanded="false">'+icon('menu',20)+'</button><div class="work-context">'+icon('building',17)+'<span>Mercado de Capitales</span><span class="slash">/</span><span class="context-secondary">Control de Gestión</span></div></div>'+
-      '<div class="bar-right"><button type="button" class="work-running" hidden></button><span class="work-mode" data-mode="'+esc(session.mode)+'"></span></div></header><main id="main" tabindex="-1" class="stage"></main></div></div>';
+      '<div class="bar-right"><span class="work-running" hidden></span>'+dateTools()+'</div></header><main id="main" tabindex="-1" class="stage"></main></div></div>';
+    const tools=root.querySelector('.jd-heading-tools');
+    tools.querySelectorAll('[data-step]').forEach(button=>button.onclick=()=>showDay(model.shiftDate(date,Number(button.dataset.step))));
+    tools.querySelector('[data-go-today]').onclick=()=>{showDay(model.today());tools.querySelector('input').focus();};
+    tools.querySelector('input').onchange=event=>{if(event.target.value)showDay(event.target.value);else updateDateTools();};
     root.querySelector('.hamburger').onclick=()=>toggleMenu(true);
     root.querySelector('.close-menu').onclick=root.querySelector('.backdrop').onclick=()=>toggleMenu(false);
     root.querySelectorAll('[data-view]').forEach(btn=>btn.onclick=()=>navigate(btn.dataset.view));
@@ -195,9 +225,12 @@
     render();
     clearInterval(clockHandle);
     clockHandle=setInterval(()=>{
-      // No interrumpir la edición para actualizar la longitud del tramo vivo.
-      if(view==='agenda'&&state?.tasks.some(t=>t.date===date&&t.segments.some(s=>!s.end))&&
-        !document.querySelector('dialog[open]')&&!['BUTTON','SELECT','INPUT','TEXTAREA'].includes(document.activeElement?.tagName))render();
+      if(view!=='agenda'||date!==model.today()||document.querySelector('dialog[open]'))return;
+      if(!state?.tasks.some(t=>t.date===date&&t.segments.some(s=>!s.end)))return;
+      const stage=root.querySelector('.stage');
+      const onEditButton=document.activeElement?.matches('[data-edit-day]');
+      window.JAgenda.render(stage,getContext());
+      if(onEditButton)stage.querySelector('[data-edit-day]')?.focus({preventScroll:true});
     },60000);
   }
 

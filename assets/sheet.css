@@ -1,0 +1,150 @@
+/* Hoja de edición. Los encabezados y el número de fila acompañan el desplazamiento. */
+html:has(dialog.jsheet[open]) { overflow: hidden; }
+.jsheet {
+  width: min(1570px,calc(100% - 34px));
+  height: min(800px,calc(100dvh - 40px));
+  max-width: 100%;
+  max-height: none;
+  margin: auto;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid #afc0c7;
+  border-radius: 5px;
+  background: #fff;
+  color: #183849;
+  box-shadow: 0 20px 88px #092b4055;
+}
+.jsheet::backdrop { background: #0c283d75; }
+.jsheet [hidden] { display: none !important; }
+.jsheet[open] { display: flex; flex-direction: column; }
+.jsheet-layout { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+.jsheet > .notice { flex: none; margin: 0; border-radius: 0; }
+.jsheet-head { flex: none; display: flex; justify-content: space-between; align-items: start; gap: 14px; padding: 17px 21px 13px; }
+.jsheet-head h2 { margin: 0; font-size: 1.47rem; letter-spacing: -.04em; line-height: 1.24; color: #153749; }
+.jsheet-head p { margin: 3px 0 0; color: #536a77; font-size: .84rem; }
+.jsheet-head p::first-letter { text-transform: uppercase; }
+.jsheet .icon-btn, .jsheet .btn { border-radius: 4px; }
+.jsheet-tools { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 5px 0; padding: 6px 13px; border-block: 1px solid #d9e4e6; background: #f5f8f8; }
+.jsheet-tool-group { display: flex; align-items: center; gap: 4px; padding-inline: 7px; }
+.jsheet-tool-group + .jsheet-tool-group { border-left: 1px solid #d6e1e3; }
+.jsheet-tools button, .jsheet-tools summary, .jsheet-extra button, .jsheet-confirm button {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 6px 8px; min-height: 32px; margin: 0; border-radius: 3px;
+  border: 1px solid transparent; background: transparent; color: #304f5d;
+  font: inherit; font-size: .81rem; line-height: 1.3; font-weight: 650; cursor: pointer;
+}
+.jsheet-tools .jsheet-add { border-color: #a6c8bd; background: #edf7f2; color: #0a6256; }
+.jsheet-tools button:not(:disabled):hover, .jsheet-tools summary:hover, .jsheet-extra button:hover { background: #e7efed; border-color: #c4d5d0; }
+.jsheet-tools button:disabled { opacity: .5; cursor: default; }
+.jsheet-tools button[aria-expanded=true] { color: #065e52; background: #e5f1ed; border-color: #bbd5c9; }
+.jsheet-menu { position: relative; }
+.jsheet-menu summary { list-style: none; }
+.jsheet-menu summary::-webkit-details-marker { display: none; }
+.jsheet-menu[open] summary { background: #eaf1ee; }
+.jsheet-menu > div { position: absolute; z-index: 9; top: 100%; left: 0; min-width: 158px; width: max-content; padding: 4px; border: 1px solid #c8d6db; border-radius: 3px; background: #fff; box-shadow: 0 4px 18px #17334725; }
+.jsheet-menu > div button { display: flex; justify-content: start; width: 100%; }
+.jsheet-menu button[data-act=remove] { color: #923935; }
+.jsheet-extra { flex: none; min-height: 0; max-height: 32%; overflow-y: auto; padding: 10px 20px; background: #f5faf7; border-bottom: 1px solid #d8e3df; font-size: .84rem; color: #3e5d66; }
+.jsheet-extra-head, .jsheet-segments, .jsheet-reuse-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.jsheet-extra-head strong { font-size: .89rem; overflow-wrap: anywhere; }
+.jsheet-extra-head > button { flex-shrink: 0; }
+.jsheet-details { display: grid; grid-template-columns: minmax(175px,1.65fr) minmax(95px,.65fr) minmax(120px,1fr) minmax(140px,1.2fr); gap: 10px; margin-block: 5px 9px; }
+.jsheet-extra label { font-size: .78rem; font-weight: 650; color: #435f68; }
+.jsheet-details label { display: grid; gap: 3px; min-width: 0; }
+.jsheet-extra select:not([multiple]) { min-height: 32px; min-width: 0; border: 1px solid #bfd0d4; border-radius: 3px; background-color: #fff; font-size: .82rem; color: #183b49; padding: 4px 27px 4px 8px; }
+.jsheet-segments { justify-content: start; flex-wrap: wrap; }
+.jsheet-segments label, .jsheet-extra-head label { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.jsheet-extra button[data-act=remove-segment] { color: #873932; }
+.jsheet-reuse-rows { display: grid; gap: 4px; grid-template-columns: repeat(auto-fit,minmax(min(240px,100%),1fr)); padding: 5px 0; }
+.jsheet-reuse-rows label { display: flex; align-items: start; gap: 7px; padding: 5px 7px; background: #fff; border: 1px solid #d8e4df; border-radius: 2px; }
+.jsheet-reuse-rows input { margin: 2px 0 0; flex: none; }
+.jsheet-reuse-rows span { overflow-wrap: anywhere; }
+.jsheet-reuse-rows small { display: block; color: #657880; font-size: .75rem; }
+.jsheet-reuse-foot { justify-content: end; }
+.jsheet-extra button[data-act=copy-rows] { color: #0e6558; background: #fff; border: 1px solid #aac8bc; }
+.jsheet-extra p { margin: 3px 0 0; }
+.jsheet-tip, .jsheet-mobile-tip { flex: none; margin: 0; padding: 8px 20px; font-size: .77rem; line-height: 1.4; color: #516871; }
+.jsheet-mobile-tip { display: none; }
+.jsheet-scroll { position: relative; flex: 1 1 auto; min-height: 0; overflow: auto; overscroll-behavior: contain; border-block: 1px solid #c5d3d8; background: #f6f8f9; }
+.jsheet-table { width: 100%; min-width: 1100px; border-collapse: separate; border-spacing: 0; table-layout: fixed; text-align: left; background: #fff; }
+.jsheet-col-row { width: 34px; }
+.jsheet-col-status { width: 116px; }
+.jsheet-col-title { width: 19%; }
+.jsheet-col-context { width: 23%; }
+.jsheet-col-done { width: 68px; }
+.jsheet-col-start, .jsheet-col-end { width: 101px; }
+.jsheet-col-duration { width: 68px; }
+.jsheet-table thead th { position: sticky; top: 0; z-index: 2; height: 35px; padding: 6px 8px; background: #123747; color: #fff; border-right: 1px solid #496574; font-size: .76rem; font-weight: 670; line-height: 1.35; }
+.jsheet-table thead th:first-child { position: sticky; left: 0; z-index: 4; text-align: center; padding-inline: 2px; background: #0d3041; }
+.jsheet-table tbody th, .jsheet-table td { border-right: 1px solid #d4dee2; border-bottom: 1px solid #d4dee2; padding: 0; }
+.jsheet-table tbody th { position: sticky; left: 0; z-index: 1; text-align: center; color: #526a76; background: #f0f4f5; vertical-align: top; }
+.jsheet-table tbody th button { width: 100%; min-height: 38px; padding: 3px 2px; background: transparent; color: inherit; font: inherit; font-size: .74rem; font-variant-numeric: tabular-nums; font-weight: 650; border: 0; }
+.jsheet-table td { vertical-align: top; font-size: .84rem; }
+.jsheet-table .jsheet-current th { background: #dceee6; color: #115e53; box-shadow: inset 3px 0 #237a69; }
+.jsheet-table .jsheet-current td { background-color: #fcfefd; }
+.jsheet-table :is(textarea,select,input[type=time]) { display: block; width: 100%; max-width: none; font: inherit; color: #183d4d; line-height: 1.35; border: 1px solid transparent; border-radius: 0; background-color: transparent; }
+.jsheet-table textarea { padding: 8px; min-height: 47px; height: 100%; resize: vertical; }
+.jsheet-table td.jsheet-c-title textarea { font-weight: 650; }
+.jsheet-table select:not([multiple]) { width: calc(100% - 8px); min-height: 29px; margin: 4px; padding: 4px 18px 4px 5px; border-radius: 2px; background-size: 12px; background-position: right 3px center; font-size: .78rem; font-weight: 650; }
+.jsheet-table select[data-status="En proceso"] { color: #126157; background-color: #e6f2ed; }
+.jsheet-table select[data-status="Culminado"] { color: #366641; background-color: #eaf3e9; }
+.jsheet-table select[data-status="Pendiente"] { color: #526774; background-color: #f0f3f5; }
+.jsheet-table .jsheet-c-done, .jsheet-table .jsheet-c-duration { text-align: center; }
+.jsheet-table input[type=checkbox] { width: 16px; height: 16px; margin: 11px auto; cursor: pointer; accent-color: #146e62; }
+.jsheet-table input[type=time] { min-height: 36px; height: 36px; padding: 4px; font-size: .8rem; font-variant-numeric: tabular-nums; }
+.jsheet-table input[type=time] + input[type=time] { border-top: 1px dashed #d8e2df; }
+.jsheet-table input[type=time]::-webkit-calendar-picker-indicator { width: 12px; padding: 0; opacity: .55; }
+.jsheet-table .jsheet-c-duration { background-color: #f4f8f7; }
+.jsheet-table .jsheet-current .jsheet-c-duration { background-color: #edf6f2; }
+.jsheet-table output { display: block; padding: 10px 3px; font-weight: 700; color: #35595d; font-variant-numeric: tabular-nums; }
+.jsheet :focus-visible { outline: 2px solid #147d91; outline-offset: 1px; }
+.jsheet-table :is(textarea,select,input[type=time]):focus, .jsheet-scroll:focus-visible { outline: 2px solid #278272; outline-offset: -2px; }
+.jsheet-table :is(textarea,input[type=time]):focus { background-color: #f3fbf7; }
+.jsheet-notice, .jsheet-alert { flex: none; font-size: .82rem; line-height: 1.45; padding: 7px 20px; background: #eef8f3; color: #155e51; }
+.jsheet-alert { color: #85372e; background: #fff1ec; }
+.jsheet-foot, .jsheet-confirm { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 9px; padding: 12px 18px; background: #fff; }
+.jsheet-summary { display: grid; gap: 2px; color: #244857; font-size: .82rem; font-variant-numeric: tabular-nums; }
+.jsheet-summary span { color: #596f79; font-size: .75rem; }
+.jsheet-foot-actions, .jsheet-confirm > div { display: flex; gap: 5px; align-items: center; }
+.jsheet-confirm { border-top: 1px solid #dcc7ba; background: #fffbf6; }
+.jsheet-confirm p { font-size: .86rem; margin: 0; }
+.jsheet-confirm button { background: #fff; border: 1px solid #d3dce0; }
+.jsheet-confirm button[data-act=discard] { color: #913429; border-color: #dfb7ad; }
+.jsheet-copy { position: absolute; opacity: 0; width: 1px; height: 1px; padding: 0; border: none; }
+.jsheet[aria-busy=true] .jsheet-foot { opacity: .7; }
+@media (max-width: 850px) {
+  .jsheet { width: calc(100% - 12px); height: calc(100dvh - 16px); }
+  .jsheet-head { padding: 12px 14px; }
+  .jsheet-tools { padding: 5px 8px; }
+  .jsheet-tool-group { padding-inline: 4px; }
+  .jsheet-tools button, .jsheet-tools summary { padding-inline: 6px; }
+  .jsheet-extra { padding: 7px 12px; }
+  .jsheet-details { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .jsheet-mobile-tip { display: block; padding: 0 13px 6px; }
+  .jsheet-tip { padding: 6px 13px 2px; }
+}
+@media (max-width: 560px) {
+  .jsheet { width: 100%; height: 100dvh; border-radius: 0; border: 0; }
+  .jsheet-head { padding: 9px 11px 7px; }
+  .jsheet-head h2 { font-size: 1.15rem; }
+  .jsheet-head p { font-size: .77rem; }
+  .jsheet-tools { padding: 4px 7px; gap: 2px 0; }
+  .jsheet-tool-group { padding: 0 2px; gap: 1px; }
+  .jsheet-tool-group + .jsheet-tool-group { border: 0; }
+  .jsheet-tools button, .jsheet-tools summary { min-height: 28px; font-size: .76rem; padding: 4px; gap: 3px; }
+  .jsheet-tools .j-icon { width: 13px; }
+  .jsheet-tip, .jsheet-mobile-tip { padding-inline: 10px; font-size: .74rem; }
+  .jsheet-extra { max-height: 26%; }
+  .jsheet-foot, .jsheet-confirm { flex-wrap: wrap; padding: 8px 9px; }
+  .jsheet-foot-actions, .jsheet-confirm > div { margin-left: auto; }
+  .jsheet .btn { min-height: 33px; padding: 7px; font-size: .81rem; }
+  .jsheet-table :is(textarea,input[type=time]) { font-size: 1rem; }
+  .jsheet-table input[type=time] { padding-inline: 1px; }
+}
+@media (max-height: 450px) {
+  .jsheet { height: 100dvh; }
+  .jsheet-head { padding: 5px 10px; }
+  .jsheet-head h2 { font-size: 1rem; }
+  .jsheet-tip, .jsheet-mobile-tip { display: none; }
+  .jsheet-foot, .jsheet-confirm { padding-block: 5px; }
+}
