@@ -15,13 +15,13 @@
 
   function createDraft(state, date) {
     const baseline = clone(state.tasks.filter(row => row.date === date));
-    return { date, baseline, rows: clone(baseline) };
+    return { date, baseline, rows: clone(baseline), defaultCategory:model.defaultCategory(state) };
   }
 
   function newRow(draft, defaults = {}) {
     const values = clone(defaults);
     delete values.id;
-    return model.task({ ...values, date: draft.date });
+    return model.task({ category:draft.defaultCategory, ...values, date: draft.date });
   }
 
   function insertRow(draft, index, defaults = {}) {
@@ -152,10 +152,10 @@
     return keys.length === Object.keys(b).length && keys.every(key => Object.hasOwn(b, key) && sameJSON(a[key], b[key]));
   }
 
-  function emptyNewRow(row) {
+  function emptyNewRow(row, defaultCategory) {
     return !row.title.trim() && !row.context.trim() && !row.comment.trim() && !row.goalId && !row.done &&
       row.segments.length === 0 && row.status === 'Pendiente' && row.origin === 'Planificada' &&
-      row.priority === 'Media' && row.category === model.categories[0];
+      row.priority === 'Media' && row.category === defaultCategory;
   }
 
   function prepareRows(draft) {
@@ -176,7 +176,7 @@
         }
         return [segment];
       });
-      if (!existing.has(row.id) && emptyNewRow(row)) return [];
+      if (!existing.has(row.id) && emptyNewRow(row,draft.defaultCategory)) return [];
       if (!row.title.trim()) throw fieldError('Escribe el nombre de la actividad.', rowIndex, 'title');
       const open = row.segments.findIndex(segment => !segment.end);
       if (open >= 0) {

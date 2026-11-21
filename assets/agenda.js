@@ -85,7 +85,9 @@
     </section>`;
   }
 
-  const hourScales = {detailed:168,compact:96};
+  const hourScales = {detailed:38,compact:30};
+  let observer = null;
+  let liveScale = null;
   let density = "detailed";
   let mode = "calendar";
   const scrollPositions = new Map();
@@ -138,22 +140,148 @@
   function eventHead(task,entry,place) {
     const name = entry ? task.title + ", " + entryRange(entry) : task.title;
     return `<div class="jd-event-head"><button type="button" class="jd-event-title" data-jd-detail ${identity(task,entry,place)} aria-label="Ver detalle de ${esc(name)}" title="${esc(task.title)}">${esc(task.title)}</button>
-      ${task.context ? `<p class="jd-event-context" title="${esc(task.context)}">${esc(task.context)}</p>` : ""}</div>`;
+      ${task.context ? `<p class="jd-event-context" title="${esc(task.context)}"><span>${esc(task.context)}</span></p>` : ""}</div>`;
   }
 
-  function scheduledSlot(entry,low,width,ctx) {
-    const length = entry.end-entry.start;
-    const size = length < 25 ? "tiny" : length <= 30 ? "short" : length <= 60 ? "medium" : "long";
-    const pos = "top:" + (entry.start-low)*100/width + "%;height:" + length*100/width + "%";
-    const goal = entry.goal && length*hourScales.detailed/60 > 95
-      ? `<div class="jd-event-goal">${ctx.icon("target",13)}<span>Objetivo · ${esc(entry.goal.title)}</span></div>` : "";
-    return `<li class="jd-slot-track${length === 0 ? " jd-instant" : ""}" data-start-minute="${entry.start}" data-end-minute="${entry.end}" style="${pos};${paint(entry.goal)}">
-      <article class="jd-event jd-event-${size}${entry.segment.end ? "" : " jd-event-open"}" aria-label="${esc(entry.task.title)}, ${esc(entryRange(entry))}">
+  function lineBudget(height,content,entry) {
+    const goal = !!entry.goal && height >= content.height+22;
+    const budget = Math.max(0,height-content.band-(goal ? 19 : 0)-2);
+    const lines = Math.max(0,Math.floor((budget-4+.01)/content.line));
+    let context = Math.min(lines,content.contextLines);
+    let comment = Math.min(lines,content.commentLines);
+    if (content.stacked && context && comment) {
+      // Dos párrafos en móvil comparten la altura del cuerpo.
+      const both = Math.max(0,Math.floor((budget-8+.01)/content.line));
+      if (both < 2) comment = 0;
+      else {
+        context = Math.min(context,both-1);
+        comment = Math.min(comment,both-context);
+      }
+    }
+    const title = Math.max(1,Math.floor((height-4+.01)/content.line));
+    return {context,comment,title,goal};
+  }
+
+  function scheduledSlot(entry,scale,content,ctx) {
+    const from = scale.at(entry.start), height = scale.at(entry.end)-from;
+    const fit = lineBudget(height,content,entry);
+    const goal = entry.goal ? `<div class="jd-event-goal">${ctx.icon("target",11)}<span>Objetivo · ${esc(entry.goal.title)}</span></div>` : "";
+    return `<li class="jd-slot-track${height === 0 ? " jd-instant" : ""}" data-start-minute="${entry.start}" data-end-minute="${entry.end}" data-room-for-goal="${fit.goal}" data-context-lines="${fit.context}" data-comment-lines="${fit.comment}" style="top:${from}px;height:${height}px;--jd-measured-band:${content.band}px;--jd-title-lines:${fit.title};--jd-context-lines:${fit.context};--jd-comment-lines:${fit.comment};${paint(entry.goal)}">
+      <article data-has-comment="${!!entry.task.comment}" class="jd-event${entry.segment.end ? "" : " jd-event-open"}" aria-label="${esc(entry.task.title)}, ${esc(entryRange(entry))}">
         ${eventHead(entry.task,entry,"grid")}${taskFields(entry.task,entry,"grid")}${goal}</article></li>`;
   }
 
+  function estimatedContent(entry) {
+    const lines = (text,columns) => text ? String(text).split(/\r?\n/).reduce((n,line) => n+Math.max(1,Math.ceil(line.length/columns)),0) : 0;
+    const band = Math.max(18,lines(entry.task.title,72)*14+3);
+    const line = 13.75, contextLines = lines(entry.task.context,43), commentLines = lines(entry.task.comment,32);
+    return {band,line,contextLines,commentLines,stacked:false,height:band+line*Math.max(contextLines,commentLines)+6};
+  }
+
+  // Cada hora mantiene una escala lineal propia. Se distribuye el espacio faltante
+  // sólo en las horas del tramo, dando mayor peso a su fracción de solapamiento.
+  function makeScale(low,high,entries,content,options={}) {
+    const base = options.baseHeight ?? hourScales[density];
+    const limit = options.maxHourHeight ?? Infinity;
+    const compact = options.compact ?? density === "compact";
+    const heights = Array((high-low)/60).fill(base);
+    const byLength = entries.map((entry,index) => ({entry,need:content[index].height})).sort((a,b) =>
+      (a.entry.end-a.entry.start)-(b.entry.end-b.entry.start));
+    for (const {entry,need} of byLength) {
+      const duration = entry.end-entry.start;
+      if (duration < 5) continue;
+      const parts = [];
+      let room = 0, weights = 0;
+      for (let i = Math.floor((entry.start-low)/60); i < Math.ceil((entry.end-low)/60); i++) {
+        const start = low+i*60;
+        const fraction = (Math.min(start+60,entry.end)-Math.max(start,entry.start))/60;
+        parts.push({i,fraction});
+        room += heights[i]*fraction;
+        weights += fraction*fraction;
+      }
+      // Un tramo breve tiene acceso completo desde Lista y desde su título.
+      const maxRate = duration < 10 ? 1.35 : duration < 20 ? 1.8 : duration < 60 ? 2.6 : Infinity;
+      const target = Math.min(need, duration*maxRate)*(compact ? hourScales.compact/hourScales.detailed : 1);
+      if (target <= room) continue;
+      for (const {i,fraction} of parts) heights[i] = Math.min(limit,heights[i]+(target-room)*fraction/weights);
+    }
+    const offsets = [0];
+    heights.forEach((height,i) => {
+      heights[i] = Math.ceil(height);
+      offsets.push(offsets[i]+heights[i]);
+    });
+    const total = offsets[offsets.length-1];
+    function at(minute) {
+      if (minute >= high) return total;
+      const i = Math.max(0,Math.floor((minute-low)/60));
+      return offsets[i]+(minute-low-i*60)*heights[i]/60;
+    }
+    function minuteAt(y) {
+      const i = heights.findIndex((_,i) => y < offsets[i+1]);
+      return i < 0 ? high : low+i*60+Math.max(0,y-offsets[i])*60/heights[i];
+    }
+    return {low,high,heights,total,at,minuteAt};
+  }
+
+  function measureContent(grid,entries) {
+    const fallback = entries.map(estimatedContent);
+    if (!entries.length || !grid.clientWidth) return fallback;
+    const probe = document.createElement("div");
+    probe.className = "jd-measure";
+    probe.setAttribute("aria-hidden","true");
+    probe.innerHTML = entries.map(({task}) => `<div class="jd-probe-card"><div class="jd-probe-title">${esc(task.title)}</div><i class="jd-probe-control"></i>
+      ${task.context ? `<div class="jd-probe-context">${esc(task.context)}</div>` : ""}
+      ${task.comment ? `<div class="jd-probe-comment">${esc(task.comment)}</div>` : ""}</div>`).join("");
+    grid.append(probe);
+    try {
+      return [...probe.children].map((card,i) => {
+        const height = card.getBoundingClientRect().height;
+        const band = Math.max(card.firstElementChild.getBoundingClientRect().height,card.children[1].getBoundingClientRect().height);
+        if (!height) return fallback[i];
+        const line = parseFloat(getComputedStyle(card.firstElementChild).lineHeight) || 13.75;
+        const count = selector => {
+          const child = card.querySelector(selector);
+          return child ? Math.max(1,Math.round((child.getBoundingClientRect().height-4)/line)) : 0;
+        };
+        return {band:Math.ceil(band),height:Math.ceil(height)+2,line,
+          contextLines:count(".jd-probe-context"),commentLines:count(".jd-probe-comment"),
+          stacked:getComputedStyle(card.children[1]).gridColumnStart === "2"};
+      });
+    } finally { probe.remove(); }
+  }
+
+  function updateGeometry(view,entries,keepPlace=true) {
+    const grid = view.querySelector(".jd-grid");
+    if (!grid) return;
+    const wrap = view.querySelector(".jd-cal-scroll");
+    const anchor = keepPlace && liveScale ? liveScale.minuteAt(wrap.scrollTop || 0) : null;
+    const content = measureContent(grid,entries);
+    const scale = makeScale(Number(grid.dataset.startMinute),Number(grid.dataset.endMinute),entries,content);
+    grid.dataset.hourHeights = scale.heights.join(",");
+    grid.dataset.pixelsPerHour = hourScales[density];
+    grid.style.setProperty("--grid-height",scale.total+"px");
+    for (const line of grid.querySelectorAll("[data-minute]")) line.style.top = scale.at(Number(line.dataset.minute))+"px";
+    const tracks = [...grid.querySelectorAll(".jd-slot-track")];
+    entries.forEach((entry,i) => {
+      const y = scale.at(entry.start);
+      const height = scale.at(entry.end)-y;
+      tracks[i].style.top = y+"px";
+      tracks[i].style.height = height+"px";
+      tracks[i].style.setProperty("--jd-measured-band",content[i].band+"px");
+      const fit = lineBudget(height,content[i],entry);
+      tracks[i].dataset.roomForGoal = String(fit.goal);
+      tracks[i].dataset.contextLines = String(fit.context);
+      tracks[i].dataset.commentLines = String(fit.comment);
+      tracks[i].style.setProperty("--jd-title-lines",fit.title);
+      tracks[i].style.setProperty("--jd-context-lines",fit.context);
+      tracks[i].style.setProperty("--jd-comment-lines",fit.comment);
+    });
+    if (anchor !== null) wrap.scrollTop = scale.at(anchor);
+    liveScale = scale;
+  }
+
   function scalePicker() {
-    return `<label class="jd-density jd-scale-picker">Escala <select data-jd-scale aria-label="Escala del horario"><option value="detailed" ${density === "detailed" ? "selected" : ""}>Detallada</option><option value="compact" ${density === "compact" ? "selected" : ""}>Compacta</option></select></label>`;
+    return `<label class="jd-density jd-scale-picker" title="Cada hora se ajusta al texto de sus tramos. Los minutos conservan su posición dentro de esa hora.">Escala <select data-jd-scale aria-label="Escala del horario"><option value="detailed" ${density === "detailed" ? "selected" : ""}>Detallada</option><option value="compact" ${density === "compact" ? "selected" : ""}>Compacta</option></select></label>`;
   }
 
   function columnTitles(withHour) {
@@ -176,16 +304,17 @@
   function calendar(entries,ctx) {
     const low = Math.min(dayStart,...entries.map(entry => Math.floor(entry.start/60)*60));
     const high = Math.max(dayStart + 60,...entries.map(entry => Math.ceil(Math.max(entry.start+1,entry.end)/60)*60));
-    const width = high-low;
+    const content = entries.map(estimatedContent);
+    const scale = makeScale(low,high,entries,content);
     const rules = [];
     for (let hour=low; hour<=high; hour+=60) {
-      rules.push(`<div class="jd-grid-rule${hour === low ? " jd-grid-first" : hour === high ? " jd-grid-last" : ""}" style="top:${(hour-low)*100/width}%"><time${hour < 1440 ? ' datetime="' + hourLabel(hour) + '"' : ''}>${hourLabel(hour)}</time></div>`);
+      rules.push(`<div class="jd-grid-rule${hour === low ? " jd-grid-first" : hour === high ? " jd-grid-last" : ""}" data-minute="${hour}" style="top:${scale.at(hour)}px"><time${hour < 1440 ? ' datetime="' + hourLabel(hour) + '"' : ''}>${hourLabel(hour)}</time></div>`);
     }
     return `<section class="jd-calendar" data-density="${density}" aria-label="Horario de la jornada">
       <div class="jd-cal-scroll" tabindex="0" role="region" aria-label="Horario por hora, actividad y registro"><div class="jd-cal-canvas">
         <div class="jd-cal-head" aria-hidden="true">${columnTitles(true)}</div>
-        <div class="jd-grid" data-start-minute="${low}" data-end-minute="${high}" data-pixels-per-hour="${hourScales[density]}" style="--jd-hour-px:${hourScales[density]}px;--grid-height:${width*hourScales[density]/60}px;height:var(--grid-height)">${rules.join("")}
-          ${entries.length ? `<ol class="jd-events" aria-label="Tramos por hora">${entries.map(entry=>scheduledSlot(entry,low,width,ctx)).join("")}</ol>` :
+        <div class="jd-grid" data-start-minute="${low}" data-end-minute="${high}" data-pixels-per-hour="${hourScales[density]}" data-hour-heights="${scale.heights.join(",")}" style="--grid-height:${scale.total}px;height:var(--grid-height)">${rules.join("")}
+          ${entries.length ? `<ol class="jd-events" aria-label="Tramos por hora">${entries.map((entry,i)=>scheduledSlot(entry,scale,content[i],ctx)).join("")}</ol>` :
           '<p class="jd-calendar-empty">Aún no hay tramos registrados.</p>'}</div>
       </div></div></section>`;
   }
@@ -211,36 +340,40 @@
 
   function refreshDetail() {
     if (!detail || !current) return;
-    const {ctx,tasks,goals,entries} = current;
-    const task = tasks.find(row => row.id === detail.key.id);
+    const {ctx,goals} = current;
+    const task = ctx.state.tasks.find(row => row.id === detail.key.id);
+    const entries = task ? entriesFor([task],goals,task.date) : [];
     const index = Number(detail.key.segment);
     const entry = index ? entries.find(item => item.task.id === detail.key.id && item.index === index) : null;
-    if (ctx.date !== detail.date || !task || (index && !entry)) { closeDetail(); return; }
+    if (ctx.date !== detail.anchorDate || !task || (index && !entry)) { closeDetail(); return; }
     const goal = goals.get(task.goalId);
-    const meta = [entry ? entryRange(entry) : "Sin horario",entry?.count > 1 ? "Tramo " + entry.index + " de " + entry.count : "",goal?.title,task.origin].filter(Boolean);
+    const meta = [mode === "week" || task.date !== ctx.date ? model.formatDate(task.date,{weekday:"short",day:"numeric",month:"short"}) : "",entry ? entryRange(entry) : "Sin horario",entry?.count > 1 ? "Tramo " + entry.index + " de " + entry.count : "",goal?.title,task.origin].filter(Boolean);
     const dialog = detail.dialog;
     const focused = dialog.contains(document.activeElement) ? document.activeElement : null;
     const key = focused?.dataset.jdField ? {...focused.dataset,field:focused.dataset.jdField} : null;
     dialog.setAttribute("style",paint(goal));
     dialog.innerHTML = `<header class="jd-detail-heading"><h2 id="jd-detail-title">${esc(task.title)}</h2><button type="button" class="jd-detail-close icon-btn" aria-label="Cerrar detalle">${ctx.icon("x",17)}</button></header>
       <div class="jd-detail-sub">${meta.map(value=>"<span>"+esc(value)+"</span>").join(" · ")}</div>
-      <p class="jd-detail-context">${esc(task.context || "Sin contexto registrado.")}</p>${taskFields(task,entry,"detail")}`;
+      <p class="jd-detail-context">${esc(task.context || "Sin contexto registrado.")}</p>${taskFields(task,entry,"detail")}
+      ${mode === "week" ? '<div class="jd-detail-actions"><button type="button" class="btn" data-from-week>Abrir jornada</button></div>' : ""}`;
     dialog.querySelector(".jd-detail-close").onclick = closeDetail;
+    const go = dialog.querySelector("[data-from-week]");
+    if (go) go.onclick = () => { closeDetail(); openDay(task.date,ctx); };
     if (key && !pending) locate(dialog,"[data-jd-field]",key)?.focus({preventScroll:true});
     else if (focused?.classList?.contains("jd-detail-close")) dialog.querySelector(".jd-detail-close").focus({preventScroll:true});
   }
 
-  function openDetail(trigger) {
+  function openDetail(trigger,explicitKey) {
     if (detail) return;
     const dialog = document.createElement("dialog");
     dialog.className = "jd-detail";
     dialog.setAttribute("aria-labelledby","jd-detail-title");
-    const key = {...trigger.dataset};
-    detail = {dialog,key,date:current.ctx.date};
+    const key = explicitKey || {...trigger.dataset};
+    detail = {dialog,key,anchorDate:current.ctx.date};
     dialog.addEventListener("close",() => {
       detail = null;
       dialog.remove();
-      locate(current?.el,"[data-jd-detail]",key)?.focus({preventScroll:true});
+      locate(current?.el,"[data-jd-detail],[data-week-detail]",key)?.focus({preventScroll:true});
     },{once:true});
     dialog.addEventListener("change",quickChange);
     document.body.append(dialog);
@@ -284,7 +417,8 @@
     gateFields(true);
     let saved = false;
     try {
-      saved = await ctx.updateTaskField(id,field,value);
+      saved = task.date === ctx.date ? await ctx.updateTaskField(id,field,value) :
+        await ctx.updateTaskFieldForDate(task.date,id,field,value);
     } catch(error) {
       ctx.toast(error.message || "No se pudo guardar el cambio.");
     } finally {
@@ -307,7 +441,15 @@
     if (scroller) scrollPositions.set(previous.dataset.mode,{date,left:scroller.scrollLeft || 0,top:scroller.scrollTop || 0});
   }
 
+  function openDay(date,ctx=current?.ctx) {
+    if (!ctx) return;
+    mode = "calendar";
+    ctx.setDate(date);
+  }
+
   function render(el,ctx) {
+    if (observer) { observer.disconnect(); observer=null; }
+    liveScale=null;
     const sameDate = el.querySelector(".jd-view")?.dataset.date === ctx.date;
     readScroll(el,ctx.date);
     const active = sameDate && el.contains(document.activeElement) ? document.activeElement : null;
@@ -318,33 +460,50 @@
     const entries = entriesFor(tasks,goals,ctx.date);
     current = {el,ctx,tasks,goals,entries};
     const plan = unscheduled(tasks.filter(task=>!task.segments.length),goals);
-    const schedule = mode === "calendar" ? calendar(entries,ctx) : listOfEntries(entries);
+    const week = mode === "week";
+    const schedule = week ? '<div class="jd-week-host"></div>' : mode === "calendar" ? calendar(entries,ctx) : listOfEntries(entries);
     const last = entries[entries.length-1];
     const end = last && (last.segment.end || (last.live ? "ahora" : "sin cierre"));
     const hatchKey = mode === "calendar" ? '<span class="jd-hatch-key"><i aria-hidden="true"></i><span class="jd-sr">Rayado: </span>Sin registro</span>' : "";
     const meta = entries.length ? `<p class="jd-schedule-meta">${esc(entries[0].segment.start)} – ${esc(end)}<span aria-hidden="true"> · </span>${plural(entries.length,"tramo","tramos")} ${hatchKey}</p>` : "";
-    const modeButtons = [["calendar","Horario","calendar-days"],["list","Lista","list"]].map(([key,title,icon]) =>
+    const modeButtons = [["calendar","Horario","calendar-days"],["list","Lista","list"],["week","Semana","calendar-days"]].map(([key,title,icon]) =>
       `<button type="button" data-jd-mode="${key}" aria-pressed="${mode===key}">${ctx.icon(icon,15)} ${title}</button>`).join("");
-    el.innerHTML = `<div class="jd-view" data-date="${esc(ctx.date)}" data-mode="${mode}"><h1 class="jd-sr">Mi jornada, ${esc(model.formatDate(ctx.date))}</h1><div class="jd-overview">${stats(tasks,ctx)}${timeline(entries,ctx)}</div>
-      <section class="jd-activities" aria-labelledby="jd-schedule-title"><header class="jd-activities-head"><div class="jd-activities-intro">
-        <h2 id="jd-schedule-title">Actividades del día</h2>${meta}</div>${mode === "calendar" ? scalePicker() : ""}
+    el.innerHTML = `<div class="jd-view" data-date="${esc(ctx.date)}" data-mode="${mode}"><h1 class="jd-sr">${week ? "Agenda semanal" : "Mi jornada"}, ${esc(model.formatDate(ctx.date))}</h1>${week ? "" : `<div class="jd-overview">${stats(tasks,ctx)}${timeline(entries,ctx)}</div>`}
+      <section class="jd-activities" aria-labelledby="jd-schedule-title"><header class="jd-activities-head${week ? " jd-week-heading" : ""}"><div class="jd-activities-intro">
+        <h2 id="jd-schedule-title">${week ? "Agenda semanal" : "Actividades del día"}</h2>${week ? "" : meta}</div>${mode === "calendar" ? scalePicker() : ""}
         <div class="jd-view-switch" role="group" aria-label="Vista de actividades">${modeButtons}</div>
-        <button type="button" class="btn primary jd-edit-day" data-edit-day ${pending ? "disabled" : ""}>${ctx.icon("pencil",16)} Editar actividades</button></header>
-        ${entries.length ? schedule + plan : plan + schedule}</section></div>`;
+        ${week ? "" : `<button type="button" class="btn primary jd-edit-day" data-edit-day ${pending ? "disabled" : ""}>${ctx.icon("pencil",16)} Editar actividades</button>`}</header>
+        ${week ? schedule : entries.length ? schedule + plan : plan + schedule}</section></div>`;
     const view = el.querySelector(".jd-view");
+    if (week) {
+      window.JWeek.render(view.querySelector(".jd-week-host"),{
+        ...ctx,weekEntries:entriesFor,eventPaint:paint,openDay:date=>openDay(date,ctx),
+        weekScale:(low,high,rows,content,options={}) => makeScale(low,high,rows,content,{baseHeight:42,maxHourHeight:96,...options,compact:false}),
+        openEntry:(id,ordinal,trigger)=>openDetail(trigger,{id,segment:String(ordinal ?? 1),place:trigger?.dataset.place || "week"})
+      });
+    } else if (mode === "calendar") {
+      updateGeometry(view,entries,false);
+      const canvas = view.querySelector(".jd-cal-canvas");
+      let lastWidth = canvas.clientWidth;
+      if (typeof ResizeObserver === "function") {
+        observer = new ResizeObserver(() => {
+          if (!view.isConnected || canvas.clientWidth === lastWidth) return;
+          lastWidth = canvas.clientWidth;
+          updateGeometry(view,entries);
+        });
+        observer.observe(canvas);
+      }
+      document.fonts?.ready?.then(() => {
+        if (view.isConnected) updateGeometry(view,entries);
+      });
+    }
     view.addEventListener("change",event => {
       if (!event.target.matches("[data-jd-scale]")) { quickChange(event); return; }
       const next = event.target.value;
       if (!Object.hasOwn(hourScales,next)) return;
-      const wrapper = view.querySelector(".jd-cal-scroll");
-      const grid = view.querySelector(".jd-grid");
-      const top = wrapper.scrollTop * hourScales[next] / hourScales[density];
       density = next;
       view.querySelector(".jd-calendar").dataset.density = next;
-      grid.dataset.pixelsPerHour = hourScales[next];
-      grid.style.setProperty("--jd-hour-px",hourScales[next] + "px");
-      grid.style.setProperty("--grid-height",(Number(grid.dataset.endMinute)-Number(grid.dataset.startMinute))*hourScales[next]/60 + "px");
-      wrapper.scrollTop = top;
+      updateGeometry(view,entries);
     });
     view.addEventListener("click",event => {
       const btn = event.target.closest("button");
@@ -371,5 +530,5 @@
     if (detail) refreshDetail();
   }
 
-  window.JAgenda = {render};
+  window.JAgenda = {render,getMode:()=>mode,openDay};
 })();

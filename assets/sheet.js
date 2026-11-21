@@ -206,7 +206,7 @@
         extra.innerHTML = '<div class="jsheet-extra-head"><strong>Fila ' + (selected+1) + ' · ' + esc(title) +
           '</strong>' + action('hide-extra','Cerrar') + '</div><div class="jsheet-details">' +
           detailSelect('goalId','Objetivo',goals) + detailSelect('priority','Prioridad',model.priorities) +
-          detailSelect('origin','Origen',model.origins) + detailSelect('category','Categoría',model.categories) +
+          detailSelect('origin','Origen',model.origins) + detailSelect('category','Categoría',model.categoryOptions(ctx.state,row.category).map(category => [category.title, category.title + (category.archived ? ' (archivada)' : '')])) +
           '</div><div class="jsheet-segments"><label>Tramo seleccionado <select data-segment-pick>' + segmentOptions +
           '</select></label>' + action('remove-segment','Quitar tramo') + '</div>';
         extra.querySelector('[data-act="remove-segment"]').disabled = !row.segments.length;

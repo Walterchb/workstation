@@ -10,6 +10,8 @@
     timeZone, hour: '2-digit', minute: '2-digit', hourCycle: 'h23'
   });
   const categories = ['Control de gestión', 'Mercado de capitales', 'Coordinación', 'Otros'];
+  const categoryColors = ['#087F79', '#3067B6', '#8759A4', '#B16B32'];
+  const categoryIds = ['gestion', 'mercados', 'coordinacion', 'otros'];
   const priorities = ['Alta', 'Media', 'Baja'];
   const origins = ['Planificada', 'Imprevista'];
   const statuses = ['Pendiente', 'En proceso', 'Culminado'];
@@ -70,10 +72,88 @@
     return { version: 1, goals: [], tasks: [] };
   }
 
-  function task(defaults = {}) {
+  function categoryList(state) {
+    if (state?.categories !== undefined) {
+      requireValue(Array.isArray(state.categories), 'El catálogo de categorías no es válido.');
+      return state.categories.map(category => ({ ...category }));
+    }
+    // Las agendas anteriores a la gestión del catálogo guardan sólo el nombre en cada actividad.
+    return categories.map((title, index) => ({
+      id: categoryIds[index], title, color: categoryColors[index], archived: false, isDefault: index === 0
+    }));
+  }
+
+  function categoryOptions(state, current = '') {
+    return categoryList(state).filter(category => !category.archived || category.title === current);
+  }
+
+  function defaultCategory(state) {
+    const category = categoryList(state).find(item => item.isDefault && !item.archived);
+    requireValue(category, 'Selecciona una categoría activa como predeterminada.');
+    return category.title;
+  }
+
+  function categoryForNewTask(state, requested) {
+    return categoryOptions(state).some(category => category.title === requested) ? requested : defaultCategory(state);
+  }
+
+  function validateCategories(list) {
+    const ids = new Set(), names = new Set();
+    for (const category of list) {
+      validateIdentity(category, ids, 'categoría');
+      requireValue(hasText(category.title), 'Escribe un nombre para la categoría.');
+      const key = category.title.normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().replace(/\s+/g, ' ').toLocaleLowerCase('es-PE');
+      requireValue(!names.has(key), 'Ya existe una categoría con ese nombre. Elige otro nombre.');
+      names.add(key);
+      requireValue(typeof category.color === 'string' && /^#[a-fA-F\d]{6}$/.test(category.color), 'Selecciona un color válido para la categoría.');
+      requireValue(typeof category.isDefault === 'boolean' && typeof category.archived === 'boolean', 'Revisa el estado de la categoría.');
+      requireValue(!(category.isDefault && category.archived), 'La categoría predeterminada debe estar activa.');
+    }
+    requireValue(list.filter(item => item.isDefault).length === 1, 'Elige una categoría activa como predeterminada.');
+  }
+
+  function saveCategory(state, categoryId, changes) {
+    const list = categoryList(state);
+    const item = categoryId ? list.find(category => category.id === categoryId) : {id:id(),archived:false,isDefault:false};
+    requireValue(item, 'La categoría que intentas editar ya no está disponible.');
+    const previous = item.title;
+    item.title = String(changes.title ?? '').trim().replace(/\s+/g, ' ');
+    item.color = changes.color;
+    if (!categoryId) list.push(item);
+    if (changes.isDefault && !item.archived) {
+      for (const category of list) category.isDefault = category.id === item.id;
+    }
+    validateCategories(list);
+    if (categoryId && item.title !== previous) {
+      state.tasks = state.tasks.map(row => row.category === previous ? {...row, category:item.title} : row);
+    }
+    state.categories = list;
+    return item.id;
+  }
+
+  function setCategoryArchived(state, categoryId, archive, replacementId = '', reassign = false) {
+    const list = categoryList(state);
+    const item = list.find(category => category.id === categoryId);
+    requireValue(item, 'La categoría ya no está disponible.');
+    requireValue(typeof archive === 'boolean' && archive !== item.archived, 'La categoría ya cambió de estado.');
+    const replacement = list.find(category => category.id === replacementId && !category.archived && category.id !== categoryId);
+    if (archive && (item.isDefault || reassign)) requireValue(replacement, 'Elige una categoría activa de destino.');
+    if (archive && item.isDefault) {
+      item.isDefault = false;
+      replacement.isDefault = true;
+    }
+    item.archived = archive;
+    validateCategories(list);
+    if (archive && reassign) {
+      state.tasks = state.tasks.map(row => row.category === item.title ? {...row, category:replacement.title} : row);
+    }
+    state.categories = list;
+  }
+
+  function task(defaults = {}, state) {
     return {
       id: id(), date: today(), title: '', context: '', goalId: '',
-      category: categories[0], priority: 'Media', origin: 'Planificada', status: 'Pendiente',
+      category: state ? defaultCategory(state) : categories[0], priority: 'Media', origin: 'Planificada', status: 'Pendiente',
       done: false, comment: '', segments: [], ...defaults
     };
   }
@@ -101,7 +181,7 @@
     for (const {activity, reason} of rows) {
       if (reason || !selectedIds.has(activity.id)) continue;
       const {title, context, goalId, category, priority} = activity;
-      state.tasks.push(task({date:destination, title, context, goalId, category, priority}));
+      state.tasks.push(task({date:destination, title, context, goalId, category:categoryForNewTask(state,category), priority}));
       count++;
     }
     return count;
@@ -128,6 +208,9 @@
   function validate(state) {
     requireValue(isRecord(state) && state.version === 1 && Array.isArray(state.goals) && Array.isArray(state.tasks),
       'El formato de la agenda no es válido.');
+    const catalog = categoryList(state);
+    validateCategories(catalog);
+    const categoryNames = new Set(catalog.map(item => item.title));
     const goalIds = new Set();
     for (const goal of state.goals) {
       validateIdentity(goal, goalIds, 'objetivo');
@@ -154,7 +237,7 @@
       requireValue(typeof activity.context === 'string' && typeof activity.comment === 'string',
         'Revisa el contexto y el comentario de la actividad.');
       requireValue(activity.goalId === '' || goalIds.has(activity.goalId), 'El objetivo seleccionado ya no existe.');
-      requireValue(categories.includes(activity.category), 'Selecciona una categoría válida.');
+      requireValue(categoryNames.has(activity.category), 'Selecciona una categoría válida.');
       requireValue(priorities.includes(activity.priority), 'Selecciona una prioridad válida.');
       requireValue(origins.includes(activity.origin), 'Selecciona el origen de la actividad.');
       requireValue(statuses.includes(activity.status), 'Selecciona un estado válido para la actividad.');
@@ -262,6 +345,7 @@
 
   globalThis.JModel = {
     id, today, timeNow, shiftDate, formatDate, minutes, duration, empty, seed, task, validate, reusableActivities, reuseActivities,
+    categoryList, categoryOptions, defaultCategory, categoryForNewTask, saveCategory, setCategoryArchived,
     categories: Object.freeze(categories), priorities: Object.freeze(priorities),
     origins: Object.freeze(origins), statuses: Object.freeze(statuses)
   };

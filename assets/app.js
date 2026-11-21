@@ -5,11 +5,11 @@
   const model=window.JModel;
   const store=window.JStore;
   const root=document.getElementById('root');
-  const titles={agenda:'Mi jornada',goals:'Objetivos',analysis:'Análisis'};
+  const titles={agenda:'Mi jornada',goals:'Objetivos',analysis:'Análisis',categories:'Categorías'};
   let view='agenda', date=model.today(), calendarMonth=date.slice(0,7);
   let session=null, state=null, saving=false, clockHandle;
   const mark='<img src="./assets/icons/mark.svg" width="37" height="37" alt="">';
-  const brand='<div class="brandbar">'+mark+'<span>Jornada</span></div>';
+  const brand='<div class="brandbar">'+mark+'<span>Work Hub</span></div>';
 
   function notify(message,action) {
     // Dentro de un diálogo modal el aviso se mantiene en la capa visible.
@@ -42,10 +42,10 @@
     const dialog=document.createElement('dialog');
     dialog.className='shell-dialog';
     dialog.setAttribute('aria-labelledby','help-title');
-    dialog.innerHTML='<div class="dialog-top"><h2 id="help-title">Cómo usar Jornada</h2><button class="icon-btn" aria-label="Cerrar ayuda">'+icon('x')+'</button></div>'+
-      '<div class="help-list"><div><strong>Al planificar</strong><p>En Mi jornada, abre Editar actividades. Escribe una actividad y su contexto por fila. Puedes insertar otra entre dos tareas si cambian tus prioridades.</p></div>'+
+    dialog.innerHTML='<div class="dialog-top"><h2 id="help-title">Cómo usar Work Hub</h2><button class="icon-btn" aria-label="Cerrar ayuda">'+icon('x')+'</button></div>'+
+      '<div class="help-list"><div><strong>Al planificar</strong><p>En Mi jornada, abre Editar actividades. Escribe una actividad y su contexto por fila. Puedes insertar otra entre dos tareas si cambian tus prioridades. En Semana verás los días laborables y los fines de semana en los que hayas anotado trabajo.</p></div>'+
       '<div><strong>Al trabajar</strong><p>Registra las horas y los comentarios en Editar actividades. En el horario puedes cambiar el estado y marcar «¿Se hizo?» de forma independiente. Marca la casilla cuando hayas cumplido el avance que planificaste para hoy, incluso si el encargo continúa.</p></div>'+
-      '<div><strong>Al revisar con gerencia</strong><p>En Objetivos puedes seguir los avances de varios días. En Análisis elige el período para revisar las horas, los resultados y las evidencias, o preparar el informe gerencial.</p></div></div>'+
+      '<div><strong>Al revisar con gerencia</strong><p>En Objetivos puedes seguir los avances de varios días. En Análisis elige el período para revisar las horas, los resultados y las evidencias y descargar el informe gerencial en PDF.</p></div></div>'+
       '<div class="help-actions"><a class="btn" href="./GUIA.html" target="_blank" rel="noopener">'+icon('book',16)+' Guía de instalación y uso</a></div>';
     dialog.querySelector('button').onclick=()=>dialog.close();
     dialog.addEventListener('close',()=>dialog.remove(),{once:true});
@@ -120,8 +120,9 @@
 
   function getContext() {
     const day=date;
-    return {state,date:day,setDate,mutate,toast:notify,render,icon,navigate,
+    return {state,date:day,isDemo:session?.mode==='demo',setDate,mutate,toast:notify,render,icon,navigate,
       updateTaskField:(id,field,value)=>updateTaskField(day,id,field,value),
+      updateTaskFieldForDate:updateTaskField,
       openTask:(id=null,defaults={})=>window.JEditor.open(id,defaults,getContext())};
   }
 
@@ -134,16 +135,48 @@
       '<button type="button" data-step="1" aria-label="Día siguiente" title="Día siguiente">'+icon('chevron-right',16)+'</button></div></nav>';
   }
 
+  function weeklyAgenda() {
+    return view === 'agenda' && window.JAgenda.getMode() === 'week';
+  }
+
   function updateDateTools() {
     const tools=root.querySelector('.jd-heading-tools');
-    const label=model.formatDate(date);
-    const short=model.formatDate(date,{day:'numeric',month:'short'}).replace(/\./g,'');
-    const long=model.formatDate(date,{weekday:'short',day:'numeric',month:'short',year:'numeric'}).replace(/\./g,'');
+    tools.hidden=view==='analysis'||view==='categories';
+    if(tools.hidden)return;
+    const week=weeklyAgenda();
+    const unit=week?'Semana':'Día';
+    const today=model.today();
+    let inCurrentPeriod=date===today;
+    const fmt=(value,parts)=>model.formatDate(value,parts).replace(/\./g,'');
+    let label=model.formatDate(date);
+    let short=fmt(date,{day:'numeric',month:'short'});
+    let long=fmt(date,{weekday:'short',day:'numeric',month:'short',year:'numeric'});
+    if(week) {
+      const days=window.JWeek.days(state,date);
+      const start=days[0], end=days[days.length-1];
+      const sameMonth=start.slice(0,7)===end.slice(0,7);
+      const first=fmt(start,sameMonth?{day:'numeric'}:{day:'numeric',month:'short'});
+      short=first+' – '+fmt(end,{day:'numeric',month:'short'});
+      long=start.slice(0,4)===end.slice(0,4)?short+' '+end.slice(0,4):
+        fmt(start,{day:'numeric',month:'short',year:'numeric'})+' – '+fmt(end,{day:'numeric',month:'short',year:'numeric'});
+      label='Semana del '+model.formatDate(start)+' al '+model.formatDate(end);
+      const bounds=window.JWeek.range(date);
+      inCurrentPeriod=today>=bounds.start && today<=bounds.end;
+    }
     tools.querySelector('.date-long').textContent=long;
     tools.querySelector('.date-short').textContent=short;
-    tools.querySelector('input').value=date;
+    const input=tools.querySelector('input');
+    input.value=date;
+    input.setAttribute('aria-label',week?'Elegir una fecha de la semana':'Elegir fecha de la jornada');
     tools.querySelector('.jd-picker').title=label;
-    tools.querySelector('[data-go-today]').hidden=date===model.today() && view==='agenda';
+    for(const btn of tools.querySelectorAll('[data-step]')) {
+      const name=unit+(btn.dataset.step==='-1'?' anterior':' siguiente');
+      btn.setAttribute('aria-label',name);
+      btn.title=name;
+    }
+    const todayButton=tools.querySelector('[data-go-today]');
+    todayButton.hidden=inCurrentPeriod && view==='agenda';
+    todayButton.textContent=week?'Esta semana':'Ir a hoy';
   }
 
   function showDay(next) {
@@ -173,7 +206,7 @@
     section.innerHTML='<div class="cal-top"><h2>'+esc(monthLabel)+'</h2><div class="cal-controls"><button data-month="-1" aria-label="Mes anterior">'+icon('chevron-left',15)+'</button><button data-month="1" aria-label="Mes siguiente">'+icon('chevron-right',15)+'</button></div></div><div class="cal-grid">'+body+'</div>';
     section.onclick=event=>{
       const day=event.target.closest('[data-day]');
-      if(day){view='agenda';if(root.querySelector('.rail.is-open'))toggleMenu(false);setDate(day.dataset.day);window.scrollTo(0,0);return;}
+      if(day){view='agenda';if(root.querySelector('.rail.is-open'))toggleMenu(false);window.JAgenda.openDay(day.dataset.day,getContext());window.scrollTo(0,0);return;}
       const month=event.target.closest('[data-month]');
       if(month){
         firstDay.setUTCMonth(firstDay.getUTCMonth()+Number(month.dataset.month));
@@ -201,13 +234,14 @@
   function render() {
     if(!state||!root.querySelector('.stage'))return;
     const el=root.querySelector('.stage');
-    document.title='Jornada · '+titles[view];
+    document.title='Work Hub · '+titles[view];
     root.querySelectorAll('[data-view]').forEach(btn=>{
       if(btn.dataset.view===view)btn.setAttribute('aria-current','page');
       else btn.removeAttribute('aria-current');
     });
     el.onclick=null;el.onchange=null;
     if(view==='agenda') window.JAgenda.render(el,getContext());
+    else if(view==='categories') window.JCategories.render(el,getContext());
     else window.JInsights.render(el,getContext(),view);
     renderCalendar(); updateStatus(); updateDateTools();
   }
@@ -216,17 +250,17 @@
     const demo=session.mode==='demo';
     const email=session.user?.email||'';
     const userName=demo?'Cuenta de ejemplo':(email.split('@')[0] || 'Mi cuenta');
-    const initials=demo?'JD':userName.split(/[._\s-]+/).slice(0,2).map(p=>p.charAt(0)).join('').toUpperCase();
-    root.innerHTML='<div class="app-shell"><button type="button" class="backdrop" aria-label="Cerrar navegación"></button><aside id="side-menu" class="rail" aria-label="Menú de Jornada">'+
-      '<div class="brandbar">'+mark+'<span>Jornada</span><button class="close-menu" aria-label="Cerrar menú">'+icon('x')+'</button></div>'+
-      '<nav class="rail-nav" aria-label="Vistas principales">'+[['agenda','calendar-days'],['goals','target'],['analysis','bar-chart']].map(([v,i])=>'<button data-view="'+v+'">'+icon(i,19)+titles[v]+'</button>').join('')+'</nav>'+
+    const initials=demo?'WH':userName.split(/[._\s-]+/).slice(0,2).map(p=>p.charAt(0)).join('').toUpperCase();
+    root.innerHTML='<div class="app-shell"><button type="button" class="backdrop" aria-label="Cerrar navegación"></button><aside id="side-menu" class="rail" aria-label="Menú de Work Hub">'+
+      '<div class="brandbar">'+mark+'<span>Work Hub</span><button class="close-menu" aria-label="Cerrar menú">'+icon('x')+'</button></div>'+
+      '<nav class="rail-nav" aria-label="Vistas principales">'+[['agenda','calendar-days'],['goals','target'],['analysis','bar-chart'],['categories','layers']].map(([v,i])=>'<button data-view="'+v+'">'+icon(i,19)+titles[v]+'</button>').join('')+'</nav>'+
       '<section class="cal-wrap" aria-label="Calendario de jornadas"></section>'+
       '<div class="rail-bottom"><button class="rail-link" data-help>'+icon('help',18)+' Guía de uso</button><div class="rail-user"><span class="monogram">'+esc(initials)+'</span><div class="usercopy"><b title="'+esc(email)+'">'+esc(userName)+'</b><span class="account-mode" role="status"></span></div>'+
       (demo?'':'<button data-logout aria-label="Cerrar sesión" title="Cerrar sesión">'+icon('logout',18)+'</button>')+'</div></div></aside>'+
       '<div class="shell-content"><header class="workbar"><div class="toolbar-left"><button class="hamburger icon-btn" aria-label="Abrir menú" aria-controls="side-menu" aria-expanded="false">'+icon('menu',20)+'</button><div class="work-context">'+icon('building',17)+'<span>Mercado de Capitales</span><span class="slash">/</span><span class="context-secondary">Control de Gestión</span></div></div>'+
       '<div class="bar-right"><span class="work-running" hidden></span>'+dateTools()+'</div></header><main id="main" tabindex="-1" class="stage"></main></div></div>';
     const tools=root.querySelector('.jd-heading-tools');
-    tools.querySelectorAll('[data-step]').forEach(button=>button.onclick=()=>showDay(model.shiftDate(date,Number(button.dataset.step))));
+    tools.querySelectorAll('[data-step]').forEach(button=>button.onclick=()=>showDay(model.shiftDate(date,Number(button.dataset.step)*(weeklyAgenda()?7:1))));
     tools.querySelector('[data-go-today]').onclick=()=>{showDay(model.today());tools.querySelector('input').focus();};
     tools.querySelector('input').onchange=event=>{if(event.target.value)showDay(event.target.value);else updateDateTools();};
     root.querySelector('.hamburger').onclick=()=>toggleMenu(true);
@@ -243,8 +277,10 @@
     render();
     clearInterval(clockHandle);
     clockHandle=setInterval(()=>{
-      if(saving||view!=='agenda'||date!==model.today()||document.querySelector('dialog[open]'))return;
-      if(!state?.tasks.some(t=>t.date===date&&t.segments.some(s=>!s.end)))return;
+      if(saving||view!=='agenda'||document.querySelector('dialog[open]'))return;
+      const today=model.today();
+      const visible=weeklyAgenda()?window.JWeek.days(state,date).includes(today):date===today;
+      if(!visible||!state?.tasks.some(t=>t.date===today&&t.segments.some(s=>!s.end)))return;
       const stage=root.querySelector('.stage');
       if(stage.contains(document.activeElement) && document.activeElement.matches('select,input,button,summary'))return;
       window.JAgenda.render(stage,getContext());
@@ -257,7 +293,7 @@
       '<section class="auth-main"><div class="auth-card"><span class="auth-ico">'+icon('lock',24)+'</span><h1>Iniciar sesión</h1><p>Ingresa a tu agenda personal.</p>'+
       '<form><label>Correo electrónico<input name="email" type="email" autocomplete="username" required placeholder="tu@correo.com"></label><label>Contraseña<span class="pass-field"><input name="password" type="password" autocomplete="current-password" required><button class="icon-btn" type="button" aria-label="Mostrar contraseña">'+icon('eye',18)+'</button></span></label>'+
       '<p class="auth-err" role="alert" hidden></p><button class="btn primary" type="submit">Ingresar</button></form><a href="./GUIA.html" target="_blank" rel="noopener" class="auth-guide">Guía de configuración de la cuenta</a></div></section></main>';
-    document.title='Jornada · Iniciar sesión';
+    document.title='Work Hub · Iniciar sesión';
     const form=root.querySelector('form');
     const password=form.elements.password;
     const toggle=form.querySelector('.pass-field button');
@@ -281,7 +317,7 @@
   async function boot(){
     try{accept(await store.boot());}
     catch(error){
-      root.innerHTML='<main id="main" class="boot boot-error">'+mark+'<h1>No se pudo abrir Jornada</h1><p></p><button class="btn primary">Reintentar</button><a href="./GUIA.html" target="_blank" rel="noopener">Ver guía de configuración</a></main>';
+      root.innerHTML='<main id="main" class="boot boot-error">'+mark+'<h1>No se pudo abrir Work Hub</h1><p></p><button class="btn primary">Reintentar</button><a href="./GUIA.html" target="_blank" rel="noopener">Ver guía de configuración</a></main>';
       root.querySelector('p').textContent=error.message;
       root.querySelector('button').onclick=()=>location.reload();
     }

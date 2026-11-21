@@ -1,4 +1,4 @@
-/* Almacenamiento de Jornada. Cargar después de config.js y del modelo. */
+/* Almacenamiento de Work Hub. Cargar después de config.js y del modelo. */
 (() => {
   "use strict";
 
@@ -102,7 +102,7 @@
       if (status === 429) throw failure("RATE_LIMIT", "Demasiados intentos. Espera un momento y vuelve a ingresar.", status);
       if (status >= 500 || status === 408) throw failure("NETWORK", "Supabase no pudo confirmar la operación. Intenta nuevamente.", status);
       if (data?.code === "PGRST202" || status === 404) {
-        throw failure("CONFIG", "Supabase no encuentra la función de Jornada. Ejecuta supabase/schema.sql en el proyecto configurado.", status);
+        throw failure("CONFIG", "Supabase no encuentra la función de Work Hub. Ejecuta supabase/schema.sql en el proyecto configurado.", status);
       }
       if (data?.code === "42501" || status === 403) {
         throw failure("ACCESS", "Supabase denegó el acceso. Verifica que ejecutaste el esquema completo y que tu cuenta está habilitada.", status);

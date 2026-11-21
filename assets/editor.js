@@ -18,11 +18,14 @@
       return;
     }
     const model = window.JModel;
-    const {categories, priorities, origins, statuses} = model;
+    const {priorities, origins, statuses} = model;
     const esc = window.JUI.esc;
     const options = defaults || {};
     const {tab: initialTab, ...initialValues} = options;
-    const activity = existing || model.task({date:ctx.date, ...initialValues});
+    const activity = existing || model.task({date:ctx.date, ...initialValues, category:model.categoryForNewTask(ctx.state,initialValues.category)},ctx.state);
+    const categoryOptions = model.categoryOptions(ctx.state,activity.category).map(item =>
+      '<option value="' + esc(item.title) + '"' + (activity.category === item.title ? ' selected' : '') + '>' +
+      esc(item.title + (item.archived ? ' (archivada)' : '')) + '</option>').join('');
     const initialSnapshot = JSON.stringify(activity);
     const trigger = document.activeElement;
     const dialog = document.createElement('dialog');
@@ -62,7 +65,7 @@
               <label class="je-field"><span>Fecha</span><input name="date" type="date" required value="${esc(activity.date)}"></label>
               <label class="je-field"><span>Prioridad</span><select name="priority">${selectOptions(priorities,activity.priority)}</select></label>
               <label class="je-field je-wide"><span>Objetivo asociado</span><select name="goalId"><option value="">Sin objetivo</option>${goalOptions}</select></label>
-              <label class="je-field"><span>Categoría</span><select name="category">${selectOptions(categories,activity.category)}</select></label>
+              <label class="je-field"><span>Categoría</span><select name="category">${categoryOptions}</select></label>
               <label class="je-field"><span>Origen</span><select name="origin">${selectOptions(origins,activity.origin)}</select></label>
             </div>
           </section>
@@ -218,7 +221,7 @@
       let following;
       if (!remove && continuationOpen) {
         following = model.task({title:updated.title, context:updated.context, goalId:updated.goalId,
-          category:updated.category, priority:updated.priority, origin:'Planificada', date:fields.nextDate.value,
+          category:model.categoryForNewTask(ctx.state,updated.category), priority:updated.priority, origin:'Planificada', date:fields.nextDate.value,
           status:'Pendiente',done:false,comment:'',segments:[]});
       }
       function apply(state) {
