@@ -85,9 +85,10 @@
     </section>`;
   }
 
-  const hourScales = {detailed:204,compact:90};
+  const hourScales = {detailed:168,compact:96};
   let density = "detailed";
-  const indexDates = new Set();
+  let mode = "calendar";
+  const scrollPositions = new Map();
   const headers = [
     ["comments","Comentarios"], ["start","Inicio"], ["end","Cierre"],
     ["duration","Duración"], ["status","Estado"], ["done","¿Se hizo?"]
@@ -98,16 +99,21 @@
 
   function paint(goal) {
     const color = accent(goal);
-    const channels = [1,3,5].map(offset => {
-      const value = parseInt(color.slice(offset,offset+2),16)/255;
-      return value <= 0.04045 ? value/12.92 : ((value+0.055)/1.055) ** 2.4;
-    });
-    const light = .2126*channels[0] + .7152*channels[1] + .0722*channels[2];
-    return "--event-accent:" + color + ";--heading-ink:" + (light > .179 ? "#000000" : "#ffffff");
+    const channels = [1,3,5].map(offset => parseInt(color.slice(offset,offset+2),16));
+    const mix = (tint,base) => "#" + channels.map((channel,i) =>
+      Math.round(tint*channel + (1-tint)*base[i]).toString(16).padStart(2,"0")
+    ).join("");
+    const ribbon = mix(.24,[255,255,255]);
+    const ink = mix(.22,[16,35,49]);
+    return `--event-accent:${color};--ribbon-color:${ribbon};--ribbon-ink:${ink};--heading-ink:${ink}`;
   }
 
   function identity(task,entry,place) {
     return `data-id="${esc(task.id)}" data-segment="${entry?.index || 0}" data-place="${place}"`;
+  }
+
+  function durationLabel(minutes) {
+    return Math.floor(minutes/60) + ":" + String(minutes%60).padStart(2,"0");
   }
 
   function taskFields(task,entry,place) {
@@ -117,7 +123,7 @@
       comments:task.comment || "—",
       start:entry?.segment.start || "—",
       end:entry ? entry.segment.end || (entry.live ? "En curso" : "Sin cierre") : "—",
-      duration:entry && (entry.segment.end || entry.live) ? model.duration(entry.end-entry.start) : "—"
+      duration:entry && (entry.segment.end || entry.live) ? durationLabel(entry.end-entry.start) : "—"
     };
     const status = '<select class="jd-status-input" data-jd-field="status" ' + attrs + ' aria-label="Estado de ' + taskName + '"' + (pending ? ' disabled' : '') + '>' +
       model.statuses.map(value => '<option value="' + esc(value) + '"' + (value === task.status ? ' selected' : '') + '>' + esc(value) + '</option>').join("") + '</select>';
@@ -132,25 +138,39 @@
   function eventHead(task,entry,place) {
     const name = entry ? task.title + ", " + entryRange(entry) : task.title;
     return `<div class="jd-event-head"><button type="button" class="jd-event-title" data-jd-detail ${identity(task,entry,place)} aria-label="Ver detalle de ${esc(name)}" title="${esc(task.title)}">${esc(task.title)}</button>
-      <p class="jd-event-context" title="${esc(task.context)}">${esc(task.context || "—")}</p></div>`;
+      ${task.context ? `<p class="jd-event-context" title="${esc(task.context)}">${esc(task.context)}</p>` : ""}</div>`;
   }
 
-  function scheduledSlot(entry,low,width) {
+  function scheduledSlot(entry,low,width,ctx) {
     const length = entry.end-entry.start;
     const size = length < 25 ? "tiny" : length <= 30 ? "short" : length <= 60 ? "medium" : "long";
     const pos = "top:" + (entry.start-low)*100/width + "%;height:" + length*100/width + "%";
+    const goal = entry.goal && length*hourScales.detailed/60 > 95
+      ? `<div class="jd-event-goal">${ctx.icon("target",13)}<span>Objetivo · ${esc(entry.goal.title)}</span></div>` : "";
     return `<li class="jd-slot-track${length === 0 ? " jd-instant" : ""}" data-start-minute="${entry.start}" data-end-minute="${entry.end}" style="${pos};${paint(entry.goal)}">
       <article class="jd-event jd-event-${size}${entry.segment.end ? "" : " jd-event-open"}" aria-label="${esc(entry.task.title)}, ${esc(entryRange(entry))}">
-        ${eventHead(entry.task,entry,"grid")}${taskFields(entry.task,entry,"grid")}</article></li>`;
+        ${eventHead(entry.task,entry,"grid")}${taskFields(entry.task,entry,"grid")}${goal}</article></li>`;
   }
 
-  function indexOfEntries(entries,ctx) {
-    const expanded = indexDates.has(ctx.date);
-    const scale = `<label class="jd-density jd-scale-picker">Escala <select data-jd-scale aria-label="Escala del horario"><option value="detailed" ${density === "detailed" ? "selected" : ""}>Detallada</option><option value="compact" ${density === "compact" ? "selected" : ""}>Compacta</option></select></label>`;
-    if (!entries.length) return '<div class="jd-cal-tools">' + scale + '</div>';
-    return `<div class="jd-cal-tools"><button class="jd-index-toggle" type="button" aria-expanded="${expanded}" aria-controls="jd-track-index" data-jd-index>${ctx.icon("list",15)} Índice de tramos</button>${scale}</div>
-      <ol id="jd-track-index" class="jd-track-index" aria-label="Índice de tramos por hora" ${expanded ? "" : "hidden"}>${entries.map(entry =>
-        `<li><button type="button" class="jd-index-entry" data-jd-detail ${identity(entry.task,entry,"index")}><time datetime="${esc(entry.segment.start)}">${esc(entryRange(entry))}</time> <span>${esc(entry.task.title)}</span>${entry.count > 1 ? ` <small>Tramo ${entry.index} de ${entry.count}</small>` : ""}</button></li>`).join("")}</ol>`;
+  function scalePicker() {
+    return `<label class="jd-density jd-scale-picker">Escala <select data-jd-scale aria-label="Escala del horario"><option value="detailed" ${density === "detailed" ? "selected" : ""}>Detallada</option><option value="compact" ${density === "compact" ? "selected" : ""}>Compacta</option></select></label>`;
+  }
+
+  function columnTitles(withHour) {
+    const columns = [["activity","Actividad"],["comments","Comentarios"],["start","Inicio"],
+      ["end","Cierre"],["duration","Duración"],["status","Estado"],["done","¿Se hizo?"]];
+    if (withHour) columns.unshift(["hour","Hora"]);
+    return columns.map(([key,label]) => '<span data-col="' + key + '">' + label + '</span>').join("");
+  }
+
+  function listOfEntries(entries) {
+    if (!entries.length) return '<section class="jd-list-view" aria-label="Lista de tramos"><p class="jd-list-empty">Aún no hay tramos registrados.</p></section>';
+    const rows = entries.map(entry => `<li class="jd-list-row${entry.segment.end ? "" : " jd-list-open"}" data-start-minute="${entry.start}" data-end-minute="${entry.end}" style="${paint(entry.goal)}">
+      ${eventHead(entry.task,entry,"list")}${taskFields(entry.task,entry,"list")}</li>`);
+    return `<section class="jd-list-view" aria-label="Lista de tramos"><div class="jd-list-scroll"><div class="jd-list-canvas">
+      <div class="jd-list-head" aria-hidden="true">${columnTitles(false)}</div>
+      <ol class="jd-readable-list" aria-label="Todos los tramos en orden cronológico">${rows.join("")}</ol>
+    </div></div></section>`;
   }
 
   function calendar(entries,ctx) {
@@ -161,11 +181,11 @@
     for (let hour=low; hour<=high; hour+=60) {
       rules.push(`<div class="jd-grid-rule${hour === low ? " jd-grid-first" : hour === high ? " jd-grid-last" : ""}" style="top:${(hour-low)*100/width}%"><time${hour < 1440 ? ' datetime="' + hourLabel(hour) + '"' : ''}>${hourLabel(hour)}</time></div>`);
     }
-    return `<section class="jd-calendar" data-density="${density}" aria-label="Horario de la jornada">${indexOfEntries(entries,ctx)}
+    return `<section class="jd-calendar" data-density="${density}" aria-label="Horario de la jornada">
       <div class="jd-cal-scroll" tabindex="0" role="region" aria-label="Horario por hora, actividad y registro"><div class="jd-cal-canvas">
-        <div class="jd-cal-head" aria-hidden="true">${["Hora","Actividad / contexto","Comentarios","Hora de inicio","Hora de cierre","Duración","Estado","¿Se hizo?"].map(label=>"<span>"+label+"</span>").join("")}</div>
+        <div class="jd-cal-head" aria-hidden="true">${columnTitles(true)}</div>
         <div class="jd-grid" data-start-minute="${low}" data-end-minute="${high}" data-pixels-per-hour="${hourScales[density]}" style="--jd-hour-px:${hourScales[density]}px;--grid-height:${width*hourScales[density]/60}px;height:var(--grid-height)">${rules.join("")}
-          ${entries.length ? `<ol class="jd-events" aria-label="Tramos por hora">${entries.map(entry=>scheduledSlot(entry,low,width)).join("")}</ol>` :
+          ${entries.length ? `<ol class="jd-events" aria-label="Tramos por hora">${entries.map(entry=>scheduledSlot(entry,low,width,ctx)).join("")}</ol>` :
           '<p class="jd-calendar-empty">Aún no hay tramos registrados.</p>'}</div>
       </div></div></section>`;
   }
@@ -280,11 +300,16 @@
     }
   }
 
+  function readScroll(el,date) {
+    const previous = el.querySelector(".jd-view");
+    if (!previous || previous.dataset.date !== date) return;
+    const scroller = previous.querySelector(".jd-cal-scroll,.jd-list-scroll");
+    if (scroller) scrollPositions.set(previous.dataset.mode,{date,left:scroller.scrollLeft || 0,top:scroller.scrollTop || 0});
+  }
+
   function render(el,ctx) {
     const sameDate = el.querySelector(".jd-view")?.dataset.date === ctx.date;
-    const scroller = sameDate ? el.querySelector(".jd-cal-scroll") : null;
-    const scrollLeft = scroller?.scrollLeft || 0;
-    const scrollTop = scroller?.scrollTop || 0;
+    readScroll(el,ctx.date);
     const active = sameDate && el.contains(document.activeElement) ? document.activeElement : null;
     const focusKey = active?.dataset.jdField ? {...active.dataset,field:active.dataset.jdField} : null;
     const detailKey = active?.matches("[data-jd-detail]") ? {...active.dataset} : null;
@@ -293,11 +318,18 @@
     const entries = entriesFor(tasks,goals,ctx.date);
     current = {el,ctx,tasks,goals,entries};
     const plan = unscheduled(tasks.filter(task=>!task.segments.length),goals);
-    const schedule = calendar(entries,ctx);
-    el.innerHTML = `<div class="jd-view" data-date="${esc(ctx.date)}"><h1 class="jd-sr">Mi jornada, ${esc(model.formatDate(ctx.date))}</h1>${stats(tasks,ctx)}${timeline(entries,ctx)}
-      <section class="jd-activities" aria-labelledby="jd-schedule-title"><header class="jd-activities-head"><div>
-        <h2 id="jd-schedule-title">Actividades del día</h2><p>${plural(tasks.length,"actividad","actividades")} · ${plural(entries.length,"tramo registrado","tramos registrados")}</p>
-        </div><button type="button" class="btn primary jd-edit-day" data-edit-day ${pending ? "disabled" : ""}>${ctx.icon("pencil",16)} Editar actividades</button></header>
+    const schedule = mode === "calendar" ? calendar(entries,ctx) : listOfEntries(entries);
+    const last = entries[entries.length-1];
+    const end = last && (last.segment.end || (last.live ? "ahora" : "sin cierre"));
+    const hatchKey = mode === "calendar" ? '<span class="jd-hatch-key"><i aria-hidden="true"></i><span class="jd-sr">Rayado: </span>Sin registro</span>' : "";
+    const meta = entries.length ? `<p class="jd-schedule-meta">${esc(entries[0].segment.start)} – ${esc(end)}<span aria-hidden="true"> · </span>${plural(entries.length,"tramo","tramos")} ${hatchKey}</p>` : "";
+    const modeButtons = [["calendar","Horario","calendar-days"],["list","Lista","list"]].map(([key,title,icon]) =>
+      `<button type="button" data-jd-mode="${key}" aria-pressed="${mode===key}">${ctx.icon(icon,15)} ${title}</button>`).join("");
+    el.innerHTML = `<div class="jd-view" data-date="${esc(ctx.date)}" data-mode="${mode}"><h1 class="jd-sr">Mi jornada, ${esc(model.formatDate(ctx.date))}</h1><div class="jd-overview">${stats(tasks,ctx)}${timeline(entries,ctx)}</div>
+      <section class="jd-activities" aria-labelledby="jd-schedule-title"><header class="jd-activities-head"><div class="jd-activities-intro">
+        <h2 id="jd-schedule-title">Actividades del día</h2>${meta}</div>${mode === "calendar" ? scalePicker() : ""}
+        <div class="jd-view-switch" role="group" aria-label="Vista de actividades">${modeButtons}</div>
+        <button type="button" class="btn primary jd-edit-day" data-edit-day ${pending ? "disabled" : ""}>${ctx.icon("pencil",16)} Editar actividades</button></header>
         ${entries.length ? schedule + plan : plan + schedule}</section></div>`;
     const view = el.querySelector(".jd-view");
     view.addEventListener("change",event => {
@@ -319,21 +351,23 @@
       if (!btn) return;
       if (btn.matches("[data-edit-day]")) { window.JSheet.open(current.ctx); return; }
       if (btn.matches("[data-jd-detail]")) { openDetail(btn); return; }
-      if (btn.matches("[data-jd-index]")) {
-        const expanded = !indexDates.has(ctx.date);
-        if (expanded) indexDates.add(ctx.date);
-        else indexDates.delete(ctx.date);
-        btn.setAttribute("aria-expanded",String(expanded));
-        el.querySelector("#jd-track-index").hidden = !expanded;
+      if (btn.matches("[data-jd-mode]") && btn.dataset.jdMode !== mode) {
+        mode = btn.dataset.jdMode;
+        current.ctx.render();
+        el.querySelector('[data-jd-mode="' + mode + '"]')?.focus({preventScroll:true});
       }
     });
-    if (scroller) {
-      const next = el.querySelector(".jd-cal-scroll");
-      next.scrollLeft = scrollLeft;
-      next.scrollTop = scrollTop;
+    const scroller = view.querySelector(".jd-cal-scroll,.jd-list-scroll");
+    const savedScroll = scrollPositions.get(mode);
+    if (scroller && savedScroll?.date === ctx.date) {
+      scroller.scrollLeft = savedScroll.left;
+      scroller.scrollTop = savedScroll.top;
     }
     if (!pending && focusKey) locate(el,"[data-jd-field]",focusKey)?.focus({preventScroll:true});
     else if (detailKey) locate(el,"[data-jd-detail]",detailKey)?.focus({preventScroll:true});
+    else if (active?.matches("[data-jd-mode]")) el.querySelector('[data-jd-mode="' + active.dataset.jdMode + '"]')?.focus({preventScroll:true});
+    else if (active?.matches("[data-jd-scale]")) el.querySelector("[data-jd-scale]")?.focus({preventScroll:true});
+    else if (active?.matches("[data-edit-day]") && !pending) el.querySelector("[data-edit-day]")?.focus({preventScroll:true});
     if (detail) refreshDetail();
   }
 
