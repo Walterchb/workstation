@@ -5,8 +5,9 @@
 
   const PAGE = { width: 595.276, height: 841.89, margin: 38, bottom: 783 };
   const COLORS = {
-    navy: '#102F40', text: '#253E49', muted: '#526976', teal: '#006E69',
-    line: '#CDDADC', tint: '#EFF6F4', head: '#E3F0ED', brandMint: '#9AE4D2', brandDark: '#07444A', white: '#FFFFFF'
+    ink: '#191D24', text: '#2A3037', muted: '#545D67', accent: '#343A42',
+    line: '#CFD3D8', tint: '#F5F6F7', head: '#E9EBED', brand: '#101317',
+    chevronTop: '#F7F8FA', chevronMiddle: '#DEE2E6', chevronBase: '#ADB5BE'
   };
   const mainWidth = PAGE.width - 2 * PAGE.margin;
 
@@ -152,7 +153,8 @@
     }
     function brand(top) {
       const x=PAGE.margin, scale=23/48;
-      rect(x,top,23,23,'brandMint');
+      page.drawSvgPath('M5 0H43Q48 0 48 5V43Q48 48 43 48H5Q0 48 0 43V5Q0 0 5 0Z',
+        {x,y:PAGE.height-top,scale,color:palette.brand});
       const polygons = [
         [[12,13.5],[14,11.5],[30.5,11.5],[30.5,17],[18,17],[18,33.5],[12,33.5]],
         [[20.5,20.5],[36.1,20.5],[36.1,25.9],[26,25.9],[26,36.5],[20.5,36.5]],
@@ -163,9 +165,9 @@
           const dx=px-24,dy=py-24;
           return (j?'L':'M') + (24+(dx-dy)*Math.SQRT1_2)+' '+(24+(dx+dy)*Math.SQRT1_2);
         }).join(' ') + ' Z';
-        page.drawSvgPath(path,{x,y:PAGE.height-top,scale,color:palette[i===2?'teal':'brandDark']});
+        page.drawSvgPath(path,{x,y:PAGE.height-top,scale,color:palette[['chevronTop','chevronMiddle','chevronBase'][i]]});
       }
-      write('Work Hub', x+31,top+4,16,true,'navy');
+      write('Work Hub', x+31,top+4,16,true,'ink');
     }
     function nextPage() {
       page=doc.addPage([PAGE.width,PAGE.height]);
@@ -182,7 +184,7 @@
         room(leading+2);
         const available=Math.max(1,Math.floor((bodyEnd-y)/leading));
         const part=lines.slice(offset,offset+available);
-        if (stripe) rect(PAGE.margin,y,2,part.length*leading,'teal');
+        if (stripe) rect(PAGE.margin,y,2,part.length*leading,'accent');
         writeLines(part,PAGE.margin+inset,y,size,leading,bold,ink);
         y+=part.length*leading; offset+=part.length;
       }
@@ -205,87 +207,135 @@
         room(h);
         group.forEach((metric,i) => {
           const x=PAGE.margin+i*(box+gap);
-          rect(x,y,box,h,'tint'); rect(x,y,box,2,'teal');
+          rect(x,y,box,h,'tint'); rule(x,y,x+box,'line',0.9);
           writeLines(metric.label,x+8,y+9,9.2,11.5,true,'muted');
-          writeLines(metric.value,x+8,y+labelHeight+13,16.5,18,true,'navy');
+          writeLines(metric.value,x+8,y+labelHeight+13,16.5,18,true,'ink');
           writeLines(metric.note,x+8,y+labelHeight+valueHeight+17,8.5,10.7,false,'muted');
         });
         y+=h+12;
       }
     }
 
+    let activitiesStarted = false;
     function table(section) {
       const columns=section.columns || [];
       const rows=section.rows || [];
       if (!columns.length) return;
+      const activityGroup = section.group === 'activities';
+      const firstGroup = activityGroup && !activitiesStarted;
+      const headingSize = activityGroup ? 12.3 : 14;
+      const headingLead = activityGroup ? 15.5 : 17;
+      const inset = activityGroup ? 8 : 0;
       const widths=columnWidths(section);
-      const xs=widths.map((w,i) => PAGE.margin+widths.slice(0,i).reduce((s,v)=>s+v,0));
+      const xs=[];
+      widths.reduce((x,w)=>{ xs.push(x); return x+w; },PAGE.margin);
       const padding=7, textSize=9.4, leading=12.2, rowPad=8;
+      const boldColumn = activityGroup ? columns.indexOf('Actividad') : 0;
       const numeric=columns.map(c=>/^(tiempo|%|actividades$|plan cumplido|imprevistos|duración|minutos)/i.test(c));
       const headerLines=columns.map((c,i)=>wrap(c,widths[i]-padding*2,8.8,true));
       const headerH=Math.max(...headerLines.map(h=>h.length))*11.1+9;
-      function sectionHead(continued) {
-        const title=section.title+(continued?' · continuación':'');
-        const lines=wrap(title,mainWidth,14,true);
-        writeLines(lines,PAGE.margin,y,14,17,true,'navy');
-        y+=lines.length*17+3;
-        if (!continued && rows.length && section.subtitle) {
-          const sub=wrap(section.subtitle,mainWidth,9.1);
-          writeLines(sub,PAGE.margin,y,9.1,12,false,'muted');
-          y+=sub.length*12+4;
-        }
-        if (!rows.length) return;
+      const rowLines=row=>columns.map((c,i)=>wrap(row[i],widths[i]-padding*2,textSize,i===boldColumn));
+      const rowHeight=lines=>Math.max(...lines.map(cell=>cell.length))*leading+rowPad;
+      const first=rows.length?rowLines(rows[0]):null;
+      const subtitleText=clean(section.subtitle);
+      const countWidth=width(subtitleText,9.1);
+      const inlineCount=activityGroup && subtitleText && countWidth<mainWidth/3;
+      const headingWidth=mainWidth-inset-6-(inlineCount?countWidth+16:0);
+      const fullHeading=wrap(section.title,headingWidth,headingSize,true);
+      const groupName=clean(section.groupTitle) || 'Actividades por objetivo general';
+      const groupH=firstGroup?wrap(groupName,mainWidth-6,15.5,true).length*19+5:0;
+      const subLines=rows.length && subtitleText && !inlineCount ? wrap(subtitleText,mainWidth-inset-6,9.1) : [];
+      const subH=subLines.length?subLines.length*12+4:0;
+      // Un nombre excepcionalmente largo se publica completo al abrir su sección.
+      // En la cabecera de continuidad queda una referencia breve al mismo objetivo.
+      const continuedTitle=fullHeading.length>2 ? fullHeading[0]+'…' : clean(section.title);
+      const repeatLines=wrap(continuedTitle+' · continuación',headingWidth,headingSize,true);
+      const repeatH=repeatLines.length*headingLead+3+(activityGroup?subH:0)+headerH;
+
+      function drawColumns() {
         rect(PAGE.margin,y,mainWidth,headerH,'head');
-        columns.forEach((k,i)=>{
+        columns.forEach((name,i)=>{
           const right=numeric[i] && i>0;
           writeLines(headerLines[i],xs[i]+(right?widths[i]-padding:padding),y+4.8,
-            8.8,11.1,true,'teal',right?'right':'left');
+            8.8,11.1,true,'accent',right?'right':'left');
         });
         y+=headerH;
       }
-      const titleH=wrap(section.title,mainWidth,14,true).length*17+3;
-      const subH=rows.length && section.subtitle?wrap(section.subtitle,mainWidth,9.1).length*12+4:0;
-      const rowLines=row=>columns.map((c,i)=>wrap(row[i],widths[i]-padding*2,textSize,i===0));
-      const rowHeight=lines=>Math.max(...lines.map(cell=>cell.length))*leading+rowPad;
-      const first=rows.length?rowLines(rows[0]):null;
+      function drawCount() {
+        if (inlineCount) write(subtitleText,PAGE.width-PAGE.margin,y+1.2,9.1,false,'muted','right');
+      }
+      function drawSubtitle() {
+        if (!subLines.length) return;
+        writeLines(subLines,PAGE.margin+inset,y,9.1,12,false,'muted');
+        y+=subH;
+      }
+      function continueTable(insideRow=false) {
+        nextPage();
+        drawCount();
+        if (inset) rect(PAGE.margin,y,2,repeatLines.length*headingLead,'accent');
+        writeLines(repeatLines,PAGE.margin+inset,y,headingSize,headingLead,true,'ink');
+        y+=repeatLines.length*headingLead+3;
+        if (activityGroup) drawSubtitle();
+        drawColumns();
+        if (insideRow) {
+          write('Continúa la fila de la página anterior',PAGE.margin+padding,y+3,8.1,false,'muted');
+          y+=15;
+        }
+      }
+
       let bodyNeed=rows.length?headerH+Math.min(rowHeight(first),155):24;
       if (rows.length>1 && rows.length<=5) {
         const allRows=rows.reduce((h,row,i)=>h+rowHeight(i===0?first:rowLines(row)),0);
-        // Un cuadro breve se lee mejor completo que con una sola fila al pie de la página.
         if (allRows+headerH<=210) bodyNeed=headerH+allRows;
       }
-      room(titleH+subH+bodyNeed);
-      sectionHead(false);
+      const headHeight=fullHeading.length*headingLead+3;
+      const sectionStartHeight=groupH+headHeight+subH+bodyNeed;
+      // Si todo el encabezado es mayor que una página, comienza aquí y continúa por líneas.
+      room(sectionStartHeight <= bodyEnd-83 ? sectionStartHeight : groupH+2*headingLead);
+      if (firstGroup) {
+        flowing(groupName,15.5,19,true,'ink'); y+=5; activitiesStarted=true;
+      }
+      drawCount();
+      let headingOffset=0;
+      while (headingOffset<fullHeading.length) {
+        room(headingLead+2);
+        const lines=fullHeading.slice(headingOffset,headingOffset+Math.max(1,Math.floor((bodyEnd-y)/headingLead)));
+        if (activityGroup) rect(PAGE.margin,y,2,lines.length*headingLead,'accent');
+        writeLines(lines,PAGE.margin+inset,y,headingSize,headingLead,true,'ink');
+        y+=lines.length*headingLead; headingOffset+=lines.length;
+      }
+      y+=3;
       if (!rows.length) { flowing(section.empty || 'Sin registros en este período.',9.6,13,false,'muted'); y+=15; return; }
-      function continueTable() { nextPage(); sectionHead(true); }
+      if (y+subH+headerH+leading+rowPad>bodyEnd) continueTable();
+      else { drawSubtitle(); drawColumns(); }
       for (const [i,row] of rows.entries()) {
         const cells=i===0?first:rowLines(row);
         const count=Math.max(...cells.map(c=>c.length));
-        // Se conserva la fila completa cuando cabe en la página siguiente. Los comentarios
-        // de más de una página fluyen por líneas, repitiendo título y encabezados de la tabla.
-        const fresh=bodyEnd-83-40-headerH;
+        // La fila que cabe en una página nueva se conserva completa. Las más largas
+        // continúan línea por línea, con objetivo general y columnas en cada página.
+        const fresh=bodyEnd-83-repeatH;
         if (i>0 && rowHeight(cells)>bodyEnd-y && rowHeight(cells)<=fresh) continueTable();
         let offset=0;
         while (offset<count) {
-          if (bodyEnd-y<leading+rowPad) continueTable();
+          if (bodyEnd-y<leading+rowPad) continueTable(offset>0);
           const n=Math.min(count-offset,Math.floor((bodyEnd-y-rowPad)/leading));
           const h=n*leading+rowPad;
           if (i%2===1) rect(PAGE.margin,y,mainWidth,h,'tint');
           cells.forEach((cell,j)=>{
             const right=numeric[j] && j>0;
             writeLines(cell.slice(offset,offset+n),xs[j]+(right?widths[j]-padding:padding),y+rowPad/2,
-              textSize,leading,j===0,j===0?'navy':'text',right?'right':'left');
+              textSize,leading,j===boldColumn,j===boldColumn?'ink':'text',right?'right':'left');
           });
           y+=h; rule(PAGE.margin,y,PAGE.width-PAGE.margin);
           offset+=n;
-          if (offset<count) continueTable();
+          if (offset<count) continueTable(true);
         }
       }
-      y+=15;
+      y+=activityGroup?11:15;
     }
 
     nextPage();
-    flowing(report.title || 'Informe de gestión',26,31,true,'navy');
+    flowing(report.title || 'Informe de gestión',26,31,true,'ink');
     y+=10;
     if (report.takeaway) { flowing(report.takeaway,11.6,16.2,false,'text',11,true); y+=16; }
     metrics(report.metrics);

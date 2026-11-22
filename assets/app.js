@@ -5,7 +5,7 @@
   const model=window.JModel;
   const store=window.JStore;
   const root=document.getElementById('root');
-  const titles={agenda:'Mi jornada',goals:'Objetivos',analysis:'Análisis',categories:'Categorías'};
+  const titles={agenda:'Actividades',goals:'Objetivos generales',analysis:'Análisis',categories:'Categorías'};
   let view='agenda', date=model.today(), calendarMonth=date.slice(0,7);
   let session=null, state=null, saving=false, clockHandle;
   const mark='<img src="./assets/icons/mark.svg" width="37" height="37" alt="">';
@@ -43,9 +43,9 @@
     dialog.className='shell-dialog';
     dialog.setAttribute('aria-labelledby','help-title');
     dialog.innerHTML='<div class="dialog-top"><h2 id="help-title">Cómo usar Work Hub</h2><button class="icon-btn" aria-label="Cerrar ayuda">'+icon('x')+'</button></div>'+
-      '<div class="help-list"><div><strong>Al planificar</strong><p>En Mi jornada, abre Editar actividades. Escribe una actividad y su contexto por fila. Puedes insertar otra entre dos tareas si cambian tus prioridades. En Semana verás los días laborables y los fines de semana en los que hayas anotado trabajo.</p></div>'+
+      '<div class="help-list"><div><strong>Al planificar</strong><p>En Actividades, abre Editar actividades y elige Planificar. Escribe el título y el contexto de cada fila o usa Pegar plan para traerlos de Excel. Usa el signo + de una fila para insertar otra justo debajo.</p></div>'+
       '<div><strong>Al trabajar</strong><p>Registra las horas y los comentarios en Editar actividades. En el horario puedes cambiar el estado y marcar «¿Se hizo?» de forma independiente. Marca la casilla cuando hayas cumplido el avance que planificaste para hoy, incluso si el encargo continúa.</p></div>'+
-      '<div><strong>Al revisar con gerencia</strong><p>En Objetivos puedes seguir los avances de varios días. En Análisis elige el período para revisar las horas, los resultados y las evidencias y descargar el informe gerencial en PDF.</p></div></div>'+
+      '<div><strong>Al revisar con gerencia</strong><p>El contexto de cada actividad aparece como su objetivo específico y el comentario como evidencia registrada. Vincula las actividades a un objetivo general para seguir su avance. Desde Análisis puedes descargar el informe gerencial del período.</p></div></div>'+
       '<div class="help-actions"><a class="btn" href="./GUIA.html" target="_blank" rel="noopener">'+icon('book',16)+' Guía de instalación y uso</a></div>';
     dialog.querySelector('button').onclick=()=>dialog.close();
     dialog.addEventListener('close',()=>dialog.remove(),{once:true});
@@ -120,7 +120,7 @@
 
   function getContext() {
     const day=date;
-    return {state,date:day,isDemo:session?.mode==='demo',setDate,mutate,toast:notify,render,icon,navigate,
+    return {state,date:day,setDate,mutate,toast:notify,render,icon,navigate,
       updateTaskField:(id,field,value)=>updateTaskField(day,id,field,value),
       updateTaskFieldForDate:updateTaskField,
       openTask:(id=null,defaults={})=>window.JEditor.open(id,defaults,getContext())};
@@ -218,9 +218,8 @@
   function updateStatus() {
     const badge=root.querySelector('.account-mode');
     if(!badge||!session)return;
-    const demo=session.mode==='demo';
-    badge.textContent=saving?'Guardando…':(demo?'Demo local':'Cuenta privada');
-    badge.title=demo?'Datos de ejemplo guardados en este navegador':'Tus registros se guardan en Supabase';
+    badge.textContent=saving?'Guardando…':'Cuenta privada';
+    badge.title='Tus registros se guardan en Supabase';
     const active=state?.tasks.find(t=>t.segments.some(s=>!s.end));
     const running=root.querySelector('.work-running');
     running.hidden=!active;
@@ -231,10 +230,23 @@
     }
   }
 
+  function updateContext(stage) {
+    let detail='';
+    if(view==='agenda') detail=stage.querySelector('[data-jd-mode][aria-pressed="true"]')?.textContent.trim();
+    if(view==='analysis') detail=stage.querySelector('[data-period][aria-pressed="true"]')?.textContent.trim();
+    if(view==='goals') detail=stage.querySelector('.ji-detail-head h1')?.textContent;
+    const name=titles[view];
+    const path=root.querySelector('.work-context');
+    const separator='<span class="crumb-separator" aria-hidden="true">/</span>';
+    path.innerHTML='<span class="crumb-home">Work Hub</span>'+separator+
+      (detail?'<span class="crumb-parent">'+esc(name)+'</span>'+separator:'')+
+      '<span class="crumb-current" aria-current="page" title="'+esc(detail||name)+'">'+esc(detail||name)+'</span>';
+    document.title=[detail,name,'Work Hub'].filter(Boolean).join(' · ');
+  }
+
   function render() {
     if(!state||!root.querySelector('.stage'))return;
     const el=root.querySelector('.stage');
-    document.title='Work Hub · '+titles[view];
     root.querySelectorAll('[data-view]').forEach(btn=>{
       if(btn.dataset.view===view)btn.setAttribute('aria-current','page');
       else btn.removeAttribute('aria-current');
@@ -243,21 +255,20 @@
     if(view==='agenda') window.JAgenda.render(el,getContext());
     else if(view==='categories') window.JCategories.render(el,getContext());
     else window.JInsights.render(el,getContext(),view);
-    renderCalendar(); updateStatus(); updateDateTools();
+    updateContext(el); renderCalendar(); updateStatus(); updateDateTools();
   }
 
   function shell() {
-    const demo=session.mode==='demo';
     const email=session.user?.email||'';
-    const userName=demo?'Cuenta de ejemplo':(email.split('@')[0] || 'Mi cuenta');
-    const initials=demo?'WH':userName.split(/[._\s-]+/).slice(0,2).map(p=>p.charAt(0)).join('').toUpperCase();
+    const userName=email.split('@')[0] || 'Mi cuenta';
+    const initials=userName.split(/[._\s-]+/).slice(0,2).map(p=>p.charAt(0)).join('').toUpperCase();
     root.innerHTML='<div class="app-shell"><button type="button" class="backdrop" aria-label="Cerrar navegación"></button><aside id="side-menu" class="rail" aria-label="Menú de Work Hub">'+
       '<div class="brandbar">'+mark+'<span>Work Hub</span><button class="close-menu" aria-label="Cerrar menú">'+icon('x')+'</button></div>'+
       '<nav class="rail-nav" aria-label="Vistas principales">'+[['agenda','calendar-days'],['goals','target'],['analysis','bar-chart'],['categories','layers']].map(([v,i])=>'<button data-view="'+v+'">'+icon(i,19)+titles[v]+'</button>').join('')+'</nav>'+
       '<section class="cal-wrap" aria-label="Calendario de jornadas"></section>'+
       '<div class="rail-bottom"><button class="rail-link" data-help>'+icon('help',18)+' Guía de uso</button><div class="rail-user"><span class="monogram">'+esc(initials)+'</span><div class="usercopy"><b title="'+esc(email)+'">'+esc(userName)+'</b><span class="account-mode" role="status"></span></div>'+
-      (demo?'':'<button data-logout aria-label="Cerrar sesión" title="Cerrar sesión">'+icon('logout',18)+'</button>')+'</div></div></aside>'+
-      '<div class="shell-content"><header class="workbar"><div class="toolbar-left"><button class="hamburger icon-btn" aria-label="Abrir menú" aria-controls="side-menu" aria-expanded="false">'+icon('menu',20)+'</button><div class="work-context">'+icon('building',17)+'<span>Mercado de Capitales</span><span class="slash">/</span><span class="context-secondary">Control de Gestión</span></div></div>'+
+      '<button data-logout aria-label="Cerrar sesión" title="Cerrar sesión">'+icon('logout',18)+'</button></div></div></aside>'+
+      '<div class="shell-content"><header class="workbar"><div class="toolbar-left"><button class="hamburger icon-btn" aria-label="Abrir menú" aria-controls="side-menu" aria-expanded="false">'+icon('menu',20)+'</button><nav class="work-context" aria-label="Ubicación actual"></nav></div>'+
       '<div class="bar-right"><span class="work-running" hidden></span>'+dateTools()+'</div></header><main id="main" tabindex="-1" class="stage"></main></div></div>';
     const tools=root.querySelector('.jd-heading-tools');
     tools.querySelectorAll('[data-step]').forEach(button=>button.onclick=()=>showDay(model.shiftDate(date,Number(button.dataset.step)*(weeklyAgenda()?7:1))));
@@ -317,7 +328,9 @@
   async function boot(){
     try{accept(await store.boot());}
     catch(error){
-      root.innerHTML='<main id="main" class="boot boot-error">'+mark+'<h1>No se pudo abrir Work Hub</h1><p></p><button class="btn primary">Reintentar</button><a href="./GUIA.html" target="_blank" rel="noopener">Ver guía de configuración</a></main>';
+      const configuration=error.code==='CONFIG';
+      document.title=(configuration?'Configuración':'Acceso')+' · Work Hub';
+      root.innerHTML='<main id="main" class="boot boot-error">'+mark+'<h1>'+(configuration?'Configura la conexión de Work Hub':'No se pudo abrir Work Hub')+'</h1><p role="status"></p><button class="btn primary">Reintentar</button><a href="./GUIA.html'+(configuration?'#conectar':'#problemas')+'" target="_blank" rel="noopener">Ver guía de configuración</a></main>';
       root.querySelector('p').textContent=error.message;
       root.querySelector('button').onclick=()=>location.reload();
     }

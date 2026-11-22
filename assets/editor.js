@@ -64,7 +64,7 @@
               </label>
               <label class="je-field"><span>Fecha</span><input name="date" type="date" required value="${esc(activity.date)}"></label>
               <label class="je-field"><span>Prioridad</span><select name="priority">${selectOptions(priorities,activity.priority)}</select></label>
-              <label class="je-field je-wide"><span>Objetivo asociado</span><select name="goalId"><option value="">Sin objetivo</option>${goalOptions}</select></label>
+              <label class="je-field je-wide"><span>Objetivo general</span><select name="goalId"><option value="">Sin objetivo</option>${goalOptions}</select></label>
               <label class="je-field"><span>Categoría</span><select name="category">${categoryOptions}</select></label>
               <label class="je-field"><span>Origen</span><select name="origin">${selectOptions(origins,activity.origin)}</select></label>
             </div>

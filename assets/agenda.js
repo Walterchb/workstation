@@ -355,8 +355,13 @@
     dialog.innerHTML = `<header class="jd-detail-heading"><h2 id="jd-detail-title">${esc(task.title)}</h2><button type="button" class="jd-detail-close icon-btn" aria-label="Cerrar detalle">${ctx.icon("x",17)}</button></header>
       <div class="jd-detail-sub">${meta.map(value=>"<span>"+esc(value)+"</span>").join(" · ")}</div>
       <p class="jd-detail-context">${esc(task.context || "Sin contexto registrado.")}</p>${taskFields(task,entry,"detail")}
-      ${mode === "week" ? '<div class="jd-detail-actions"><button type="button" class="btn" data-from-week>Abrir jornada</button></div>' : ""}`;
+      <div class="jd-detail-actions">${mode === "week" ? '<button type="button" class="btn" data-from-week>Abrir jornada</button>' : ""}
+      <button type="button" class="btn" data-edit-this>${ctx.icon("pencil",15)} Editar actividad</button></div>`;
     dialog.querySelector(".jd-detail-close").onclick = closeDetail;
+    dialog.querySelector("[data-edit-this]").onclick = () => {
+      detail.editTask = {id:task.id,date:task.date};
+      closeDetail();
+    };
     const go = dialog.querySelector("[data-from-week]");
     if (go) go.onclick = () => { closeDetail(); openDay(task.date,ctx); };
     if (key && !pending) locate(dialog,"[data-jd-field]",key)?.focus({preventScroll:true});
@@ -371,9 +376,11 @@
     const key = explicitKey || {...trigger.dataset};
     detail = {dialog,key,anchorDate:current.ctx.date};
     dialog.addEventListener("close",() => {
+      const task = detail?.editTask;
       detail = null;
       dialog.remove();
       locate(current?.el,"[data-jd-detail],[data-week-detail]",key)?.focus({preventScroll:true});
+      if (task && current) window.JSheet.open({...current.ctx,date:task.date},{taskId:task.id,mode:"full"});
     },{once:true});
     dialog.addEventListener("change",quickChange);
     document.body.append(dialog);
@@ -468,7 +475,7 @@
     const meta = entries.length ? `<p class="jd-schedule-meta">${esc(entries[0].segment.start)} – ${esc(end)}<span aria-hidden="true"> · </span>${plural(entries.length,"tramo","tramos")} ${hatchKey}</p>` : "";
     const modeButtons = [["calendar","Horario","calendar-days"],["list","Lista","list"],["week","Semana","calendar-days"]].map(([key,title,icon]) =>
       `<button type="button" data-jd-mode="${key}" aria-pressed="${mode===key}">${ctx.icon(icon,15)} ${title}</button>`).join("");
-    el.innerHTML = `<div class="jd-view" data-date="${esc(ctx.date)}" data-mode="${mode}"><h1 class="jd-sr">${week ? "Agenda semanal" : "Mi jornada"}, ${esc(model.formatDate(ctx.date))}</h1>${week ? "" : `<div class="jd-overview">${stats(tasks,ctx)}${timeline(entries,ctx)}</div>`}
+    el.innerHTML = `<div class="jd-view" data-date="${esc(ctx.date)}" data-mode="${mode}"><h1 class="jd-sr">${week ? "Agenda semanal" : "Actividades"}, ${esc(model.formatDate(ctx.date))}</h1>${week ? "" : `<div class="jd-overview">${stats(tasks,ctx)}${timeline(entries,ctx)}</div>`}
       <section class="jd-activities" aria-labelledby="jd-schedule-title"><header class="jd-activities-head${week ? " jd-week-heading" : ""}"><div class="jd-activities-intro">
         <h2 id="jd-schedule-title">${week ? "Agenda semanal" : "Actividades del día"}</h2>${week ? "" : meta}</div>${mode === "calendar" ? scalePicker() : ""}
         <div class="jd-view-switch" role="group" aria-label="Vista de actividades">${modeButtons}</div>

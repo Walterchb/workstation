@@ -6,7 +6,6 @@
   const authMessage = "Tu sesión venció. Vuelve a iniciar sesión para guardar.";
   // GitHub Pages puede alojar varias aplicaciones en el mismo dominio.
   const appPath = location.pathname.replace(/index\.html$/i, "").replace(/\/$/, "");
-  const demoKey = "jornada:v1:demo:" + appPath;
   let config;
   let mode = "auth";
   let user = null;
@@ -24,8 +23,7 @@
     if (!value) throw failure("CONFIG", "No se pudo cargar config.js. Comprueba que esté junto a index.html.");
     const url = String(value.supabaseUrl || "").trim().replace(/\/+$/, "");
     const key = String(value.supabasePublishableKey || "").trim();
-    if (!url && !key) return null;
-    if (!url || !key) throw failure("CONFIG", "Completa la URL del proyecto y su clave publicable en config.js.");
+    if (!url || !key) throw failure("CONFIG", "Completa la URL de tu proyecto Supabase y su clave publicable en config.js para habilitar el acceso.");
     let parsed;
     try { parsed = new URL(url); } catch { /* Se valida abajo. */ }
     if (!parsed || parsed.protocol !== "https:" || parsed.username || parsed.password ||
@@ -39,6 +37,9 @@
         role = JSON.parse(atob(payload)).role;
       } catch { /* También descarta claves secretas y tokens mal formados. */ }
       if (role !== "anon") throw failure("CONFIG", "Usa la clave publicable de Supabase o la clave anon heredada en config.js.");
+    }
+    if (typeof fetch !== "function" || typeof AbortController !== "function") {
+      throw failure("CONFIG", "Abre Work Hub en un navegador actualizado con conexión HTTPS a Supabase.");
     }
     return { url: parsed.origin, key, sessionKey: "jornada:v1:sesion:" + parsed.origin + appPath };
   }
@@ -57,16 +58,17 @@
     revision = null;
     pendingWrite = null;
     mode = "auth";
-    try { sessionStorage.removeItem(config.sessionKey); } catch { /* Sesión en memoria cerrada. */ }
+    try { if (config) sessionStorage.removeItem(config.sessionKey); } catch { /* Sesión en memoria cerrada. */ }
   }
 
   function setSession(value) {
     if (!value?.access_token || !value?.refresh_token || !value?.user?.id) {
       throw failure("AUTH", "Supabase no devolvió una sesión válida. Vuelve a ingresar.");
     }
+    // Esta clave contiene exclusivamente la credencial de la pestaña, nunca el documento de trabajo.
     session = {
       access_token: value.access_token, refresh_token: value.refresh_token,
-      expires_at: Number(value.expires_at) || Math.floor(Date.now() / 1000) + (Number(value.expires_in) || 3600),
+      expires_at: Number(value.expires_at) || Math.floor(Date.now() / 1000) + (Number(value.expires_in) || 0),
       user: { id: value.user.id, email: value.user.email || "" }
     };
     try { sessionStorage.setItem(config.sessionKey, JSON.stringify(session)); }
@@ -101,7 +103,7 @@
       if (status === 409 || data?.code === "PT409") throw failure("CONFLICT", conflictMessage, status);
       if (status === 429) throw failure("RATE_LIMIT", "Demasiados intentos. Espera un momento y vuelve a ingresar.", status);
       if (status >= 500 || status === 408) throw failure("NETWORK", "Supabase no pudo confirmar la operación. Intenta nuevamente.", status);
-      if (data?.code === "PGRST202" || status === 404) {
+      if (path.startsWith("/rest/") && (data?.code === "PGRST202" || status === 404)) {
         throw failure("CONFIG", "Supabase no encuentra la función de Work Hub. Ejecuta supabase/schema.sql en el proyecto configurado.", status);
       }
       if (data?.code === "42501" || status === 403) {
@@ -143,7 +145,11 @@
     } catch (error) {
       if (error.status === 401) {
         await refreshSession();
-        return request(path, body, session.access_token);
+        try { return await request(path, body, session.access_token); }
+        catch (retryError) {
+          if (retryError.status === 401) { forgetSession(); throw failure("AUTH", authMessage); }
+          throw retryError;
+        }
       }
       // Los RPC son de solo lectura o idempotentes por identificador de operación.
       if (error.code === "NETWORK") return request(path, body, session.access_token);
@@ -159,55 +165,22 @@
         (data.revision === 0 ? data.document !== null : !validDocument(data.document))) {
       throw failure("DATA", "La versión de la agenda guardada no se puede abrir. Revisa los datos en Supabase.");
     }
+    const document = data.revision === 0 ? window.JModel.empty() : data.document;
+    try { window.JModel.validate(document); }
+    catch { throw failure("DATA", "La agenda recibida de Supabase tiene un formato incompatible. Revisa los registros guardados antes de continuar."); }
     revision = data.revision;
     pendingWrite = null;
     mode = "cloud";
     user = session.user;
-    return view(data.revision === 0 ? window.JModel.empty() : data.document);
-  }
-
-  function demoRecord() {
-    let raw;
-    try { raw = localStorage.getItem(demoKey); }
-    catch { throw failure("STORAGE", "El navegador está bloqueando el almacenamiento de la demostración."); }
-    if (raw === null) return null;
-    let record;
-    try { record = JSON.parse(raw); } catch { /* No se sobrescribe un registro dañado. */ }
-    if (!record || !validDocument(record.document) || !Number.isSafeInteger(record.revision) || record.revision < 1) {
-      throw failure("DATA", "La agenda local tiene un formato que no se puede abrir.");
-    }
-    return record;
-  }
-
-  function storeDemo(document, nextRevision) {
-    try { localStorage.setItem(demoKey, JSON.stringify({ revision: nextRevision, document })); }
-    catch { throw failure("STORAGE", "El navegador no pudo guardar el cambio. Revisa el espacio y los permisos de almacenamiento."); }
-    revision = nextRevision;
-  }
-
-  function withDemoLock(action) {
-    // Los archivos locales pueden tener un origen opaco sin acceso a Web Locks.
-    if (location.protocol !== "file:" && navigator.locks?.request) return navigator.locks.request(demoKey, action);
-    return action();
+    return view(document);
   }
 
   async function boot() {
     config = readConfig();
-    if (!config) {
-      return withDemoLock(() => {
-        const existing = demoRecord();
-        const state = existing?.document || window.JModel.seed();
-        if (existing) revision = existing.revision;
-        else storeDemo(state, 1);
-        mode = "demo";
-        user = null;
-        return view(state);
-      });
-    }
     if (!session) {
       let stored;
       try { stored = JSON.parse(sessionStorage.getItem(config.sessionKey) || "null"); } catch { /* Abrir acceso. */ }
-      if (stored?.user?.id && stored?.refresh_token && stored?.access_token) session = stored;
+      if (stored?.user?.id && stored?.refresh_token && stored?.access_token) setSession(stored);
     }
     if (!session) {
       mode = "auth";
@@ -222,14 +195,12 @@
 
   async function signIn(email, password) {
     config = readConfig();
-    if (!config) throw failure("CONFIG", "Configura Supabase en config.js para iniciar sesión.");
     const data = await request("/auth/v1/token?grant_type=password", { email: String(email).trim(), password });
     setSession(data);
     return openCloud();
   }
 
   async function signOut() {
-    if (!config) return boot();
     try {
       if (session) {
         if (Date.now() / 1000 >= session.expires_at) await refreshSession();
@@ -253,12 +224,6 @@
     if (!validDocument(state)) throw failure("DATA", "La agenda que intentas guardar tiene un formato inválido.");
     const serialized = JSON.stringify(state);
     const document = JSON.parse(serialized);
-    if (mode === "demo") {
-      return withDemoLock(() => {
-        if (demoRecord()?.revision !== revision) throw failure("CONFLICT", conflictMessage);
-        storeDemo(document, revision + 1);
-      });
-    }
     if (mode !== "cloud" || !session || revision === null) throw failure("AUTH", authMessage);
     if (!pendingWrite || pendingWrite.serialized !== serialized) {
       pendingWrite = { id: operationId(), serialized };

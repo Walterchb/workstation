@@ -347,11 +347,16 @@
   .jd-view .jd-edit-day { gap: 3px; }
 }
 
-.jd-detail-actions { display:flex; justify-content:flex-end; padding-top:10px; }
+.jd-detail-actions { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:8px; padding-top:10px; }
 .jd-detail-actions .btn { min-height:30px; padding-block:5px; }
 @container jornada (max-width: 430px) {
   .jd-view-switch button svg { display:none; }
   .jd-view-switch button { font-size:.75rem; padding-inline:5px; }
+}
+@container jornada (max-width: 365px) {
+  .jd-view:not([data-mode="week"]) .jd-view-switch,
+  .jd-view .jd-edit-day { grid-column:1/-1; }
+  .jd-view .jd-edit-day { justify-self:start; }
 }
 
 /* Cortar en líneas enteras impide que el borde de un tramo muestre media letra. */

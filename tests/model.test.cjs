@@ -61,16 +61,12 @@ test('Un objetivo eliminado no deja referencias huérfanas ni se infiere un logr
   assert.doesNotThrow(() => model.validate(state));
 });
 
-test('El ejemplo es válido, separado de una cuenta vacía y conserva tramos interrumpidos', () => {
-  const example = model.seed();
-  assert.doesNotThrow(() => model.validate(example));
-  assert.ok(example.goals.length > 1);
-  assert.ok(new Set(example.tasks.map(row => row.date)).size > 7);
-  assert.ok(example.tasks.some(row => row.origin === 'Imprevista'));
-  assert.ok(example.tasks.some(row => row.segments.length > 1));
-  assert.ok(example.goals.some(goal => goal.status === 'Alcanzado'));
-  assert.ok(example.tasks.every(row => row.segments.every(segment => segment.end !== '')));
-  assert.deepEqual(model.empty(), {version:1, goals:[], tasks:[]});
+test('Una cuenta nueva tiene objetivos y actividades vacíos con categorías disponibles', () => {
+  const state = model.empty();
+  assert.deepEqual(state, {version:1, goals:[], tasks:[]});
+  assert.doesNotThrow(() => model.validate(state));
+  assert.ok(model.categoryList(state).some(category => category.isDefault && !category.archived));
+  assert.deepEqual(model.empty(), state);
 });
 
 test('Cada actividad inicial tiene su propio arreglo de tramos y un identificador único', () => {

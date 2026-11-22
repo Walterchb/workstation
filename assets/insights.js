@@ -3,6 +3,7 @@
   'use strict';
   const palette = ['#087F79', '#3067B6', '#8759A4', '#B16B32', '#BB5266', '#528048'];
   const neutral = '#687D89';
+  const unassignedGoal = 'Sin objetivo general asignado';
   const filters = { period: 'day', anchor: '', lastDate: '', from: '', to: '', scope: 'Todos', goalId: '', grouping: 'goals' };
   const esc = value => window.JUI.esc(String(value ?? ''));
   const model = () => window.JModel;
@@ -61,7 +62,7 @@
       }
       const id = goalsById.has(t.goalId) ? t.goalId : '';
       const g = goalsById.get(id);
-      if (!byGoal.has(id)) byGoal.set(id, { id, title: g?.title || 'Sin objetivo asignado', color: g?.color || neutral, minutes: 0, count: 0, done: 0 });
+      if (!byGoal.has(id)) byGoal.set(id, { id, title: g?.title || unassignedGoal, color: g?.color || neutral, minutes: 0, count: 0, done: 0 });
       const row = byGoal.get(id);
       row.minutes += minutes;
       row.count++;
@@ -143,15 +144,15 @@
   function distributionTable(s, grouping, interactive) {
     const rows = grouping === 'categories' ? s.categories : s.goals;
     if (!s.tasks.length) return empty('Aún no hay actividades en este período.');
-    return `<div class="ji-table-scroll"><table class="ji-table"><thead><tr><th>${grouping === 'categories' ? 'Categoría' : 'Objetivo'}</th><th>Actividades</th><th>Tiempo</th><th>Participación</th></tr></thead><tbody>${rows.map(g => `<tr><td><span class="ji-table-title">${mark(g.color)}${interactive && g.id ? `<button class="ji-textbtn" data-show-goal="${esc(g.id)}">${esc(g.title)}</button>` : esc(g.title)}</span></td><td>${g.count}</td><td><b>${esc(formatTime(g.minutes))}</b></td><td><span class="ji-share"><span class="ji-meter"><i style="width:${s.total ? 100 * g.minutes / s.total : 0}%;background:${color(g.color)}"></i></span>${s.total ? Math.round(g.minutes / s.total * 100) + '%' : '—'}</span></td></tr>`).join('')}</tbody></table></div>`;
+    return `<div class="ji-table-scroll"><table class="ji-table"><thead><tr><th>${grouping === 'categories' ? 'Categoría' : 'Objetivo general'}</th><th>Actividades</th><th>Tiempo</th><th>Participación</th></tr></thead><tbody>${rows.map(g => `<tr><td><span class="ji-table-title">${mark(g.color)}${interactive && g.id ? `<button class="ji-textbtn" data-show-goal="${esc(g.id)}">${esc(g.title)}</button>` : esc(g.title)}</span></td><td>${g.count}</td><td><b>${esc(formatTime(g.minutes))}</b></td><td><span class="ji-share"><span class="ji-meter"><i style="width:${s.total ? 100 * g.minutes / s.total : 0}%;background:${color(g.color)}"></i></span>${s.total ? Math.round(g.minutes / s.total * 100) + '%' : '—'}</span></td></tr>`).join('')}</tbody></table></div>`;
   }
 
   function achievedList(goals) {
-    return goals.length ? `<ul class="ji-achieved">${goals.map(g => `<li>${mark(g.color)}<div><b>${esc(g.title)}</b><p>${esc(g.result)}</p><small>${esc(shortDate(g.achievedOn, true))}</small></div></li>`).join('')}</ul>` : empty('Aún no hay objetivos marcados como alcanzados en este período.');
+    return `<ul class="ji-achieved">${goals.map(g => `<li>${mark(g.color)}<div><b>${esc(g.title)}</b><p>${esc(g.result)}</p><small>${esc(shortDate(g.achievedOn, true))}</small></div></li>`).join('')}</ul>`;
   }
 
   function evidenceList(s, list, interactive) {
-    return `<ol class="ji-evidence">${list.map(t => `<li><time datetime="${esc(t.date)}">${esc(shortDate(t.date))}</time><div>${interactive ? `<button class="ji-textbtn" data-task="${esc(t.id)}">${esc(t.title)}</button>` : `<b>${esc(t.title)}</b>`}<p>${esc(t.comment)}</p><small>${esc(s.goalsById.get(t.goalId)?.title || 'Sin objetivo asignado')}</small></div></li>`).join('')}</ol>`;
+    return `<ol class="ji-evidence">${list.map(t => `<li><time datetime="${esc(t.date)}">${esc(shortDate(t.date))}</time><div>${interactive ? `<button class="ji-textbtn" data-task="${esc(t.id)}">${esc(t.title)}</button>` : `<b>${esc(t.title)}</b>`}<p>${esc(t.comment)}</p><small>${esc(s.goalsById.get(t.goalId)?.title || unassignedGoal)}</small></div></li>`).join('')}</ol>`;
   }
 
   function analysisView(el, ctx) {
@@ -161,10 +162,10 @@
     const s = summarize(ctx.state, range);
     const pct = s.planned ? `${Math.round(100 * s.fulfilled / s.planned)}%` : '—';
     el.innerHTML = `<div class="ji-page"><header class="ji-head"><div><h1>Análisis</h1><p>Tiempo invertido, avances y resultados por período.</p></div><div class="ji-actions"><button class="btn ghost" data-csv>${ctx.icon('download', 16)} Exportar CSV</button><button class="btn primary" data-print>${ctx.icon('file-text', 16)} Informe gerencial</button></div></header>
-      ${rangeControls(ctx, range)}<div class="ji-kpis">${metric('Tiempo registrado', formatTime(s.total), 'Suma de tramos cerrados', 'clock', 'teal', ctx)}${metric('Cumplimiento del plan', pct, `${s.fulfilled} de ${s.planned} planificadas cumplidas`, 'check-circle', 'blue', ctx)}${metric('Trabajo imprevisto', formatTime(s.unplannedMinutes), label(s.unplanned, 'actividad imprevista', 'actividades imprevistas'), 'layers', 'amber', ctx)}${metric('Objetivos alcanzados', String(s.achieved.length), 'Con resultado fechado en el período', 'flag', 'violet', ctx)}</div>
+      ${rangeControls(ctx, range)}<div class="ji-kpis${s.achieved.length ? '' : ' compact'}">${metric('Tiempo registrado', formatTime(s.total), 'Suma de tramos cerrados', 'clock', 'teal', ctx)}${metric('Cumplimiento del plan', pct, s.planned ? `${s.fulfilled} de ${s.planned} planificadas cumplidas` : 'Sin actividades planificadas', 'check-circle', 'blue', ctx)}${metric('Trabajo imprevisto', formatTime(s.unplannedMinutes), label(s.unplanned, 'actividad imprevista', 'actividades imprevistas'), 'layers', 'amber', ctx)}${s.achieved.length ? metric('Objetivos alcanzados', String(s.achieved.length), 'Con resultado fechado en el período', 'flag', 'violet', ctx) : ''}</div>
       <div class="ji-charts">${filters.period === 'day' ? dayChart(s) : chart(s)}${composition(s)}</div>
-      <section class="panel ji-panel" data-distribution><header class="ji-panel-head ji-distribution-head"><div><h2 data-distribution-title>Tiempo por ${filters.grouping === 'categories' ? 'categoría' : 'objetivo'}</h2><p>Participación sobre el tiempo total del período</p></div><div class="ji-switch" role="group" aria-label="Agrupar el tiempo por">${[['goals','Por objetivo'],['categories','Por categoría']].map(([id, text]) => `<button type="button" data-grouping="${id}" aria-pressed="${filters.grouping === id}" aria-controls="ji-distribution-table">${text}</button>`).join('')}</div></header><div id="ji-distribution-table">${distributionTable(s, filters.grouping, true)}</div></section>
-      <div class="ji-bottom"><section class="panel ji-panel"><header class="ji-panel-head"><div><h2>Evidencias de avance</h2><p>Comentarios registrados en las actividades</p></div></header>${s.evidence.length ? `${evidenceList(s, s.evidence.slice(0,5), true)}${s.evidence.length > 5 ? `<details class="ji-more"><summary>Ver ${label(s.evidence.length - 5, 'evidencia más', 'evidencias más')}</summary>${evidenceList(s, s.evidence.slice(5), true)}</details>` : ''}` : empty('Los comentarios de tus actividades aparecerán aquí.')}</section><section class="panel ji-panel"><header class="ji-panel-head"><div><h2>Resultados alcanzados</h2><p>Resultados que confirmaste en tus objetivos</p></div></header>${achievedList(s.achieved)}</section></div></div>`;
+      <section class="panel ji-panel" data-distribution><header class="ji-panel-head ji-distribution-head"><div><h2 data-distribution-title>Tiempo por ${filters.grouping === 'categories' ? 'categoría' : 'objetivo general'}</h2><p>Participación sobre el tiempo total del período</p></div><div class="ji-switch" role="group" aria-label="Agrupar el tiempo por">${[['goals','Por objetivo general'],['categories','Por categoría']].map(([id, text]) => `<button type="button" data-grouping="${id}" aria-pressed="${filters.grouping === id}" aria-controls="ji-distribution-table">${text}</button>`).join('')}</div></header><div id="ji-distribution-table">${distributionTable(s, filters.grouping, true)}</div></section>
+      <div class="ji-bottom"><section class="panel ji-panel"><header class="ji-panel-head"><div><h2>Evidencias de avance</h2><p>Comentarios registrados en las actividades</p></div></header>${s.evidence.length ? `${evidenceList(s, s.evidence.slice(0,5), true)}${s.evidence.length > 5 ? `<details class="ji-more"><summary>Ver ${label(s.evidence.length - 5, 'evidencia más', 'evidencias más')}</summary>${evidenceList(s, s.evidence.slice(5), true)}</details>` : ''}` : empty('Los comentarios de tus actividades aparecerán aquí.')}</section>${s.achieved.length ? `<section class="panel ji-panel"><header class="ji-panel-head"><div><h2>Resultados alcanzados</h2><p>Resultados que confirmaste en tus objetivos generales</p></div></header>${achievedList(s.achieved)}</section>` : ''}</div></div>`;
     el.querySelectorAll('[data-period]').forEach(btn => btn.addEventListener('click', () => {
       if (btn.dataset.period === 'custom' && (!filters.from || filters.period !== 'custom')) Object.assign(filters, range);
       filters.period = btn.dataset.period;
@@ -200,7 +201,7 @@
         ctx.render();
       });
     }
-    el.querySelector('[data-print]').addEventListener('click', () => showReport(managementReport(s,filters.period,ctx.isDemo),ctx));
+    el.querySelector('[data-print]').addEventListener('click', () => showReport(managementReport(s,filters.period),ctx));
     el.querySelector('[data-csv]').addEventListener('click', () => exportCSV(s));
     el.querySelectorAll('[data-task]').forEach(b => b.addEventListener('click', () => ctx.openTask(b.dataset.task)));
     const panel = el.querySelector('[data-distribution]');
@@ -209,7 +210,7 @@
       if (toggle) {
         filters.grouping = toggle.dataset.grouping;
         for (const button of panel.querySelectorAll('[data-grouping]')) button.setAttribute('aria-pressed', String(button === toggle));
-        panel.querySelector('[data-distribution-title]').textContent = filters.grouping === 'categories' ? 'Tiempo por categoría' : 'Tiempo por objetivo';
+        panel.querySelector('[data-distribution-title]').textContent = filters.grouping === 'categories' ? 'Tiempo por categoría' : 'Tiempo por objetivo general';
         panel.querySelector('#ji-distribution-table').innerHTML = distributionTable(s, filters.grouping, true);
         return;
       }
@@ -220,7 +221,7 @@
 
   // Un movimiento por tramo. Una tarea sin horas también conserva una fila.
   function csvText(s) {
-    const rows = [['ID actividad', 'Fecha', 'Actividad', 'Contexto', 'Objetivo', 'Categoría', 'Prioridad', 'Origen', 'Estado', 'Se cumplió', 'Tramo', 'Inicio', 'Fin', 'Minutos cerrados', 'Conteo de actividades', 'Comentarios']];
+    const rows = [['ID actividad', 'Fecha', 'Actividad', 'Objetivo específico', 'Objetivo general', 'Categoría', 'Prioridad', 'Origen', 'Estado', 'Se cumplió', 'Tramo', 'Inicio', 'Fin', 'Minutos cerrados', 'Conteo de actividades', 'Evidencia registrada']];
     for (const t of s.tasks) {
       const pieces = t.segments.length ? t.segments : [null];
       pieces.forEach((segment, index) => rows.push([t.id, t.date, t.title, t.context, s.goalsById.get(t.goalId)?.title || '', t.category, t.priority, t.origin, t.status, t.done ? 'Sí' : 'No', segment ? index + 1 : '', segment?.start || '', segment?.end || '', segment?.end ? model().minutes({ segments: [segment] }) : 0, index ? 0 : 1, t.comment]));
@@ -246,111 +247,113 @@
   const periodWords = { day: 'la jornada', week: 'la semana', month: 'el mes', custom: 'el período' };
   const longDate = value => model().formatDate(value, {day:'numeric',month:'long',year:'numeric'});
   const pctTime = (minutes, sum) => sum ? `${Math.round(100 * minutes / sum)}%` : '—';
-  const noDetail = /^(?:todo\s+(?:ok|bien)|ok(?:ay)?|no\s+se\s+inici[oó]|sin\s+(?:iniciar|avance|comentarios?)|pendiente|[-—])\s*[.!]?$/i;
 
-  function managementReport(s, period, isDemo=false) {
+  function managementReport(s, period) {
     const daily = period === 'day';
     const dateText = daily ? longDate(s.range.from) : `${shortDate(s.range.from,true)} al ${shortDate(s.range.to,true)}`;
-    const word = periodWords[period];
     const milestones = [...s.achieved].sort((a,b) => b.achievedOn.localeCompare(a.achievedOn) || a.title.localeCompare(b.title,'es'));
-    const linked = s.goals.find(g => g.id && g.minutes > 0);
-    const lead = linked || s.categories.find(c => c.minutes > 0);
-    const substantive = s.evidence.filter(t=>!noDetail.test(t.comment.trim()));
-    const representative = substantive.find(t=>linked && t.goalId===linked.id) || substantive[0];
-    const excerpt = text => {
-      const normalized = text.trim().replace(/\s+/g,' ');
-      if (normalized.length <= 150) return normalized;
-      const short=normalized.slice(0,149),space=short.lastIndexOf(' ');
-      return (space>100 ? short.slice(0,space) : short)+'…';
+    const rankedGoals = s.goals.filter(g => g.id);
+    const unassigned = s.goals.find(g => !g.id);
+    if (unassigned) rankedGoals.push(unassigned);
+    const goalName = g => g.id ? g.title : unassignedGoal;
+    const leadingGoal = s.goals[0];
+    const word = periodWords[period];
+    const quotedTitle = title => {
+      const line = title.trim().replace(/\s+/g, ' ');
+      return `«${line.length <= 105 ? line : line.slice(0, 104) + '…'}»`;
     };
-    const quoted = text => `«${excerpt(text).replace(/(?<!\.)\.$/,'')}»`;
-    const timeText = formatTime(s.total);
     let takeaway;
     if (milestones.length) {
-      const count = milestones.length;
-      const first=milestones[0];
-      takeaway = count === 1 ? `El ${shortDate(first.achievedOn)} se confirmó ${quoted(first.title)}.` : `Se confirmaron ${count} objetivos durante ${word}, entre ellos ${quoted(first.title)}.`;
-      takeaway += ` El resultado registrado fue ${quoted(first.result)}.`;
-    } else if (lead) {
-      takeaway = `Se dedicaron ${formatTime(lead.minutes)} a ${quoted(lead.title)}, el ${pctTime(lead.minutes,s.total)} del tiempo registrado durante ${word}.`;
-      if (representative) takeaway += ` En ${quoted(representative.title)} se registró ${quoted(representative.comment)}.`;
+      takeaway = milestones.length === 1
+        ? `El ${shortDate(milestones[0].achievedOn)} se confirmó el resultado de ${quotedTitle(milestones[0].title)}.`
+        : `Durante ${word} se confirmaron resultados en ${milestones.length} objetivos generales.`;
+      if (s.tasks.length && s.total) takeaway += ` La agenda reúne ${label(s.tasks.length,'actividad','actividades')} y ${formatTime(s.total)} de trabajo registrado.`;
+    } else if (s.total) {
+      takeaway = leadingGoal.id
+        ? `Se dedicaron ${formatTime(leadingGoal.minutes)} a ${quotedTitle(leadingGoal.title)}, el ${pctTime(leadingGoal.minutes,s.total)} del tiempo registrado durante ${word}.`
+        : `Durante ${word} se registraron ${formatTime(s.total)}. Las actividades sin objetivo general asignado sumaron ${formatTime(leadingGoal.minutes)} (${pctTime(leadingGoal.minutes,s.total)}).`;
     } else if (s.tasks.length) {
-      takeaway = `Hay ${label(s.tasks.length,'actividad registrada','actividades registradas')} durante ${word}. Aún no hay tramos cerrados para medir el tiempo invertido.`;
+      takeaway = `La agenda de ${word} reúne ${label(s.tasks.length,'actividad','actividades')}. El tiempo se contabiliza al cerrar los tramos de trabajo.`;
     } else {
-      takeaway = `No hay actividades ni resultados registrados para ${word} seleccionad${period === 'day' || period === 'week' ? 'a' : 'o'}.`;
+      takeaway = `No hay actividades registradas durante ${word}.`;
     }
+
     const metrics = [
-      {label:'Tiempo registrado',value:timeText,note:label(s.tasks.length,'actividad en la agenda','actividades en la agenda')},
-      {label:'Cumplimiento del plan',value:s.planned ? pctTime(s.fulfilled,s.planned) : '—',note:`${s.fulfilled} de ${s.planned} planificadas cumplidas`},
-      {label:'Trabajo imprevisto',value:formatTime(s.unplannedMinutes),note:label(s.unplanned,'actividad imprevista','actividades imprevistas')},
-      {label:'Objetivos alcanzados',value:String(milestones.length),note:'Con resultado fechado en el período'}
+      {label:'Tiempo registrado',value:formatTime(s.total),note:label(s.tasks.length,'actividad en la agenda','actividades en la agenda')},
+      {label:'Cumplimiento del plan',value:s.planned ? pctTime(s.fulfilled,s.planned) : '—',note:s.planned ? `${s.fulfilled} de ${s.planned} planificadas cumplidas` : 'Sin actividades planificadas'},
+      {label:'Trabajo imprevisto',value:formatTime(s.unplannedMinutes),note:label(s.unplanned,'actividad imprevista','actividades imprevistas')}
     ];
-    const dayTag = t => shortDate(t.date, true);
-    const withDate = (row,t) => daily ? row : [dayTag(t),...row];
+    const withDate = (t,cells) => daily ? cells : [shortDate(t.date,true),...cells];
     const sections = [];
-    const add = (title,subtitle,columns,widths,rows,emptyMessage) => sections.push({title,subtitle,columns,widths,rows,empty:emptyMessage});
-    add('Resultados confirmados','Logros con fecha de resultado en el período.',
-      ['Fecha','Objetivo','Resultado'],[.14,.31,.55],milestones.map(g=>[shortDate(g.achievedOn,true),g.title,g.result]),'Sin objetivos con resultado confirmado en estas fechas.');
-
-    // Conservar el total y el tiempo sin asignar cuando haya numerosos objetivos pequeños.
-    const ranked = s.goals.filter(g=>g.id);
-    const unnamed = s.goals.find(g=>!g.id);
-    const shown = ranked.slice(0,5);
-    const rest = ranked.slice(shown.length);
-    if(rest.length) shown.push({title:`Otros objetivos (${rest.length})`,minutes:rest.reduce((n,g)=>n+g.minutes,0),count:rest.reduce((n,g)=>n+g.count,0)});
-    if(unnamed) shown.push(unnamed);
-    if(shown.length) add('Dedicación por objetivo',rest.length ? 'Los cinco objetivos con más tiempo se muestran por separado.' : 'Horas registradas por objetivo y participación en el total.',
-      ['Objetivo','Tiempo','% del tiempo','Actividades'],[.48,.2,.17,.15], shown.map(g=>[g.title,formatTime(g.minutes),pctTime(g.minutes,s.total),String(g.count)]),'');
-
-    const priorityOrder={Alta:0,Media:1,Baja:2};
-    const activityKey = t=>JSON.stringify([t.goalId,t.title.normalize('NFC').trim().toLocaleLowerCase('es-PE')]);
-    const openRows = s.tasks.filter(t=>t.status!=='Culminado');
-    const latest = new Map();
-    for (const task of openRows) latest.set(activityKey(task),task);
-    const follow=[...latest.values()].sort((a,b)=>priorityOrder[a.priority]-priorityOrder[b.priority] || b.date.localeCompare(a.date));
-    if(follow.length) add('Prioridades de seguimiento',
-      daily ? 'Hasta tres prioridades con estado pendiente o en proceso.' : 'Hasta tres prioridades entre los registros que figuran pendientes o en proceso. Cuando coinciden nombre y objetivo, se muestra la fecha abierta más reciente.',
-      daily ? ['Prioridad','Actividad y contexto','Estado'] : ['Fecha','Prioridad','Actividad y contexto','Estado'],
-      daily ? [.17,.6,.23] : [.14,.13,.53,.2], follow.slice(0,3).map(t=>withDate([t.priority,t.context.trim() ? `${t.title}\n${excerpt(t.context)}` : t.title,t.status],t)), '');
-
-    const highlights=new Map();
-    // Un avance por objetivo. Cuando falta el vínculo, distinguir por actividad.
-    for(const t of [...substantive].sort((a,b)=>b.date.localeCompare(a.date) || priorityOrder[a.priority]-priorityOrder[b.priority])) {
-      const key=t.goalId ? `goal:${t.goalId}` : `task:${activityKey(t)}`;
-      if(!highlights.has(key)) highlights.set(key,t);
-      if(highlights.size===4) break;
+    const add = (title,subtitle,columns,widths,rows) => sections.push({title,subtitle,columns,widths,rows});
+    if (milestones.length) {
+      metrics.push({label:'Objetivos alcanzados',value:String(milestones.length),note:'Con resultado fechado en el período'});
+      add('Resultados confirmados','Objetivos generales con resultado y fecha de cumplimiento registrados.',
+        ['Fecha','Objetivo general','Resultado'],[.14,.31,.55],milestones.map(g => [shortDate(g.achievedOn,true),g.title,g.result]));
     }
-    if(highlights.size) add('Avances destacados', 'Selección de hasta cuatro notas, una por objetivo o por actividad sin objetivo. Se priorizan las más recientes.',
-      daily ? ['Actividad y objetivo','Evidencia registrada'] : ['Fecha','Actividad y objetivo','Evidencia registrada'],
-      daily ? [.4,.6] : [.14,.33,.53], [...highlights.values()].map(t=>{
-        const goalTitle=s.goalsById.get(t.goalId)?.title;
-        return withDate([goalTitle ? `${t.title}\n${goalTitle}` : t.title, excerpt(t.comment)],t);
-      }), '');
+    if (rankedGoals.length) add('Dedicación por objetivo general','Participación de cada objetivo general en el tiempo registrado.',
+      ['Objetivo general','Tiempo','% del tiempo','Actividades'],[.48,.2,.17,.15], rankedGoals.map(g => [goalName(g),formatTime(g.minutes),pctTime(g.minutes,s.total),String(g.count)]));
+
+    const priorityOrder = {Alta:0,Media:1,Baja:2};
+    const open = s.tasks.filter(t => t.status !== 'Culminado').sort((a,b) => priorityOrder[a.priority] - priorityOrder[b.priority] || b.date.localeCompare(a.date));
+    if (open.length) add('Prioridades de seguimiento','Hasta tres actividades abiertas, ordenadas por prioridad y fecha más reciente.',
+      daily ? ['Prioridad','Actividad','Estado'] : ['Fecha','Prioridad','Actividad','Estado'],
+      daily ? [.17,.6,.23] : [.14,.13,.53,.2], open.slice(0,3).map(t => withDate(t,[t.priority,t.title,t.status])));
 
     if (!daily && s.tasks.length) {
       const days = new Map();
       for (const t of s.tasks) {
         if (!days.has(t.date)) days.set(t.date,{time:0,planned:0,fulfilled:0,unplanned:0});
-        const d=days.get(t.date), minutes=model().minutes(t); d.time+=minutes;
-        if(t.origin==='Planificada') { d.planned++; if(t.done) d.fulfilled++; }
-        else d.unplanned+=minutes;
+        const d = days.get(t.date), minutes = model().minutes(t);
+        d.time += minutes;
+        if (t.origin === 'Planificada') { d.planned++; if (t.done) d.fulfilled++; }
+        else d.unplanned += minutes;
       }
       add('Balance por jornada','Fechas con actividades registradas.', ['Jornada','Tiempo','Plan cumplido','Imprevistos'],[.33,.21,.25,.21],
-        [...days].map(([date,d])=>[shortDate(date,true),formatTime(d.time),d.planned ? `${d.fulfilled} de ${d.planned}` : 'Sin planificadas',formatTime(d.unplanned)]),'');
+        [...days].map(([date,d]) => [shortDate(date,true),formatTime(d.time),d.planned ? `${d.fulfilled} de ${d.planned}` : 'Sin planificadas',formatTime(d.unplanned)]));
     }
-    const usedCategories = s.categories.filter(c=>c.count);
-    if(usedCategories.length && (!daily || usedCategories.length>1)) add('Dedicación por categoría','Distribución del mismo tiempo por función.',
-      ['Categoría','Tiempo','% del tiempo'],[.55,.25,.2], usedCategories.map(c=>[c.title,formatTime(c.minutes),pctTime(c.minutes,s.total)]),'');
-    const footnote=(isDemo ? 'Datos de ejemplo. ' : '')+'Los tiempos suman tramos con hora de cierre. El cumplimiento corresponde al avance previsto de cada actividad planificada. Los logros se reconocen en la fecha de resultado indicada en Objetivos.';
-    return {period,from:s.range.from,to:s.range.to,title:reportTitles[period],periodLabel:dateText,takeaway,metrics,sections:s.tasks.length || milestones.length ? sections : [],footnote,
+    const usedCategories = s.categories.filter(c => c.count);
+    if (usedCategories.length && (!daily || usedCategories.length > 1)) add('Dedicación por categoría','Distribución del mismo tiempo por función.',
+      ['Categoría','Tiempo','% del tiempo'],[.55,.25,.2], usedCategories.map(c => [c.title,formatTime(c.minutes),pctTime(c.minutes,s.total)]));
+    const byGoal = new Map(rankedGoals.map(g => [g.id,[]]));
+    const recorded = value => value && value.trim() ? value : '—';
+    for (const t of s.tasks) {
+      const id = s.goalsById.has(t.goalId) ? t.goalId : '';
+      byGoal.get(id).push(withDate(t,[recorded(t.title),recorded(t.context),recorded(t.comment)]));
+    }
+    for (const g of rankedGoals) {
+      const rows = byGoal.get(g.id);
+      sections.push({
+        group:'activities', groupTitle:'Actividades por objetivo general', goalId:g.id,
+        title:goalName(g), subtitle:label(rows.length,'actividad','actividades'),
+        columns:daily ? ['Actividad','Objetivo específico','Evidencia registrada'] : ['Fecha','Actividad','Objetivo específico','Evidencia registrada'],
+        widths:daily ? [.25,.33,.42] : [.13,.21,.30,.36],
+        rows
+      });
+    }
+
+    const footnote = 'El tiempo registrado suma los tramos con hora de cierre. El cumplimiento del plan cuenta las actividades planificadas marcadas en «¿Se hizo?».'
+      + (s.tasks.length ? ' En el registro de actividades, una raya indica un campo sin completar.' : '');
+    return {period,from:s.range.from,to:s.range.to,title:reportTitles[period],periodLabel:dateText,takeaway,metrics,sections,footnote,
       filename:`Informe_${({day:'diario',week:'semanal',month:'mensual',custom:'de_gestion'})[period]}_${s.range.from}${s.range.from===s.range.to?'':'_'+s.range.to}.pdf`};
+  }
+
+  function reportSection(section, index, sections) {
+    const grouped = section.group === 'activities';
+    const groupHeading = grouped && sections[index - 1]?.group !== section.group
+      ? `<h3 class="ji-paper-group-title">${esc(section.groupTitle)}</h3>` : '';
+    const heading = grouped ? 'h4' : 'h3';
+    return `${groupHeading}<section class="ji-paper-section${grouped ? ' ji-paper-activity-group' : ''}"><${heading}>${esc(section.title)}</${heading}><p>${esc(section.subtitle)}</p>
+      <div class="ji-paper-scroll"><table><colgroup>${section.widths.map(w => `<col style="width:${Math.round(w*100)}%">`).join('')}</colgroup>
+      <thead><tr>${section.columns.map(c => `<th scope="col">${esc(c)}</th>`).join('')}</tr></thead>
+      <tbody>${section.rows.map(row => `<tr>${row.map((cell,i) => `<td${grouped ? ` data-label="${esc(section.columns[i])}"` : ''}>${esc(cell)}</td>`).join('')}</tr>`).join('')}</tbody></table></div></section>`;
   }
 
   function reportHTML(report) {
     return `<article class="ji-paper"><header class="ji-paper-head"><h2 id="ji-report-title">${esc(report.title)}</h2><p>${esc(report.periodLabel)}</p></header>
       <p class="ji-paper-lead">${esc(report.takeaway)}</p>
-      <dl class="ji-paper-metrics">${report.metrics.map(m=>`<div><dt>${esc(m.label)}</dt><dd>${esc(m.value)}</dd><small>${esc(m.note)}</small></div>`).join('')}</dl>
-      ${report.sections.map(section=>`<section class="ji-paper-section"><h3>${esc(section.title)}</h3>${section.rows.length ? `<p>${esc(section.subtitle)}</p><div class="ji-paper-scroll"><table><colgroup>${section.widths.map(w=>`<col style="width:${Math.round(w*100)}%">`).join('')}</colgroup><thead><tr>${section.columns.map(c=>`<th scope="col">${esc(c)}</th>`).join('')}</tr></thead><tbody>${section.rows.map(row=>`<tr>${row.map(cell=>`<td>${esc(cell)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>` : `<p class="ji-paper-empty">${esc(section.empty)}</p>`}</section>`).join('')}
+      <dl class="ji-paper-metrics" style="--ji-metric-count:${report.metrics.length}">${report.metrics.map(m=>`<div><dt>${esc(m.label)}</dt><dd>${esc(m.value)}</dd><small>${esc(m.note)}</small></div>`).join('')}</dl>
+      ${report.sections.map(reportSection).join('')}
       <footer class="ji-paper-note">${esc(report.footnote)}</footer></article>`;
   }
 
@@ -392,9 +395,9 @@
       if (!groups.has(t.date)) groups.set(t.date, []);
       groups.get(t.date).push(t);
     }
-    el.innerHTML = `<div class="ji-page"><button class="ji-back" data-goals-back>${ctx.icon('chevron-left', 16)} Todos los objetivos</button><header class="ji-head ji-detail-head"><div><span class="ji-goal-tag">${mark(goal.color)}Objetivo · ${esc(goal.status)}</span><h1>${esc(goal.title)}</h1>${goal.description ? `<p>${esc(goal.description)}</p>` : ''}</div><div class="ji-actions"><button class="btn ghost" data-edit-goal>${ctx.icon('pencil', 16)} Editar objetivo</button><button class="btn primary" data-create-task>${ctx.icon('plus', 16)} Actividad vinculada</button></div></header><div class="ji-kpis compact">${metric('Tiempo invertido',formatTime(minutes),'Acumulado de tramos cerrados','clock','teal',ctx)}${metric('Actividades vinculadas',String(tasks.length),label(tasks.filter(t => t.done).length,'avance cumplido','avances cumplidos'),'layers','blue',ctx)}${metric('Días con dedicación',String(days),'Fechas con tiempo registrado','calendar','violet',ctx)}</div>
-    ${goal.status === 'Alcanzado' || goal.result ? `<section class="panel ji-panel ji-outcome"><div class="ji-panel-head"><div><h2>${goal.status === 'Alcanzado' ? 'Resultado alcanzado' : 'Avance del objetivo'}</h2>${goal.achievedOn ? `<p>${esc(shortDate(goal.achievedOn, true))}</p>` : ''}</div></div><p>${esc(goal.result)}</p></section>` : ''}
-    <section class="panel ji-panel"><header class="ji-panel-head"><div><h2>Historial del objetivo</h2><p>Actividades y evidencias de todos los días vinculados</p></div></header>${groups.size ? `<div class="ji-history">${[...groups].map(([date, entries]) => `<section><h3>${esc(shortDate(date, true))}</h3><ul>${entries.map(t => `<li><div class="ji-history-row"><button class="ji-textbtn" data-task="${esc(t.id)}">${esc(t.title)}</button><b>${esc(formatTime(model().minutes(t)))}</b></div>${t.comment ? `<p>${esc(t.comment)}</p>` : ''}<small>${esc(t.status)} · ${t.done ? 'Avance cumplido' : 'Avance sin marcar'}</small></li>`).join('')}</ul></section>`).join('')}</div>` : empty('Vincula la primera actividad para iniciar el historial de este objetivo.')}</section></div>`;
+    el.innerHTML = `<div class="ji-page"><button class="ji-back" data-goals-back>${ctx.icon('chevron-left', 16)} Todos los objetivos generales</button><header class="ji-head ji-detail-head"><div><span class="ji-goal-tag">${mark(goal.color)}Objetivo general · ${esc(goal.status)}</span><h1>${esc(goal.title)}</h1>${goal.description ? `<p>${esc(goal.description)}</p>` : ''}</div><div class="ji-actions"><button class="btn ghost" data-edit-goal>${ctx.icon('pencil', 16)} Editar objetivo general</button><button class="btn primary" data-create-task>${ctx.icon('plus', 16)} Actividad vinculada</button></div></header><div class="ji-kpis compact">${metric('Tiempo invertido',formatTime(minutes),'Acumulado de tramos cerrados','clock','teal',ctx)}${metric('Actividades vinculadas',String(tasks.length),label(tasks.filter(t => t.done).length,'avance cumplido','avances cumplidos'),'layers','blue',ctx)}${metric('Días con dedicación',String(days),'Fechas con tiempo registrado','calendar','violet',ctx)}</div>
+    ${goal.status === 'Alcanzado' || goal.result ? `<section class="panel ji-panel ji-outcome"><div class="ji-panel-head"><div><h2>${goal.status === 'Alcanzado' ? 'Resultado alcanzado' : 'Avance del objetivo general'}</h2>${goal.achievedOn ? `<p>${esc(shortDate(goal.achievedOn, true))}</p>` : ''}</div></div><p>${esc(goal.result)}</p></section>` : ''}
+    <section class="panel ji-panel"><header class="ji-panel-head"><div><h2>Historial del objetivo general</h2><p>Actividades y evidencias de todos los días vinculados</p></div></header>${groups.size ? `<div class="ji-history">${[...groups].map(([date, entries]) => `<section><h3>${esc(shortDate(date, true))}</h3><ul>${entries.map(t => `<li><div class="ji-history-row"><button class="ji-textbtn" data-task="${esc(t.id)}">${esc(t.title)}</button><b>${esc(formatTime(model().minutes(t)))}</b></div>${t.comment ? `<p>${esc(t.comment)}</p>` : ''}<small>${esc(t.status)} · ${t.done ? 'Avance cumplido' : 'Avance sin marcar'}</small></li>`).join('')}</ul></section>`).join('')}</div>` : empty('Vincula la primera actividad para iniciar el historial de este objetivo general.')}</section></div>`;
     el.querySelector('[data-goals-back]').addEventListener('click', () => { filters.goalId = ''; ctx.render(); });
     el.querySelector('[data-edit-goal]').addEventListener('click', () => goalForm(goal, ctx));
     el.querySelector('[data-create-task]').addEventListener('click', () => ctx.openTask(null, { goalId: goal.id }));
@@ -412,7 +415,7 @@
       if (!byGoal.has(t.goalId)) byGoal.set(t.goalId, []);
       byGoal.get(t.goalId).push(t);
     }
-    el.innerHTML = `<div class="ji-page"><header class="ji-head"><div><h1>Objetivos</h1><p>Reúne los avances diarios que contribuyen a un mismo resultado.</p></div><button class="btn primary" data-new-goal>${ctx.icon('plus', 17)} Nuevo objetivo</button></header><div class="ji-controls"><div class="ji-switch" aria-label="Estado del objetivo">${[['Todos','Todos'],['En curso','En curso'],['Alcanzado','Alcanzados']].map(([key, text]) => `<button data-scope="${key}" aria-pressed="${filters.scope === key}">${text}</button>`).join('')}</div><span class="ji-count">${label(goals.length,'objetivo','objetivos')}</span></div>${goals.length ? `<div class="ji-goals-grid">${goals.map(g => goalCard(g, byGoal.get(g.id) || [], ctx)).join('')}</div>` : `<section class="panel ji-no-goals"><i>${ctx.icon('target', 30)}</i><h2>${ctx.state.goals.length ? 'Sin objetivos en este estado' : '¿Qué resultado quieres conseguir?'}</h2><p>${ctx.state.goals.length ? 'Puedes consultar los demás estados con el filtro.' : 'Crea tu primer objetivo, por ejemplo, completar una emisión de bonos. Después podrás vincular las actividades de cada día.'}</p>${!ctx.state.goals.length ? '<button class="btn ghost" data-first-goal>Crear un objetivo</button>' : ''}</section>`}</div>`;
+    el.innerHTML = `<div class="ji-page"><header class="ji-head"><div><h1>Objetivos generales</h1><p>Reúne los avances diarios que contribuyen a un mismo resultado.</p></div><button class="btn primary" data-new-goal>${ctx.icon('plus', 17)} Nuevo objetivo general</button></header><div class="ji-controls"><div class="ji-switch" aria-label="Estado del objetivo general">${[['Todos','Todos'],['En curso','En curso'],['Alcanzado','Alcanzados']].map(([key, text]) => `<button data-scope="${key}" aria-pressed="${filters.scope === key}">${text}</button>`).join('')}</div><span class="ji-count">${label(goals.length,'objetivo general','objetivos generales')}</span></div>${goals.length ? `<div class="ji-goals-grid">${goals.map(g => goalCard(g, byGoal.get(g.id) || [], ctx)).join('')}</div>` : `<section class="panel ji-no-goals"><i>${ctx.icon('target', 30)}</i><h2>${ctx.state.goals.length ? 'Sin objetivos generales en este estado' : '¿Qué resultado quieres conseguir?'}</h2><p>${ctx.state.goals.length ? 'Puedes consultar los demás estados con el filtro.' : 'Crea un objetivo general para reunir las actividades diarias que contribuyen a él.'}</p>${!ctx.state.goals.length ? '<button class="btn ghost" data-first-goal>Crear un objetivo general</button>' : ''}</section>`}</div>`;
     el.querySelectorAll('[data-new-goal],[data-first-goal]').forEach(b => b.addEventListener('click', () => goalForm(null, ctx)));
     el.querySelectorAll('[data-goal]').forEach(b => b.addEventListener('click', () => { filters.goalId = b.dataset.goal; ctx.render(); }));
     el.querySelectorAll('[data-scope]').forEach(b => b.addEventListener('click', () => { filters.scope = b.dataset.scope; ctx.render(); }));
@@ -426,7 +429,7 @@
     const currentColor = color(goal?.color || palette[ctx.state.goals.length % palette.length]);
     const swatches = palette.includes(currentColor) ? palette : [...palette, currentColor];
     const toneNames = ['Verde azulado', 'Azul', 'Violeta', 'Ocre', 'Rosado', 'Verde', 'Personalizado'];
-    dlg.innerHTML = `<form class="ji-form"><header><h2 id="ji-form-title">${goal ? 'Editar objetivo' : 'Nuevo objetivo'}</h2><button type="button" class="icon-btn" data-cancel aria-label="Cerrar">${ctx.icon('x',18)}</button></header><div class="ji-form-body"><label>Objetivo<input name="title" required autofocus placeholder="Ej. Emitir bonos corporativos" value="${esc(goal?.title || '')}"></label><label>Descripción <small>(opcional)</small><textarea rows="2" name="description" placeholder="¿Qué esperas conseguir?">${esc(goal?.description || '')}</textarea></label><fieldset><legend>Color del objetivo</legend><div class="ji-swatches">${swatches.map((c, i) => `<label style="--ji-color:${c}" title="${toneNames[i]}"><input name="color" type="radio" value="${c}" aria-label="${toneNames[i]}" ${c === currentColor ? 'checked' : ''}><span></span></label>`).join('')}</div></fieldset><div class="ji-form-row"><label>Estado<select name="status"><option${!isReached ? ' selected' : ''}>En curso</option><option${isReached ? ' selected' : ''}>Alcanzado</option></select></label><label data-date-wrap>Fecha del resultado<input type="date" name="date" max="${esc(model().today())}" value="${esc(goal?.achievedOn || model().today())}"></label></div><label><span data-result-label></span><textarea rows="3" name="result" placeholder="Describe el hito o entregable concreto">${esc(goal?.result || '')}</textarea></label><p class="ji-form-error" role="alert" hidden></p><div class="ji-delete-prompt" hidden><strong>¿Eliminar este objetivo?</strong><p>Las actividades conservarán sus horas y comentarios y pasarán a figurar sin objetivo asignado.</p><div><button type="button" class="btn ghost" data-keep>Conservar</button><button type="button" class="btn ji-danger" data-remove>Confirmar eliminación</button></div></div></div><footer>${goal ? `<button class="ji-delete" type="button" data-ask-remove>${ctx.icon('trash',16)} Eliminar</button>` : ''}<span></span><button class="btn ghost" type="button" data-cancel>Cancelar</button><button class="btn primary" type="submit">Guardar objetivo</button></footer></form>`;
+    dlg.innerHTML = `<form class="ji-form"><header><h2 id="ji-form-title">${goal ? 'Editar objetivo general' : 'Nuevo objetivo general'}</h2><button type="button" class="icon-btn" data-cancel aria-label="Cerrar">${ctx.icon('x',18)}</button></header><div class="ji-form-body"><label>Nombre del objetivo general<input name="title" required autofocus value="${esc(goal?.title || '')}"></label><label>Descripción <small>(opcional)</small><textarea rows="2" name="description" placeholder="¿Qué esperas conseguir?">${esc(goal?.description || '')}</textarea></label><fieldset><legend>Color del objetivo general</legend><div class="ji-swatches">${swatches.map((c, i) => `<label style="--ji-color:${c}" title="${toneNames[i]}"><input name="color" type="radio" value="${c}" aria-label="${toneNames[i]}" ${c === currentColor ? 'checked' : ''}><span></span></label>`).join('')}</div></fieldset><div class="ji-form-row"><label>Estado<select name="status"><option${!isReached ? ' selected' : ''}>En curso</option><option${isReached ? ' selected' : ''}>Alcanzado</option></select></label><label data-date-wrap>Fecha del resultado<input type="date" name="date" max="${esc(model().today())}" value="${esc(goal?.achievedOn || model().today())}"></label></div><label><span data-result-label></span><textarea rows="3" name="result" placeholder="Describe el hito o entregable concreto">${esc(goal?.result || '')}</textarea></label><p class="ji-form-error" role="alert" hidden></p><div class="ji-delete-prompt" hidden><strong>¿Eliminar este objetivo general?</strong><p>Las actividades conservarán sus horas y comentarios y pasarán a figurar sin objetivo general asignado.</p><div><button type="button" class="btn ghost" data-keep>Conservar</button><button type="button" class="btn ji-danger" data-remove>Confirmar eliminación</button></div></div></div><footer>${goal ? `<button class="ji-delete" type="button" data-ask-remove>${ctx.icon('trash',16)} Eliminar</button>` : ''}<span></span><button class="btn ghost" type="button" data-cancel>Cancelar</button><button class="btn primary" type="submit">Guardar objetivo general</button></footer></form>`;
     document.body.append(dlg);
     const form = dlg.querySelector('form'), fields = form.elements;
     const message = dlg.querySelector('.ji-form-error');
@@ -437,7 +440,7 @@
       const reached = fields.status.value === 'Alcanzado';
       dlg.querySelector('[data-date-wrap]').hidden = !reached;
       fields.date.required = reached; fields.date.disabled = !reached; fields.result.required = reached;
-      dlg.querySelector('[data-result-label]').textContent = reached ? 'Resultado alcanzado' : 'Avance del objetivo (opcional)';
+      dlg.querySelector('[data-result-label]').textContent = reached ? 'Resultado alcanzado' : 'Avance del objetivo general (opcional)';
     };
     const setBusy = locked => {
       busy = locked;
@@ -476,7 +479,7 @@
         const ok = await ctx.mutate(state => {
           if (goal) {
             const existing = state.goals.find(g => g.id === goal.id);
-            if (!existing) throw new Error('Este objetivo ya no existe.');
+            if (!existing) throw new Error('Este objetivo general ya no existe.');
             Object.assign(existing, entry);
           } else state.goals.push(entry);
         });
@@ -489,7 +492,7 @@
   }
 
   window.JInsights = {
-    makeReport(state, range, period, isDemo=false) { return managementReport(summarize(state,range),period,isDemo); },
+    makeReport(state, range, period) { return managementReport(summarize(state,range),period); },
     render(el, ctx, view) { if (view === 'goals') goalsView(el, ctx); else analysisView(el, ctx); },
     reset() { Object.assign(filters, { period: 'day', anchor: '', lastDate: '', from: '', to: '', scope: 'Todos', goalId: '', grouping: 'goals' }); }
   };

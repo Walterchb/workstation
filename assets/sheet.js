@@ -38,7 +38,8 @@
       return '<input type="time" step="60" data-seg="' + seg + '" ' + attrs + ' value="' + esc(value) + '">';
     }
     if (col === 6) return '<output data-duration aria-label="Duración calculada">' + hourCount(durationValue(row.segments)) + '</output>';
-    return '<textarea rows="2" spellcheck="true" ' + attrs + '>' + esc(row[field]) + '</textarea>';
+    const hint = col === 1 ? 'Escribe una actividad' : col === 2 ? 'Añade contexto' : '';
+    return '<textarea rows="2" spellcheck="true" ' + attrs + (hint ? ' placeholder="' + hint + '"' : '') + '>' + esc(row[field]) + '</textarea>';
   }
 
   function rowMarkup(row, index, selected) {
@@ -49,51 +50,70 @@
       return '<td class="jsheet-c-' + fields[col] + '">' + markup + '</td>';
     }).join('');
     return '<tr data-index="' + index + '"' + (index === selected ? ' class="jsheet-current"' : '') +
-      '><th scope="row"><button type="button" data-act="row" tabindex="-1" aria-label="Seleccionar fila ' +
-      (index + 1) + '">' + (index + 1) + '</button></th>' + cells + '</tr>';
+      '><th scope="row"><button type="button" data-act="row" tabindex="-1" title="Detalle de la fila ' +
+      (index + 1) + '" aria-label="Detalle de la fila ' + (index+1) + '">' + (index + 1) + '</button>' +
+      '<button class="jsheet-between" type="button" data-act="between" tabindex="-1" title="Insertar debajo" aria-label="Insertar actividad debajo de la fila ' +
+      (index+1) + '">+</button></th>' + cells + '</tr>';
   }
 
-  function open(ctx) {
+  function open(ctx, options={}) {
     if (currentDialog?.open) return;
     const model = window.JModel;
     const sheet = window.JSheetModel;
     const draft = sheet.createDraft(ctx.state,ctx.date);
-    if (!draft.rows.length) draft.rows.push(sheet.newRow(draft));
-    const baseline = JSON.stringify(draft.rows);
+    const baseline = JSON.stringify(draft.baseline);
+    const savedIds = new Set(draft.baseline.map(row=>row.id));
+    const requested = options.taskId ? draft.rows.findIndex(row=>row.id===options.taskId) : -1;
+    if (requested < 0) draft.rows.push(sheet.newRow(draft));
+    let mode = requested < 0 ? 'plan' : 'full';
+    try { if (requested < 0 && localStorage.getItem('workhub:sheet-mode') === 'full') mode = 'full'; } catch { /* El modo también funciona sin almacenamiento. */ }
+    if (['plan','full'].includes(options.mode)) mode = options.mode;
     const trigger = document.activeElement;
     const dialog = document.createElement('dialog');
     dialog.className = 'jsheet';
     dialog.setAttribute('aria-labelledby','jsheet-title');
     currentDialog = dialog;
-    let selected = 0;
+    let selected = requested < 0 ? draft.rows.length-1 : requested;
     let selectedSegment = 0;
     let panel = '';
     let pending = '';
     let busy = false;
     let sourceDate = '';
     let reuseIds = new Set();
+    let planText = '', planPosition = 'here', planRows = [];
+    const commandKey = /Mac|iPhone|iPad/i.test(navigator.platform || '') ? '⌘' : 'Ctrl';
 
     const icon = (name,size=16) => ctx.icon(name,size);
     const action = (key,text,name='') => '<button type="button" data-act="' + key + '">' + (name ? icon(name) : '') + text + '</button>';
     const dateLabel = model.formatDate(ctx.date,{weekday:'long',day:'numeric',month:'long',year:'numeric'});
     dialog.innerHTML = `
       <div class="jsheet-layout">
-        <header class="jsheet-head"><div><h2 id="jsheet-title">Editar horario</h2><p>${esc(dateLabel)}</p></div>
+        <header class="jsheet-head"><div><h2 id="jsheet-title">Editar actividades</h2><p>${esc(dateLabel)}</p></div>
           <button class="icon-btn" type="button" data-act="cancel" aria-label="Cerrar edición">${icon('x',19)}</button></header>
-        <div class="jsheet-tools" role="toolbar" aria-label="Herramientas de la hoja">
+        <div class="jsheet-command"><div class="jsheet-modes" role="group" aria-label="Vista de la hoja">
+          <button type="button" data-act="mode-plan">Planificar</button><button type="button" data-act="mode-full">Registro completo</button></div>
+          <button class="jsheet-paste-plan" type="button" data-act="import">${icon('list',15)}Pegar plan</button></div>
+        <div class="jsheet-tools" role="group" aria-label="Herramientas de la hoja">
           <div class="jsheet-tool-group"><button class="jsheet-add" type="button" data-act="append">${icon('plus')}Añadir fila</button>
             <details class="jsheet-menu"><summary>Opciones de fila ${icon('chevron-down',13)}</summary>
               <div>${action('insert-before','Insertar encima')}${action('insert-after','Insertar debajo')}${action('up','Mover arriba')}${action('down','Mover abajo')}${action('remove','Eliminar fila')}${action('copy-sheet','Copiar hoja')}</div>
             </details></div>
-          <div class="jsheet-tool-group">${action('add-segment','Añadir tramo','plus')}<button type="button" data-act="timer"></button></div>
+          <div class="jsheet-tool-group jsheet-clock-tools">${action('add-segment','Añadir tramo','plus')}<button type="button" data-act="timer"></button></div>
           <div class="jsheet-tool-group">${action('details','Detalle de fila','layers')}${action('reuse','Reutilizar','list')}</div>
         </div>
         <div class="jsheet-extra" hidden></div>
-        <p class="jsheet-tip" id="jsheet-tip">Pega celdas de Excel desde la columna correspondiente. Enter baja una fila. Tab avanza a la siguiente celda.</p>
-        <p class="jsheet-mobile-tip">Desliza la hoja horizontalmente para ver todas las columnas.</p>
+        <div class="jsheet-guide"><p class="jsheet-tip" id="jsheet-tip"></p>
+          <details class="jsheet-keys"><summary>Atajos de teclado</summary><dl>
+            <div><dt>Tab / Mayús + Tab</dt><dd>Siguiente celda / anterior</dd></div>
+            <div><dt>Enter / Mayús + Enter</dt><dd>Bajar / subir una fila</dd></div>
+            <div><dt>${commandKey} + Enter</dt><dd>Insertar actividad debajo</dd></div>
+            <div><dt>${commandKey} + Mayús + Enter</dt><dd>Insertar actividad encima</dd></div>
+            <div><dt>Alt + Enter</dt><dd>Salto de línea en el texto</dd></div>
+            <div><dt>${commandKey} + S</dt><dd>Guardar jornada</dd></div></dl></details></div>
         <div class="jsheet-scroll" tabindex="0" role="region" aria-label="Hoja de horario desplazable" aria-describedby="jsheet-tip">
           <table class="jsheet-table" aria-label="Horario editable"><colgroup><col class="jsheet-col-row">${fields.map(v=>'<col class="jsheet-col-'+v+'">').join('')}</colgroup>
             <thead><tr><th scope="col" aria-label="Fila">N°</th>${columns.map(name=>'<th scope="col">'+name+'</th>').join('')}</tr></thead><tbody></tbody></table>
+          <button class="jsheet-bottom-add" data-act="append-bottom" type="button">${icon('plus',14)}Añadir actividad al final</button>
         </div>
         <div class="jsheet-notice" role="status" aria-live="polite" hidden></div>
         <div class="jsheet-alert" role="alert" hidden></div>
@@ -114,7 +134,7 @@
     const confirm = $('.jsheet-confirm');
     const menu = $('.jsheet-menu');
     const btn = name => $('[data-act="' + name + '"]');
-    const dirty = () => JSON.stringify(draft.rows) !== baseline;
+    const dirty = () => JSON.stringify(draft.rows.filter(row=>savedIds.has(row.id) || !sheet.isUnused(draft,row))) !== baseline;
     const selectedRow = () => draft.rows[selected];
 
     function feedback(text='',error=false) {
@@ -145,6 +165,13 @@
 
     function refreshControls() {
       const row = selectedRow();
+      dialog.dataset.mode = mode;
+      btn('mode-plan').setAttribute('aria-pressed',String(mode==='plan'));
+      btn('mode-full').setAttribute('aria-pressed',String(mode==='full'));
+      btn('import').setAttribute('aria-expanded',String(panel==='import'));
+      $('.jsheet-tip').textContent = mode==='plan' ?
+        'Tab pasa de Actividad a Contexto. Al terminar el contexto, Tab lleva a la siguiente actividad.' :
+        'Registra las horas, el estado y los comentarios de cada actividad.';
       const active = row?.segments.some(part => part.start && !part.end);
       const timer = btn('timer');
       timer.hidden = draft.date !== model.today();
@@ -178,6 +205,7 @@
         tbody.querySelector('[data-index="' + index + '"]')?.classList.add('jsheet-current');
         refreshControls();
         if (panel === 'details') drawPanel();
+        if (panel === 'import') updatePlanPreview();
       } else if (panel === 'details' && extra.querySelector('[data-segment-pick]')) {
         extra.querySelector('[data-segment-pick]').value = String(selectedSegment);
       }
@@ -194,9 +222,47 @@
       return {...ctx.state,tasks:[...ctx.state.tasks.filter(item=>item.date!==draft.date),...draft.rows]};
     }
 
+    function importAt(atEnd=false) {
+      const anchor = atEnd ? draft.rows.length-1 : selected;
+      return sheet.isUnused(draft,draft.rows[anchor]) ? anchor : anchor+1;
+    }
+
+    function updatePlanPreview() {
+      const holder = extra.querySelector('[data-plan-preview]');
+      if (!holder) return;
+      const submit = btn('insert-plan');
+      const index = importAt(planPosition==='end');
+      const here = extra.querySelector('[data-plan-position] option[value="here"]');
+      here.textContent = (sheet.isUnused(draft,selectedRow()) ? 'En la fila vacía ' : 'Debajo de la fila ') + (selected+1);
+      try {
+        planRows = sheet.readPlan(sheet.parseTSV(planText));
+        submit.disabled = !planRows.length;
+        if (!planRows.length) {
+          holder.textContent = planText.trim() ? 'No hay actividades para insertar.' : '';
+          return;
+        }
+        const count = planRows.length===1 ? '1 actividad' : planRows.length+' actividades';
+        const preview = planRows.slice(0,3).map((row,i)=>'<li><span>'+ (index+i+1) + '</span><strong>' +
+          esc(row.title) + '</strong><span>' + esc(row.context) + '</span></li>').join('');
+        holder.innerHTML = '<p>' + count + ' desde la fila ' + (index+1) + '</p><ol>' + preview + '</ol>' +
+          (planRows.length>3 ? '<small>+' + (planRows.length-3) + ' más</small>' : '');
+      } catch (err) {
+        planRows=[]; submit.disabled=true; holder.textContent=err.message;
+      }
+    }
+
     function drawPanel() {
       extra.hidden = !panel;
       if (!panel) { extra.replaceChildren(); return; }
+      if (panel === 'import') {
+        extra.innerHTML = '<div class="jsheet-extra-head"><strong>Pegar plan desde Excel</strong>' + action('hide-extra','Cerrar') +
+          '</div><label class="jsheet-import-label" for="jsheet-plan">Pega Actividad y Contexto, una actividad por fila. El encabezado es opcional.</label>' +
+          '<textarea id="jsheet-plan" data-plan-input rows="3" spellcheck="false">' + esc(planText) + '</textarea>' +
+          '<div class="jsheet-import-actions"><label>Ubicación <select data-plan-position>' + option('here',planPosition,'Fila seleccionada') +
+          option('end',planPosition,'Al final de la jornada') + '</select></label>' + action('insert-plan','Insertar actividades','plus') +
+          '</div><div data-plan-preview aria-live="polite"></div>';
+        updatePlanPreview(); return;
+      }
       if (panel === 'details') {
         const row = selectedRow();
         if (!row) { panel = ''; drawPanel(); return; }
@@ -205,7 +271,7 @@
         const segmentOptions = Array.from({length:Math.max(1,row.segments.length)},(_,i)=>option(String(i),String(selectedSegment),'Tramo ' + (i+1)));
         extra.innerHTML = '<div class="jsheet-extra-head"><strong>Fila ' + (selected+1) + ' · ' + esc(title) +
           '</strong>' + action('hide-extra','Cerrar') + '</div><div class="jsheet-details">' +
-          detailSelect('goalId','Objetivo',goals) + detailSelect('priority','Prioridad',model.priorities) +
+          detailSelect('goalId','Objetivo general',goals) + detailSelect('priority','Prioridad',model.priorities) +
           detailSelect('origin','Origen',model.origins) + detailSelect('category','Categoría',model.categoryOptions(ctx.state,row.category).map(category => [category.title, category.title + (category.archived ? ' (archivada)' : '')])) +
           '</div><div class="jsheet-segments"><label>Tramo seleccionado <select data-segment-pick>' + segmentOptions +
           '</select></label>' + action('remove-segment','Quitar tramo') + '</div>';
@@ -258,6 +324,7 @@
         selectedRow()[el.dataset.detail] = el.value;
         refreshSummary(); feedback();
       } else if (el.matches('[data-segment-pick]')) selectedSegment = Number(el.value);
+      else if (el.matches('[data-plan-position]')) { planPosition=el.value; updatePlanPreview(); }
       else if (el.matches('[data-source]')) { sourceDate = el.value; reuseIds.clear(); drawPanel(); }
       else if (el.matches('[data-reuse-id]')) {
         if (el.checked) reuseIds.add(el.dataset.reuseId); else reuseIds.delete(el.dataset.reuseId);
@@ -271,6 +338,21 @@
       drawTable({col:1}); feedback();
     }
 
+    function appendActivity() {
+      const last = draft.rows.length-1;
+      if (sheet.isUnused(draft,draft.rows[last])) { focusCell(last,1); return; }
+      newAt(draft.rows.length);
+    }
+
+    function insertPlan(rows,position,fromPreview=false) {
+      const count = sheet.insertPlan(draft,position,rows);
+      if (!count) return;
+      selected=position; selectedSegment=0;
+      if (fromPreview) { planText=''; planRows=[]; panel=''; }
+      drawPanel(); drawTable({col:1});
+      feedback(count===1 ? 'Una actividad insertada.' : count+' actividades insertadas en el orden de Excel.');
+    }
+
     function showConfirm(kind) {
       pending = kind;
       confirm.hidden = false; footer.hidden = true;
@@ -278,19 +360,19 @@
       confirm.querySelector('p').textContent = remove ? '¿Quitar la fila ' + (selected+1) + ' y sus tramos de esta jornada?' :
         segment ? '¿Quitar el tramo ' + (selectedSegment+1) + ' de la fila ' + (selected+1) + '?' : 'Tienes cambios sin guardar. ¿Descartar la edición de esta jornada?';
       btn('discard').textContent = remove ? 'Quitar fila' : segment ? 'Quitar tramo' : 'Descartar cambios';
-      for (const node of [$('.jsheet-head'),$('.jsheet-tools'),extra,scroll]) node.inert = true;
+      for (const node of [$('.jsheet-head'),$('.jsheet-command'),$('.jsheet-tools'),$('.jsheet-guide'),extra,scroll]) node.inert = true;
       btn('keep').focus();
     }
 
     function hideConfirm() {
       pending = '';
       confirm.hidden = true; footer.hidden = false;
-      for (const node of [$('.jsheet-head'),$('.jsheet-tools'),extra,scroll]) node.inert = false;
+      for (const node of [$('.jsheet-head'),$('.jsheet-command'),$('.jsheet-tools'),$('.jsheet-guide'),extra,scroll]) node.inert = false;
     }
 
     function requestClose() {
       if (busy || pending) return;
-      if (dirty()) showConfirm('discard');
+      if (dirty() || planText.trim()) showConfirm('discard');
       else dialog.close();
     }
 
@@ -322,6 +404,11 @@
 
     async function save() {
       if (busy || pending) return;
+      if (planText.trim()) {
+        panel='import'; drawPanel(); refreshControls();
+        feedback('El plan pegado está en la vista previa. Insértalo en la hoja o borra el texto antes de guardar.',true);
+        (planRows.length ? btn('insert-plan') : extra.querySelector('[data-plan-input]')).focus(); return;
+      }
       if (!dirty()) { dialog.close(); return; }
       feedback();
       try {
@@ -330,6 +417,7 @@
         if (Number.isInteger(err.rowIndex) && draft.rows[err.rowIndex]) {
           select(err.rowIndex,err.segmentIndex || 0);
           const col = fields.indexOf(err.field);
+          if (mode==='plan' && col>=0 && ![1,2].includes(col)) { mode='full'; refreshControls(); }
           focusCell(selected, col < 0 ? 1 : col,selectedSegment);
         }
         feedback(err.message || 'Revisa los datos de la jornada.',true);
@@ -339,6 +427,7 @@
       const layout = $('.jsheet-layout');
       layout.inert = true;
       dialog.setAttribute('aria-busy','true');
+      btn('save').textContent='Guardando…';
       try {
         if (!await ctx.mutate(state=>sheet.applyDay(state,draft))) {
           feedback('No se pudo confirmar el guardado. Tus cambios siguen en la hoja. Recargar la página descartará este borrador. Puedes usar «Opciones de fila → Copiar hoja» para conservar las ocho columnas en Excel.',true);
@@ -350,6 +439,7 @@
         feedback(err.message || 'No se guardó la jornada. Tus cambios siguen en la hoja.',true);
       } finally {
         busy = false; layout.inert = false; dialog.removeAttribute('aria-busy');
+        if (dialog.open) { btn('save').innerHTML=icon('check')+'Guardar jornada'; btn('save').focus({preventScroll:true}); }
       }
     }
 
@@ -378,17 +468,30 @@
       const raw = event.clipboardData?.getData('text/plain');
       if (!raw) return;
       const col = Number(control.dataset.col);
+      // Contexto y Comentarios admiten párrafos. Sólo los tabuladores identifican
+      // un bloque de Excel que deba distribuirse en celdas desde esas columnas.
+      if ((col===2 || col===7) && !raw.includes('\t')) return;
       if ([1,2,7].includes(col) && !/[\r\n\t]/.test(raw)) return;
-      event.preventDefault();
       const index = Number(control.closest('[data-index]').dataset.index);
       const seg = Number(control.dataset.seg || 0);
       try {
         const matrix = sheet.parseTSV(raw);
+        const planHeader = /^(actividad|actividades)$/i.test(matrix[0]?.[0]?.trim()||'') && /^contexto$/i.test(matrix[0]?.[1]?.trim()||'');
+        const fullHeader = matrix[0]?.length===8 && /^estado$/i.test(matrix[0][0].trim());
+        if (fullHeader && mode==='plan') { mode='full'; refreshControls(); }
+        if (planHeader || (col===1 && matrix.every(line=>line.length<=2)) || (mode==='plan' && matrix.some(line=>line.length>1))) {
+          event.preventDefault();
+          const rows=sheet.readPlan(matrix);
+          if (!rows.length) { feedback('El bloque pegado no contiene actividades.'); return; }
+          select(index,seg); insertPlan(rows,importAt()); return;
+        }
+        if (mode==='plan' && col===2) return;
+        event.preventDefault();
         const count = sheet.paste(draft,index,col,matrix,seg);
         selected = index; selectedSegment = seg;
         drawTable({col,seg});
         feedback(count === 1 ? 'Una fila pegada en la hoja.' : count + ' filas pegadas en la hoja.');
-      } catch (err) { feedback(err.message || 'No se pudo pegar el contenido.',true); }
+      } catch (err) { event.preventDefault(); feedback(err.message || 'No se pudo pegar el contenido.',true); }
     }
 
     function activate(event) {
@@ -399,6 +502,11 @@
       if (menu.open) menu.open = false;
       if (key === 'save') { save(); return; }
       if (key === 'cancel') { requestClose(); return; }
+      if (key === 'mode-plan' || key === 'mode-full') {
+        mode=key==='mode-full' ? 'full' : 'plan';
+        try { localStorage.setItem('workhub:sheet-mode',mode); } catch { /* Mantener el modo en esta hoja. */ }
+        refreshControls(); focusCell(selected); return;
+      }
       if (key === 'keep') { hideConfirm(); focusCell(selected); return; }
       if (key === 'discard') {
         const operation = pending; hideConfirm();
@@ -412,7 +520,8 @@
         }
         drawTable({col:1}); feedback(); return;
       }
-      if (key === 'append') { newAt(draft.rows.length); return; }
+      if (key === 'append' || key === 'append-bottom') { appendActivity(); return; }
+      if (key === 'between') { newAt(Number(button.closest('[data-index]').dataset.index)+1); return; }
       if (key === 'insert-before' || key === 'insert-after') { newAt(selected+(key==='insert-after'?1:0)); return; }
       if (key === 'remove' || key === 'remove-segment') { showConfirm(key); return; }
       if (key === 'up' || key === 'down') {
@@ -426,9 +535,16 @@
         select(Number(button.closest('[data-index]').dataset.index));
         panel = 'details'; drawPanel(); refreshControls(); return;
       }
-      if (key === 'details' || key === 'reuse' || key === 'hide-extra') {
+      if (key === 'insert-plan') {
+        if (planRows.length) insertPlan(planRows,importAt(planPosition==='end'),true);
+        return;
+      }
+      if (key === 'details' || key === 'reuse' || key === 'import' || key === 'hide-extra') {
         panel = key === 'hide-extra' || panel === key ? '' : key;
-        drawPanel(); refreshControls(); return;
+        drawPanel(); refreshControls();
+        if (panel==='import') extra.querySelector('[data-plan-input]').focus();
+        if (key==='hide-extra') focusCell(selected);
+        return;
       }
       if (key === 'add-segment') {
         const row = selectedRow();
@@ -459,9 +575,7 @@
         model.reuseActivities(working,sourceDate,draft.date,reuseIds);
         const copies = working.tasks.slice(before);
         if (copies.length) {
-          const blank = draft.rows.length===1 && !draft.rows[0].title && !draft.rows[0].context &&
-            !draft.rows[0].comment && !draft.rows[0].segments.length && !ctx.state.tasks.some(t=>t.id===draft.rows[0].id);
-          if (blank) draft.rows.length=0;
+          if (sheet.isUnused(draft,draft.rows.at(-1))) draft.rows.pop();
           selected = draft.rows.length;
           draft.rows.push(...copies); selectedSegment=0;
         }
@@ -471,16 +585,34 @@
     }
 
     function keyboard(event) {
-      if (event.isComposing || pending || busy) return;
+      if (event.isComposing) return;
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase()==='s') {
         event.preventDefault(); save(); return;
       }
+      if (pending || busy) return;
       const cell = event.target.closest('[data-col]');
       if (!cell) return;
+      const currentRow = Number(cell.closest('[data-index]').dataset.index);
+      const col = Number(cell.dataset.col);
+      if (event.key==='Enter' && (event.ctrlKey || event.metaKey) && !event.altKey) {
+        event.preventDefault(); newAt(currentRow+(event.shiftKey?0:1)); return;
+      }
+      if (event.key==='Enter' && event.altKey && cell.tagName==='TEXTAREA') {
+        event.preventDefault(); cell.setRangeText('\n',cell.selectionStart,cell.selectionEnd,'end'); readCell(cell); return;
+      }
+      if (mode==='plan' && event.key==='Tab' && [1,2].includes(col)) {
+        if (event.shiftKey && currentRow===0 && col===1) return;
+        event.preventDefault();
+        if (event.shiftKey) focusCell(col===2 ? currentRow : currentRow-1,col===2 ? 1 : 2);
+        else if (col===1) focusCell(currentRow,2);
+        else if (currentRow+1<draft.rows.length) focusCell(currentRow+1,1);
+        else if (!sheet.isUnused(draft,draft.rows[currentRow])) newAt(draft.rows.length);
+        else btn('append-bottom').focus();
+        return;
+      }
       if (event.key==='Enter' && !event.altKey && !event.ctrlKey && !event.metaKey && cell.tagName !== 'SELECT') {
         event.preventDefault();
-        const previous = Number(cell.closest('[data-index]').dataset.index);
-        const destination = event.shiftKey ? Math.max(0,previous-1) : previous+1;
+        const destination = event.shiftKey ? Math.max(0,currentRow-1) : currentRow+1;
         if (destination === draft.rows.length) {
           draft.rows.push(sheet.newRow(draft)); selected=destination; selectedSegment=0;
           drawTable({col:Number(cell.dataset.col)});
@@ -493,7 +625,10 @@
       if (cell) select(Number(cell.closest('[data-index]').dataset.index),Number(cell.dataset.seg || 0));
     });
     dialog.addEventListener('click',activate);
-    dialog.addEventListener('input',event=>{ if (event.target.matches('textarea[data-col],input[type=time][data-col]')) readCell(event.target); });
+    dialog.addEventListener('input',event=>{
+      if (event.target.matches('textarea[data-col],input[type=time][data-col]')) readCell(event.target);
+      if (event.target.matches('[data-plan-input]')) { planText=event.target.value; updatePlanPreview(); feedback(); }
+    });
     dialog.addEventListener('change',updateField);
     dialog.addEventListener('paste',paste);
     dialog.addEventListener('keydown',keyboard);
@@ -502,10 +637,11 @@
       if (busy) return;
       if (pending) { hideConfirm(); focusCell(selected); }
       else if (menu.open) menu.open=false;
+      else if ($('.jsheet-keys').open) $('.jsheet-keys').open=false;
       else requestClose();
     });
     const warnBeforeReload = event => {
-      if (!dialog.open || !dirty()) return;
+      if (!dialog.open || (!dirty() && !planText.trim())) return;
       event.preventDefault();
       event.returnValue = '';
     };
@@ -518,7 +654,7 @@
     },{once:true});
     drawTable();
     dialog.showModal();
-    focusCell(0,1);
+    focusCell(selected,1);
   }
 
   window.JSheet = {open};

@@ -24,6 +24,12 @@ html:has(dialog.jsheet[open]) { overflow: hidden; }
 .jsheet-head p { margin: 3px 0 0; color: #536a77; font-size: .84rem; }
 .jsheet-head p::first-letter { text-transform: uppercase; }
 .jsheet .icon-btn, .jsheet .btn { border-radius: 4px; }
+.jsheet-command { display: flex; flex: none; align-items: center; gap: 12px; padding: 0 20px 12px; }
+.jsheet-modes { display: inline-flex; padding: 2px; gap: 2px; background: #eaf1f1; border: 1px solid #cbd9dc; border-radius: 4px; }
+.jsheet-modes button, .jsheet-paste-plan { min-height: 31px; padding: 4px 11px; border: 1px solid transparent; border-radius: 2px; background: transparent; font-size: .81rem; font-weight: 680; color: #45616c; }
+.jsheet-modes button[aria-pressed=true] { background: white; border-color: #bfd0cb; color: #145a50; box-shadow: 0 1px 2px #163c3e14; }
+.jsheet-paste-plan { display: flex; align-items: center; gap: 6px; color: #185f55; border-color: #b4d2c8; background: #f4faf7; }
+.jsheet-paste-plan:hover, .jsheet-paste-plan[aria-expanded=true] { background: #e1f1e9; }
 .jsheet-tools { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 5px 0; padding: 6px 13px; border-block: 1px solid #d9e4e6; background: #f5f8f8; }
 .jsheet-tool-group { display: flex; align-items: center; gap: 4px; padding-inline: 7px; }
 .jsheet-tool-group + .jsheet-tool-group { border-left: 1px solid #d6e1e3; }
@@ -63,8 +69,29 @@ html:has(dialog.jsheet[open]) { overflow: hidden; }
 .jsheet-reuse-foot { justify-content: end; }
 .jsheet-extra button[data-act=copy-rows] { color: #0e6558; background: #fff; border: 1px solid #aac8bc; }
 .jsheet-extra p { margin: 3px 0 0; }
-.jsheet-tip, .jsheet-mobile-tip { flex: none; margin: 0; padding: 8px 20px; font-size: .77rem; line-height: 1.4; color: #516871; }
-.jsheet-mobile-tip { display: none; }
+.jsheet-extra:has([data-plan-input]) { max-height: 43%; }
+.jsheet-import-label { display: block; margin: 2px 0 5px; }
+.jsheet-extra textarea { display: block; width: 100%; min-height: 50px; max-height: 100px; resize: vertical; background: white; border: 1px solid #adcbc0; border-radius: 3px; padding: 6px 8px; font-size: .84rem; color: #244856; }
+.jsheet-import-actions { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: baseline; margin-top: 6px; }
+.jsheet-import-actions label { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.jsheet-import-actions select { max-width: 100%; }
+.jsheet-extra [data-act=insert-plan] { background: #176c60; color: white; border-color: #176c60; }
+.jsheet-extra [data-act=insert-plan]:disabled { background: #e8eeeb; color: #50665d; border-color: #cbdad3; cursor: default; }
+.jsheet-extra [data-act=insert-plan]:not(:disabled):hover { color: #fff; background: #105a50; }
+.jsheet-extra [data-plan-preview] { margin-top: 6px; color: #3d595f; font-size: .78rem; }
+.jsheet-extra [data-plan-preview]:empty { display: none; }
+.jsheet-extra [data-plan-preview] ol { margin: 3px 0; padding: 0; list-style: none; background: #fff; border: 1px solid #d4e2dc; }
+.jsheet-extra [data-plan-preview] li { display: grid; grid-template-columns: 2em minmax(0,1fr) minmax(0,1.45fr); gap: 7px; padding: 3px 7px; }
+.jsheet-extra [data-plan-preview] li + li { border-top: 1px solid #e0eae5; }
+.jsheet-extra [data-plan-preview] li > * { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.jsheet-guide { flex: none; display: flex; gap: 10px; align-items: baseline; justify-content: space-between; padding: 7px 20px; }
+.jsheet-tip { margin: 0; font-size: .77rem; line-height: 1.4; color: #516871; }
+.jsheet-keys { position: relative; flex: none; font-size: .75rem; color: #45616d; }
+.jsheet-keys summary { white-space: nowrap; cursor: pointer; }
+.jsheet-keys dl { position: absolute; z-index: 6; top: 100%; right: 0; width: min(345px,80vw); margin: 4px 0; padding: 9px; background: white; border: 1px solid #c8d6db; border-radius: 3px; box-shadow: 0 4px 18px #17334725; }
+.jsheet-keys dl > div { display: flex; justify-content: space-between; align-items: baseline; gap: 6px; padding: 3px; }
+.jsheet-keys dt { font-weight: 680; color: #204852; }
+.jsheet-keys dd { margin: 0; text-align: right; }
 .jsheet-scroll { position: relative; flex: 1 1 auto; min-height: 0; overflow: auto; overscroll-behavior: contain; border-block: 1px solid #c5d3d8; background: #f6f8f9; }
 .jsheet-table { width: 100%; min-width: 1100px; border-collapse: separate; border-spacing: 0; table-layout: fixed; text-align: left; background: #fff; }
 .jsheet-col-row { width: 34px; }
@@ -78,13 +105,26 @@ html:has(dialog.jsheet[open]) { overflow: hidden; }
 .jsheet-table thead th:first-child { position: sticky; left: 0; z-index: 4; text-align: center; padding-inline: 2px; background: #0d3041; }
 .jsheet-table tbody th, .jsheet-table td { border-right: 1px solid #d4dee2; border-bottom: 1px solid #d4dee2; padding: 0; }
 .jsheet-table tbody th { position: sticky; left: 0; z-index: 1; text-align: center; color: #526a76; background: #f0f4f5; vertical-align: top; }
-.jsheet-table tbody th button { width: 100%; min-height: 38px; padding: 3px 2px; background: transparent; color: inherit; font: inherit; font-size: .74rem; font-variant-numeric: tabular-nums; font-weight: 650; border: 0; }
+.jsheet-table tbody th button { display: block; width: 100%; min-height: 24px; padding: 2px; background: transparent; color: inherit; font: inherit; font-size: .74rem; font-variant-numeric: tabular-nums; font-weight: 650; border: 0; }
+.jsheet-table tbody th .jsheet-between { min-height: 22px; font-size: 1.02rem; line-height: 17px; color: #467567; }
+.jsheet-table tbody th .jsheet-between:hover { color: #0a5648; background: #cfe6db; }
 .jsheet-table td { vertical-align: top; font-size: .84rem; }
 .jsheet-table .jsheet-current th { background: #dceee6; color: #115e53; box-shadow: inset 3px 0 #237a69; }
 .jsheet-table .jsheet-current td { background-color: #fcfefd; }
 .jsheet-table :is(textarea,select,input[type=time]) { display: block; width: 100%; max-width: none; font: inherit; color: #183d4d; line-height: 1.35; border: 1px solid transparent; border-radius: 0; background-color: transparent; }
 .jsheet-table textarea { padding: 8px; min-height: 47px; height: 100%; resize: vertical; }
 .jsheet-table td.jsheet-c-title textarea { font-weight: 650; }
+.jsheet-table textarea::placeholder { color: #70838a; font-weight: 450; }
+.jsheet-bottom-add { display: flex; align-items: center; gap: 7px; min-height: 33px; margin: 6px; padding: 5px 10px; border: 1px dashed #a4c8bb; border-radius: 3px; color: #1c6556; background: #f7fcf9; font-size: .78rem; font-weight: 650; }
+.jsheet-bottom-add:hover { background: #e8f5ec; }
+.jsheet[data-mode=plan] .jsheet-clock-tools,
+.jsheet[data-mode=plan] col:not(.jsheet-col-row,.jsheet-col-title,.jsheet-col-context),
+.jsheet[data-mode=plan] .jsheet-table thead th:not(:nth-child(1),:nth-child(3),:nth-child(4)),
+.jsheet[data-mode=plan] .jsheet-table td:not(.jsheet-c-title,.jsheet-c-context) { display: none; }
+.jsheet[data-mode=plan] .jsheet-table { min-width: 0; }
+.jsheet[data-mode=plan] .jsheet-col-title { width: 39%; }
+.jsheet[data-mode=plan] .jsheet-col-context { width: auto; }
+.jsheet[data-mode=plan] .jsheet-table textarea { min-height: 49px; }
 .jsheet-table select:not([multiple]) { width: calc(100% - 8px); min-height: 29px; margin: 4px; padding: 4px 18px 4px 5px; border-radius: 2px; background-size: 12px; background-position: right 3px center; font-size: .78rem; font-weight: 650; }
 .jsheet-table select[data-status="En proceso"] { color: #126157; background-color: #e6f2ed; }
 .jsheet-table select[data-status="Culminado"] { color: #366641; background-color: #eaf3e9; }
@@ -112,6 +152,17 @@ html:has(dialog.jsheet[open]) { overflow: hidden; }
 .jsheet-confirm button[data-act=discard] { color: #913429; border-color: #dfb7ad; }
 .jsheet-copy { position: absolute; opacity: 0; width: 1px; height: 1px; padding: 0; border: none; }
 .jsheet[aria-busy=true] .jsheet-foot { opacity: .7; }
+@media (min-width: 851px) and (min-height: 550px) {
+  .jsheet[data-mode=plan] {
+    width: min(1040px,calc(100% - 50px));
+    height: auto;
+    inset-block-end: auto;
+    min-height: min(440px,78dvh);
+    max-height: min(860px,86dvh);
+    margin: 7dvh auto auto;
+  }
+  .jsheet[data-mode=plan] .jsheet-extra { max-height: 30dvh; }
+}
 @media (max-width: 850px) {
   .jsheet { width: calc(100% - 12px); height: calc(100dvh - 16px); }
   .jsheet-head { padding: 12px 14px; }
@@ -120,8 +171,8 @@ html:has(dialog.jsheet[open]) { overflow: hidden; }
   .jsheet-tools button, .jsheet-tools summary { padding-inline: 6px; }
   .jsheet-extra { padding: 7px 12px; }
   .jsheet-details { grid-template-columns: repeat(2,minmax(0,1fr)); }
-  .jsheet-mobile-tip { display: block; padding: 0 13px 6px; }
-  .jsheet-tip { padding: 6px 13px 2px; }
+  .jsheet-command { padding: 0 13px 9px; }
+  .jsheet-guide { padding: 6px 13px; }
 }
 @media (max-width: 560px) {
   .jsheet { width: 100%; height: 100dvh; border-radius: 0; border: 0; }
@@ -133,7 +184,14 @@ html:has(dialog.jsheet[open]) { overflow: hidden; }
   .jsheet-tool-group + .jsheet-tool-group { border: 0; }
   .jsheet-tools button, .jsheet-tools summary { min-height: 28px; font-size: .76rem; padding: 4px; gap: 3px; }
   .jsheet-tools .j-icon { width: 13px; }
-  .jsheet-tip, .jsheet-mobile-tip { padding-inline: 10px; font-size: .74rem; }
+  .jsheet-command { gap: 5px; padding: 0 9px 7px; }
+  .jsheet-modes button, .jsheet-paste-plan { padding-inline: 6px; font-size: .76rem; }
+  .jsheet-guide { padding: 4px 9px; gap: 6px; }
+  .jsheet-tip { font-size: .71rem; }
+  .jsheet-keys { font-size: .7rem; }
+  .jsheet[data-mode=plan] .jsheet-col-row { width: 29px; }
+  .jsheet[data-mode=plan] .jsheet-col-title { width: 41%; }
+  .jsheet-extra [data-plan-input] { font-size: 1rem; }
   .jsheet-extra { max-height: 26%; }
   .jsheet-foot, .jsheet-confirm { flex-wrap: wrap; padding: 8px 9px; }
   .jsheet-foot-actions, .jsheet-confirm > div { margin-left: auto; }
@@ -145,6 +203,7 @@ html:has(dialog.jsheet[open]) { overflow: hidden; }
   .jsheet { height: 100dvh; }
   .jsheet-head { padding: 5px 10px; }
   .jsheet-head h2 { font-size: 1rem; }
-  .jsheet-tip, .jsheet-mobile-tip { display: none; }
+  .jsheet-guide { padding-block: 2px; }
+  .jsheet-tip { display: none; }
   .jsheet-foot, .jsheet-confirm { padding-block: 5px; }
 }

@@ -158,6 +158,36 @@
       row.priority === 'Media' && row.category === defaultCategory;
   }
 
+  function isUnused(draft, row) {
+    return !draft.baseline.some(saved => saved.id === row.id) &&
+      emptyNewRow({ ...row, segments:row.segments.filter(part => part.start || part.end) },draft.defaultCategory);
+  }
+
+  function readPlan(table) {
+    const result = [];
+    for (let i = 0; i < table.length; i++) {
+      const cells = table[i];
+      if (i === 0 && (headerStart(cells) === 1 ||
+          (table.length > 1 && cells.length === 1 && headers[1].includes(label(cells[0]))))) continue;
+      if (cells.slice(2).some(value => value.trim())) throw new Error('Línea ' + (i+1) + '. Copia solo las columnas Actividad y Contexto.');
+      const title = (cells[0] || '').trim(), context = (cells[1] || '').trim();
+      if (!title && !context) continue;
+      if (!title) throw new Error('Línea ' + (i+1) + '. Escribe la actividad que corresponde a este contexto.');
+      result.push({title,context});
+    }
+    return result;
+  }
+
+  // El plan crea filas nuevas en el orden de Excel. Sólo reutiliza una fila de captura intacta.
+  function insertPlan(draft, index, plan) {
+    if (!plan.length) return 0;
+    const position = Math.max(0,Math.min(index,draft.rows.length));
+    const discardBlank = draft.rows[position] && isUnused(draft,draft.rows[position]) ? 1 : 0;
+    const inserted = plan.map(values => newRow(draft,values));
+    draft.rows = draft.rows.slice(0,position).concat(inserted,draft.rows.slice(position+discardBlank));
+    return inserted.length;
+  }
+
   function prepareRows(draft) {
     const existing = new Set(draft.baseline.map(row => row.id));
     return draft.rows.flatMap((source, rowIndex) => {
@@ -209,5 +239,5 @@
     state.tasks = tasks;
   }
 
-  globalThis.JSheetModel = {createDraft, newRow, insertRow, moveRow, normalizeTime, parseTSV, paste, applyDay};
+  globalThis.JSheetModel = {createDraft, newRow, insertRow, moveRow, normalizeTime, parseTSV, paste, readPlan, insertPlan, isUnused, applyDay};
 })();

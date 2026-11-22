@@ -269,82 +269,8 @@
     return state;
   }
 
-  function seed() {
-    const state = empty();
-    const now = new Date();
-    const currentDate = today(now);
-    const currentTime = timeNow(now);
-    const workdays = [];
-    let day = currentDate;
-    while (workdays.length < 8) {
-      day = shiftDate(day, -1);
-      const weekday = new Date(`${day}T12:00:00Z`).getUTCDay();
-      if (weekday !== 0 && weekday !== 6) workdays.push(day);
-    }
-    const [issuance, closing, review, dashboard] = [id(), id(), id(), id()];
-    state.goals = [
-      { id: issuance, title: 'Emisión de bonos corporativos', description: 'Preparar la documentación y completar la debida diligencia para la emisión.', color: '#137F78', status: 'En curso', result: '', achievedOn: '' },
-      { id: closing, title: 'Cierre de resultados', description: 'Entregar a gerencia cifras conciliadas con las explicaciones de las variaciones.', color: '#4274C2', status: 'En curso', result: '', achievedOn: '' },
-      { id: review, title: 'Revisión de calificación', description: 'Sustentar la información financiera solicitada durante la evaluación.', color: '#AE7333', status: 'En curso', result: '', achievedOn: '' },
-      { id: dashboard, title: 'Tablero de tesorería', description: 'Consolidar los indicadores de resultados en una vista de consulta.', color: '#8069A8', status: 'Alcanzado', result: 'Se publicó el tablero validado y se entregó la guía de lectura a gerencia.', achievedOn: workdays[2] }
-    ];
-
-    function add(date, title, context, goalId, category, priority, origin, status, done, comment, hours) {
-      let segments = hours.map(([start, end]) => ({ start, end }));
-      // Permite ensayar el cronómetro en el día de apertura sin sesiones futuras del ejemplo.
-      if (date === currentDate && segments.some(segment => segment.end > currentTime)) {
-        segments = segments.filter(segment => segment.start < currentTime)
-          .map(segment => ({ ...segment, end: segment.end > currentTime ? currentTime : segment.end }));
-        status = segments.length ? 'En proceso' : 'Pendiente';
-        done = false;
-        comment = segments.length ? 'Se registró un primer avance para retomar la revisión.' : '';
-      }
-      state.tasks.push(task({ date, title, context, goalId, category, priority, origin, status, done, comment, segments }));
-    }
-
-    const control = categories[0];
-    const markets = categories[1];
-    const coordination = categories[2];
-    const scheduled = 'Planificada';
-    const done = 'Culminado';
-    add(currentDate, 'Reportes de concentración y posición', 'Actualizar el reporte diario de exposición.', closing, control, 'Alta', scheduled, done, true, 'Reporte conciliado y enviado.', [['08:00','08:10']]);
-    add(currentDate, 'Validar el resultado de operaciones financieras', 'Conciliar el tablero con el reporte de cambios e inversiones.', closing, control, 'Alta', scheduled, done, true, 'Se validaron las cifras del cierre.', [['08:10','08:30']]);
-    add(currentDate, 'Cerrar consultas del due diligence', 'Completar la respuesta pendiente del equipo comercial.', issuance, markets, 'Alta', scheduled, done, true, 'Se incorporó la confirmación al expediente y se envió la respuesta.', [['08:30','10:30']]);
-    add(currentDate, 'Revisar el alcance de auditoría', 'Precisar los entregables y revisar la primera versión del servicio.', issuance, markets, 'Media', scheduled, 'En proceso', true, 'Se remitió la versión comentada. La aprobación final sigue pendiente.', [['10:30','12:20'],['13:20','14:00']]);
-    add(currentDate, 'Documentar los acuerdos de operaciones', 'Recoger las decisiones y los responsables de la reunión.', '', coordination, 'Media', 'Imprevista', done, true, 'Acta compartida con los responsables de cada acuerdo.', [['12:20','13:20']]);
-    add(currentDate, 'Preparar el paquete de calificación', 'Atender el primer bloque de consultas financieras.', review, control, 'Alta', scheduled, 'En proceso', true, 'Primer paquete enviado para revisión.', [['15:15','17:15']]);
-    add(currentDate, 'Actualizar el prospecto marco', 'Incorporar las cifras del último cierre.', issuance, markets, 'Media', scheduled, 'Pendiente', false, '', []);
-    add(currentDate, 'Revisar el pedido de cartera', 'Contrastar los saldos con el reporte de cartera elegible.', '', control, 'Baja', 'Imprevista', 'Pendiente', false, '', []);
-    add(currentDate, 'Preparar el comentario de variaciones', 'Explicar los principales movimientos de resultados.', closing, control, 'Media', scheduled, 'Pendiente', false, '', []);
-
-    const milestones = [
-      ['Consolidar respuestas del expediente', 'Cruzar las respuestas con la lista de pendientes.', issuance, markets, 'Se consolidó la matriz y se identificó una consulta abierta.'],
-      ['Conciliar los rubros del cierre', 'Revisar los resultados por producto.', closing, control, 'Se documentó la conciliación del cierre.'],
-      ['Entregar el tablero validado', 'Presentar los indicadores y su guía de lectura.', dashboard, control, 'Tablero publicado y guía entregada.'],
-      ['Organizar los anexos de calificación', 'Ordenar la información por bloque de consultas.', review, control, 'Índice de anexos enviado para revisión.'],
-      ['Validar los indicadores del tablero', 'Contrastar los indicadores contra las fuentes de cierre.', dashboard, control, 'Tres conciliaciones aprobadas.'],
-      ['Circular el borrador del prospecto', 'Solicitar comentarios sobre las cifras de la emisión.', issuance, markets, 'Borrador distribuido a las áreas revisoras.'],
-      ['Revisar la ficha de la emisión', 'Preparar las características para discusión.', issuance, markets, 'Ficha preparada para la reunión de revisión.'],
-      ['Definir los indicadores del tablero', 'Acordar el contenido de la vista de resultados.', dashboard, control, 'Se acordaron los indicadores y su fuente de información.']
-    ];
-    for (let index = 0; index < workdays.length; index++) {
-      const date = workdays[index];
-      const [title, context, goalId, category, comment] = milestones[index];
-      add(date, 'Control de posición diaria', 'Conciliar saldos y variaciones.', closing, control, 'Media', scheduled, done, true,
-        'Cifras revisadas para el reporte diario.', [['08:00', index % 2 === 0 ? '08:25' : '08:40']]);
-      const workBlocks = index === 0 ? [['09:00', '10:15'], ['11:10', '12:25']]
-        : [['09:00', ['11:30','10:40','12:00','11:00'][index % 4]]];
-      add(date, title, context, goalId, category, 'Alta', scheduled, done, true, comment, workBlocks);
-      if (index % 2 === 0) {
-        add(date, 'Atender consulta de cifras', 'Preparar el detalle solicitado por el equipo.', '', coordination, 'Media', 'Imprevista', done, true,
-          'Se aclaró el origen de la variación.', [['15:00', '15:45']]);
-      }
-    }
-    return state;
-  }
-
   globalThis.JModel = {
-    id, today, timeNow, shiftDate, formatDate, minutes, duration, empty, seed, task, validate, reusableActivities, reuseActivities,
+    id, today, timeNow, shiftDate, formatDate, minutes, duration, empty, task, validate, reusableActivities, reuseActivities,
     categoryList, categoryOptions, defaultCategory, categoryForNewTask, saveCategory, setCategoryArchived,
     categories: Object.freeze(categories), priorities: Object.freeze(priorities),
     origins: Object.freeze(origins), statuses: Object.freeze(statuses)
