@@ -1,6 +1,5 @@
-// Completa estos dos valores para conectar tu propio proyecto de Supabase.
-// Con ambos en blanco se abre la agenda de demostración en este navegador.
+// Configuración pública de Supabase para Work Hub.
 window.JORNADA_CONFIG = {
-  supabaseUrl: "",
-  supabasePublishableKey: ""
+  supabaseUrl: "https://nwrojfzqksbjdzbdkngu.supabase.co",
+  supabasePublishableKey: "sb_publishable_G4EE1tUs5ovPwrNwqk99DQ_MESpIDzo"
 };
