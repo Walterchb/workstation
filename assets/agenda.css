@@ -133,7 +133,32 @@
 .jd-view-switch button { display: inline-flex; justify-content: center; align-items: center; gap: 5px; min-height: 29px; padding: 4px 9px; color: #526571; background: transparent; border: 1px solid transparent; border-radius: 3px; font: inherit; font-size: .81rem; font-weight: 650; line-height: 1.3; }
 .jd-view-switch button:hover { color: #176457; background: #e8efec; }
 .jd-view-switch button[aria-pressed=true] { color: #125e53; background: #fff; border-color: #b8cdca; box-shadow: 0 1px 2px #184d3d0e; }
-.jd-view .jd-edit-day { min-height: 35px; padding: 7px 12px; border-radius: 4px; font-size: .85rem; font-weight: 700; white-space: nowrap; }
+.jd-view .jd-edit-day {
+  width: 38px; height: 38px; min-height: 0; padding: 0; display: grid; place-items: center;
+  justify-self: end; border-radius: 4px;
+}
+.jd-filters {
+  grid-column: 1 / -1; display: flex; align-items: center; flex-wrap: wrap; gap: 7px 16px;
+  min-width: 0; border-top: 1px solid #e3eaed; padding-top: 9px;
+}
+.jd-filter-control { min-width: 0; display: inline-flex; gap: 7px; align-items: center; color: #47606b; font-size: .75rem; font-weight: 650; }
+.jd-filter-control select:not([multiple]) {
+  min-width: 0; width: 8rem; min-height: 30px; padding: 4px 23px 4px 8px;
+  border: 1px solid #cad8dc; border-radius: 3px; background-color: #fff;
+  background-position: right 6px center; background-size: 12px; font: inherit; font-weight: 500;
+  color: #284752; text-overflow: ellipsis; cursor: pointer;
+}
+.jd-goal-filter select:not([multiple]) { width: clamp(9rem, 20vw, 16rem); }
+.jd-filter-control select[data-active] { border-color: #78a69e; background-color: #eff8f5; color: #13594e; }
+.jd-filter-clear {
+  padding: 4px 2px; background: transparent; border: 0; color: #17695c; font: inherit; font-size: .75rem; font-weight: 650; cursor: pointer;
+}
+.jd-filter-clear:hover { text-decoration: underline; }
+.jd-filter-count { margin-left: auto; color: #556a75; font-size: .75rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
+@media (pointer: coarse) {
+  .jd-view .jd-edit-day { width: 44px; height: 44px; }
+  .jd-filter-control select:not([multiple]), .jd-filter-clear { min-height: 36px; }
+}
 
 .jd-calendar, .jd-list-view { min-width: 0; padding: 0 var(--jd-gutter) 16px; }
 .jd-hatch-key, .jd-scale-picker { display: inline-flex; align-items: center; gap: 6px; color: #586b75; font-size: .78rem; line-height: 1.4; }
@@ -162,6 +187,7 @@
   position: relative; height: var(--grid-height); min-height: 0; isolation: isolate;
   background: repeating-linear-gradient(135deg,#fff 0 5px,#ecf1f3 5px 8px);
 }
+.jd-activities[data-filtered] .jd-grid { background: #f8fafb; }
 .jd-grid::before { content: ''; position: absolute; inset: 0 auto 0 0; width: var(--jd-hour-width); background: #fcfdfd; border-right: 1px solid #cbd8dd; pointer-events: none; }
 .jd-grid-rule { position: absolute; left: 0; right: 0; height: 0; z-index: 0; border-top: 1px solid #cedbe0; pointer-events: none; }
 .jd-grid-rule time {
@@ -327,7 +353,12 @@
   .jd-activities-head .jd-schedule-meta { grid-column: 1/-1; margin: 0 0 3px; }
   .jd-view-switch { grid-column: 1; justify-self: start; }
   .jd-view-switch button { padding-inline: 6px; }
-  .jd-view .jd-edit-day { grid-column: 2; min-height: 33px; padding: 6px 7px; font-size: .78rem; }
+  .jd-view .jd-edit-day { grid-column: 2; }
+  .jd-filters { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: 5px 10px; }
+  .jd-filter-control { display: grid; gap: 2px; }
+  .jd-filter-control select:not([multiple]) { width: 100%; }
+  .jd-filter-clear { justify-self: start; }
+  .jd-filter-count { grid-column: 2; justify-self: end; }
   .jd-grid-rule time { padding-inline: 0; }
 }
 
@@ -347,7 +378,6 @@
 @container jornada (max-width: 430px) {
   .jd-view-switch button { gap: 3px; padding-inline: 4px; }
   .jd-view-switch button svg { width: 12px; }
-  .jd-view .jd-edit-day { gap: 3px; }
 }
 
 .jd-detail-actions { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:8px; padding-top:10px; }
@@ -355,11 +385,6 @@
 @container jornada (max-width: 430px) {
   .jd-view-switch button svg { display:none; }
   .jd-view-switch button { font-size:.75rem; padding-inline:5px; }
-}
-@container jornada (max-width: 365px) {
-  .jd-view:not([data-mode="week"]) .jd-view-switch,
-  .jd-view .jd-edit-day { grid-column:1/-1; }
-  .jd-view .jd-edit-day { justify-self:start; }
 }
 
 /* Cortar en líneas enteras impide que el borde de un tramo muestre media letra. */

@@ -54,7 +54,7 @@
     const visible = days(ctx.state,ctx.date);
     const goals = new Map(ctx.state.goals.map(g=>[g.id,g]));
     const grouped = new Map(visible.map(day=>[day,[]]));
-    for (const task of ctx.state.tasks) grouped.get(task.date)?.push(task);
+    for (const task of ctx.visibleWeekTasks || ctx.state.tasks) grouped.get(task.date)?.push(task);
     const columns = visible.map(date=>{
       const tasks = grouped.get(date);
       return {
@@ -175,7 +175,7 @@
       '" data-week-end="' + week.end + '" style="--jw-days:' + columns.length + ';--jw-min-width:' + minWidth +
       'px;--jw-height:' + scale.total + 'px">' +
       '<div class="jw-overview">' + totals(columns) + briefIndex(columns,week.start,scale) + '</div>' +
-      (noItems ? '<p class="jw-empty">Esta semana aún no tiene actividades.</p>' : '') +
+      (noItems ? '<p class="jw-empty">' + (ctx.filtered ? 'Ninguna actividad coincide con los filtros de esta semana.' : 'Esta semana aún no tiene actividades.') + '</p>' : '') +
       '<div class="jw-frame"><div class="jw-head-scroll"><div class="jw-day-heads"><span class="jw-corner">Hora</span>' +
         columns.map(day=>dayHead(day,ctx)).join('') + '</div></div>' +
       '<div class="jw-scroller" tabindex="0" role="region" aria-label="Calendario de lunes a ' +

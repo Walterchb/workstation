@@ -85,6 +85,9 @@
   let liveScale = null;
   let density = "detailed";
   let mode = "calendar";
+  const noGoalFilter = "__none__";
+  let statusFilter = "";
+  let goalFilter = "";
   const scrollPositions = new Map();
   const headers = [
     ["comments","Comentarios"], ["start","Inicio"], ["end","Cierre"],
@@ -93,6 +96,24 @@
   let current = null;
   let detail = null;
   let pending = false;
+
+  function goalValue(id) {
+    return id === noGoalFilter || id.startsWith("~") ? "~" + id : id;
+  }
+
+  function filterBar(goals,visible,total,filtered) {
+    const option = (value,label,selected) =>
+      `<option value="${esc(value)}"${value===selected ? " selected" : ""}>${esc(label)}</option>`;
+    const statusOptions = [option("","Todos",statusFilter),...model.statuses.map(status=>option(status,status,statusFilter))];
+    const goalOptions = [option("","Todos",goalFilter),option(noGoalFilter,"Sin objetivo",goalFilter),
+      ...[...goals.values()].sort((a,b)=>a.title.localeCompare(b.title,"es")).map(g=>option(goalValue(g.id),g.title,goalFilter))];
+    const count = filtered ? visible + " de " + plural(total,"actividad","actividades") : plural(total,"actividad","actividades");
+    return `<div class="jd-filters" role="group" aria-label="Filtros de actividades">
+      <label class="jd-filter-control"><span>Estado</span><select aria-label="Filtrar por estado" aria-describedby="jd-filter-count" data-jd-status-filter${statusFilter ? " data-active" : ""}>${statusOptions.join("")}</select></label>
+      <label class="jd-filter-control jd-goal-filter"><span>Objetivo</span><select aria-label="Filtrar por objetivo" aria-describedby="jd-filter-count" data-jd-goal-filter${goalFilter ? " data-active" : ""}>${goalOptions.join("")}</select></label>
+      ${filtered ? '<button type="button" class="jd-filter-clear" data-jd-clear-filters aria-label="Limpiar filtros">Limpiar filtros</button>' : ""}
+      <span class="jd-filter-count" id="jd-filter-count" role="status">${count}</span></div>`;
+  }
 
   function paint(goal) {
     const color = accent(goal);
@@ -300,15 +321,15 @@
       <div class="jd-row-data" data-has-comment="${!!task.comment}">${eventHead(task,entry,place)}${taskFields(task,entry,place)}</div></li>`;
   }
 
-  function listOfEntries(entries,planRows) {
+  function listOfEntries(entries,planRows,filtered) {
     const rows = entries.map(entry => activityRow(entry.task,entry,entry.goal)).join("") + planRows;
     return `<section class="jd-list-view" aria-label="Lista de actividades"><div class="jd-list-scroll" tabindex="0" role="region" aria-label="Actividades en orden de inicio y tareas sin horario"><div class="jd-list-canvas">
       <div class="jd-list-head" aria-hidden="true">${columnTitles()}</div>
-      ${rows ? '<ol class="jd-readable-list" aria-label="Actividades del día">'+rows+'</ol>' : '<p class="jd-list-empty">Aún no hay actividades para este día.</p>'}
+      ${rows ? '<ol class="jd-readable-list" aria-label="Actividades del día">'+rows+'</ol>' : '<p class="jd-list-empty">' + (filtered ? "Ninguna actividad coincide con los filtros de este día." : "Aún no hay actividades para este día.") + '</p>'}
     </div></div></section>`;
   }
 
-  function calendar(entries,planRows,ctx) {
+  function calendar(entries,planRows,ctx,filtered) {
     const low = Math.min(dayStart,...entries.map(entry => Math.floor(entry.start/60)*60));
     const high = Math.max(dayStart + 60,...entries.map(entry => Math.ceil(Math.max(entry.start+1,entry.end)/60)*60));
     const content = entries.map(estimatedContent);
@@ -322,7 +343,7 @@
         <div class="jd-cal-head" aria-hidden="true">${columnTitles()}</div>
         <div class="jd-grid" data-start-minute="${low}" data-end-minute="${high}" data-pixels-per-hour="${hourScales[density]}" data-hour-heights="${scale.heights.join(",")}" style="--grid-height:${scale.total}px;height:var(--grid-height)">${rules.join("")}
           ${entries.length ? `<ol class="jd-events" aria-label="Tramos por hora">${entries.map((entry,i)=>scheduledSlot(entry,scale,content[i],ctx)).join("")}</ol>` :
-          '<p class="jd-calendar-empty">Aún no hay tramos registrados.</p>'}</div>
+          '<p class="jd-calendar-empty">' + (filtered ? (planRows ? "Solo hay coincidencias sin horario." : "Ninguna actividad coincide con los filtros de este día.") : "Aún no hay tramos registrados.") + '</p>'}</div>
         ${planRows ? '<ol class="jd-plan-list" aria-label="Actividades sin horario en orden del plan">'+planRows+'</ol>' : ''}
       </div></div></section>`;
   }
@@ -380,7 +401,7 @@
       const task = detail?.editTask;
       detail = null;
       dialog.remove();
-      locate(current?.el,"[data-jd-detail],[data-week-detail]",key)?.focus({preventScroll:true});
+      (locate(current?.el,"[data-jd-detail],[data-week-detail]",key) || current?.el.querySelector("[data-jd-status-filter]"))?.focus({preventScroll:true});
       if (task && current) window.JSheet.open({...current.ctx,date:task.date},{taskId:task.id,mode:"full"});
     },{once:true});
     dialog.addEventListener("change",quickChange);
@@ -436,7 +457,7 @@
         reflect(id,field,saved ? value : current.ctx.state.tasks.find(row=>row.id === id)?.[field] ?? previous);
         const container = key.place === "detail" ? detail?.dialog : current.el;
         if (hadFocus && (!document.activeElement || document.activeElement === document.body || document.activeElement === input)) {
-          locate(container,"[data-jd-field]",key)?.focus({preventScroll:true});
+          (locate(container,"[data-jd-field]",key) || container?.querySelector("[data-jd-status-filter]"))?.focus({preventScroll:true});
         }
       }
     }
@@ -473,6 +494,9 @@
   function render(el,ctx) {
     if (observer) { observer.disconnect(); observer=null; }
     liveScale=null;
+    if (current && (current.el !== el || current.ctx.user?.id !== ctx.user?.id)) {
+      statusFilter = goalFilter = "";
+    }
     const previous = el.querySelector(".jd-view");
     const sameDate = previous?.dataset.date === ctx.date;
     const panelTop = sameDate ? previous.querySelector(".jd-activities").getBoundingClientRect().top : 0;
@@ -482,35 +506,45 @@
     const detailKey = active?.matches("[data-jd-detail],[data-week-detail]") ? {...active.dataset} : null;
     const weekDate = active?.dataset.weekDay;
     const stableFocus = [".jw-plan-more summary",".jw-short-index summary",".jw-scroller",".jd-cal-scroll",".jd-list-scroll",
-      "[data-jd-scale]","[data-jd-jump-plan]","[data-edit-day]:not(:disabled)"].find(selector=>active?.matches(selector));
-    const tasks = ctx.state.tasks.filter(task=>task.date === ctx.date);
-    const goals = new Map(ctx.state.goals.map(goal=>[goal.id,goal]));
-    const entries = entriesFor(tasks,goals,ctx.date);
-    current = {el,ctx,tasks,goals,entries};
+      "[data-jd-scale]","[data-jd-jump-plan]","[data-jd-status-filter]","[data-jd-goal-filter]","[data-jd-clear-filters]","[data-edit-day]:not(:disabled)"].find(selector=>active?.matches(selector));
     const week = mode === "week";
-    const unplaced = tasks.filter(task=>!task.segments.length);
+    const period = week ? window.JWeek.range(ctx.date) : {start:ctx.date,end:ctx.date};
+    const periodTasks = ctx.state.tasks.filter(task=>task.date >= period.start && task.date <= period.end);
+    const goals = new Map(ctx.state.goals.map(goal=>[goal.id,goal]));
+    if (goalFilter && goalFilter !== noGoalFilter && !ctx.state.goals.some(g=>goalValue(g.id)===goalFilter)) goalFilter = "";
+    const filtered = Boolean(statusFilter || goalFilter);
+    const visibleTasks = filtered ? periodTasks.filter(task=>
+      (!statusFilter || task.status===statusFilter) &&
+      (!goalFilter || (goals.has(task.goalId) ? goalValue(task.goalId) : noGoalFilter)===goalFilter)
+    ) : periodTasks;
+    const dayEntries = week ? [] : entriesFor(periodTasks,goals,ctx.date);
+    const visibleTasksSet = filtered && !week ? new Set(visibleTasks) : null;
+    const entries = visibleTasksSet ? dayEntries.filter(entry=>visibleTasksSet.has(entry.task)) : dayEntries;
+    current = {el,ctx,goals};
+    const unplaced = week ? [] : visibleTasks.filter(task=>!task.segments.length);
     const planRows = week ? "" : unplaced.map(task=>activityRow(task,null,goals.get(task.goalId))).join("");
-    const schedule = week ? '<div class="jd-week-host"></div>' : mode === "calendar" ? calendar(entries,planRows,ctx) : listOfEntries(entries,planRows);
+    const schedule = week ? '<div class="jd-week-host"></div>' : mode === "calendar" ? calendar(entries,planRows,ctx,filtered) : listOfEntries(entries,planRows,filtered);
     const last = entries[entries.length-1];
     const end = last && (last.segment.end || (last.live ? "ahora" : "sin cierre"));
-    const hatchKey = mode === "calendar" ? '<span class="jd-hatch-key"><i aria-hidden="true"></i><span class="jd-sr">Rayado: </span>Sin registro</span>' : "";
+    const hatchKey = mode === "calendar" && !filtered ? '<span class="jd-hatch-key"><i aria-hidden="true"></i><span class="jd-sr">Rayado: </span>Sin registro</span>' : "";
     const planCount = unplaced.length + " sin horario";
     const jump = unplaced.length ? `<span aria-hidden="true"> · </span><button type="button" data-jd-jump-plan title="Ir a la primera actividad sin horario">${planCount}</button>` : "";
     const meta = entries.length ? `<p class="jd-schedule-meta">${esc(entries[0].segment.start)} – ${esc(end)}<span aria-hidden="true"> · </span>${plural(entries.length,"tramo","tramos")}${jump} ${hatchKey}</p>` :
       unplaced.length ? `<p class="jd-schedule-meta">${plural(unplaced.length,"actividad sin horario","actividades sin horario")}</p>` : "";
     const modeButtons = [["calendar","Horario","calendar-days"],["list","Lista","list"],["week","Semana","calendar-days"]].map(([key,title,icon]) =>
       `<button type="button" data-jd-mode="${key}" aria-pressed="${mode===key}">${ctx.icon(icon,15)} ${title}</button>`).join("");
-    el.innerHTML = `<div class="jd-view" data-date="${esc(ctx.date)}" data-mode="${mode}"><h1 class="jd-sr">${week ? "Agenda semanal" : "Actividades"}, ${esc(model.formatDate(ctx.date))}</h1>${week ? "" : `<div class="jd-overview">${stats(tasks,ctx)}${timeline(entries,ctx)}</div>`}
-      <section class="jd-activities" aria-labelledby="jd-schedule-title"><header class="jd-activities-head${week ? " jd-week-heading" : ""}"><div class="jd-activities-intro">
+    el.innerHTML = `<div class="jd-view" data-date="${esc(ctx.date)}" data-mode="${mode}"><h1 class="jd-sr">${week ? "Agenda semanal" : "Actividades"}, ${esc(model.formatDate(ctx.date))}</h1>${week ? "" : `<div class="jd-overview">${stats(periodTasks,ctx)}${timeline(dayEntries,ctx)}</div>`}
+      <section class="jd-activities" aria-labelledby="jd-schedule-title"${filtered ? " data-filtered" : ""}><header class="jd-activities-head${week ? " jd-week-heading" : ""}"><div class="jd-activities-intro">
         <h2 id="jd-schedule-title">${week ? "Agenda semanal" : "Actividades del día"}</h2>${week ? "" : meta}</div>${mode === "calendar" ? scalePicker() : ""}
         <div class="jd-view-switch" role="group" aria-label="Vista de actividades">${modeButtons}</div>
-        ${week ? "" : `<button type="button" class="btn primary jd-edit-day" data-edit-day ${pending ? "disabled" : ""}>${ctx.icon("pencil",16)} Editar actividades</button>`}</header>
+        ${week ? "" : `<button type="button" class="btn primary jd-edit-day" data-edit-day aria-label="Editar actividades" title="Editar actividades" ${pending ? "disabled" : ""}>${ctx.icon("pencil",17)}</button>`}
+        ${filterBar(goals,visibleTasks.length,periodTasks.length,filtered)}</header>
         ${schedule}</section></div>`;
     const view = el.querySelector(".jd-view");
-    if (!week) window.JTimeline.bind(view.querySelector(".jd-timeline"),entries,ctx,hourLabel);
+    if (!week) window.JTimeline.bind(view.querySelector(".jd-timeline"),dayEntries,ctx,hourLabel);
     if (week) {
       window.JWeek.render(view.querySelector(".jd-week-host"),{
-        ...ctx,weekEntries:entriesFor,eventPaint:paint,openDay:date=>openDay(date,ctx),
+        ...ctx,visibleWeekTasks:visibleTasks,filtered,weekEntries:entriesFor,eventPaint:paint,openDay:date=>openDay(date,ctx),
         weekScale:(low,high,rows,content,options={}) => makeScale(low,high,rows,content,{baseHeight:42,maxHourHeight:96,...options,compact:false}),
         openEntry:(id,ordinal,trigger)=>openDetail(trigger,{id,segment:String(ordinal ?? 1),place:trigger?.dataset.place || "week"})
       });
@@ -521,7 +555,23 @@
       });
     }
     pinHeadings(view,entries);
+    function applyFilters(focusSelector) {
+      const pinned = view.querySelector(".jd-activities").getBoundingClientRect().top < 0;
+      current.ctx.render();
+      if (pinned) el.querySelector(".jd-activities").scrollIntoView({block:"start",behavior:"instant"});
+      el.querySelector(focusSelector)?.focus({preventScroll:true});
+    }
     view.addEventListener("change",event => {
+      if (event.target.matches("[data-jd-status-filter]")) {
+        statusFilter = event.target.value;
+        applyFilters("[data-jd-status-filter]");
+        return;
+      }
+      if (event.target.matches("[data-jd-goal-filter]")) {
+        goalFilter = event.target.value;
+        applyFilters("[data-jd-goal-filter]");
+        return;
+      }
       if (!event.target.matches("[data-jd-scale]")) { quickChange(event); return; }
       const next = event.target.value;
       if (!Object.hasOwn(hourScales,next)) return;
@@ -532,6 +582,11 @@
     view.addEventListener("click",event => {
       const btn = event.target.closest("button");
       if (!btn) return;
+      if (btn.matches("[data-jd-clear-filters]")) {
+        statusFilter = goalFilter = "";
+        applyFilters("[data-jd-status-filter]");
+        return;
+      }
       if (btn.matches("[data-edit-day]")) { window.JSheet.open(current.ctx); return; }
       if (btn.matches("[data-jd-detail]")) { openDetail(btn); return; }
       if (btn.matches("[data-jd-jump-plan]")) {

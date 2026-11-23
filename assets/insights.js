@@ -99,8 +99,9 @@
   function rangeControls(ctx, range) {
     const controls = [['day', 'Diario'], ['week', 'Semanal'], ['month', 'Mensual'], ['custom', 'Rango']];
     const periodName = `${shortDate(range.from, range.from.slice(0, 4) !== range.to.slice(0, 4))} – ${shortDate(range.to, true)}`;
+    const today = '<button type="button" class="jd-today" data-analysis-today>Hoy</button>';
     return `<section class="ji-controls" aria-label="Período del análisis"><div class="ji-switch" role="group" aria-label="Escala del período">${controls.map(([id, title]) => `<button type="button" data-period="${id}" aria-pressed="${filters.period === id}">${title}</button>`).join('')}</div>
-      ${filters.period === 'custom' ? `<form class="ji-custom" data-range-form><label>Desde <input type="date" name="from" min="0001-01-01" max="9999-12-31" required value="${esc(range.from)}"></label><label>Hasta <input type="date" name="to" min="0001-01-01" max="9999-12-31" required value="${esc(range.to)}"></label><button class="btn ghost" type="submit">Aplicar</button></form>` : `<div class="ji-range"><button class="icon-btn" data-step="-1" aria-label="Período anterior">${ctx.icon('chevron-left', 17)}</button>${filters.period === 'day' ? `<label class="ji-date-control">${ctx.icon('calendar',16)}<input type="date" data-analysis-date aria-label="Fecha del análisis diario" min="0001-01-01" max="9999-12-31" value="${esc(range.from)}"></label>` : `<span>${ctx.icon('calendar',16)} ${esc(periodName)}</span>`}<button class="icon-btn" data-step="1" aria-label="Período siguiente">${ctx.icon('chevron-right', 17)}</button></div>`}</section>`;
+      ${filters.period === 'custom' ? `<form class="ji-custom" data-range-form>${today}<label>Desde <input type="date" name="from" min="0001-01-01" max="9999-12-31" required value="${esc(range.from)}"></label><label>Hasta <input type="date" name="to" min="0001-01-01" max="9999-12-31" required value="${esc(range.to)}"></label><button class="btn ghost" type="submit">Aplicar</button></form>` : `<div class="ji-range">${today}<button class="icon-btn" data-step="-1" aria-label="Período anterior">${ctx.icon('chevron-left', 17)}</button>${filters.period === 'day' ? `<label class="ji-date-control">${ctx.icon('calendar',16)}<input type="date" data-analysis-date aria-label="Fecha del análisis diario" min="0001-01-01" max="9999-12-31" value="${esc(range.from)}"></label>` : `<span>${ctx.icon('calendar',16)} ${esc(periodName)}</span>`}<button class="icon-btn" data-step="1" aria-label="Período siguiente">${ctx.icon('chevron-right', 17)}</button></div>`}</section>`;
   }
 
   function metric(title, value, note, icon, tone, ctx) {
@@ -171,6 +172,16 @@
       filters.period = btn.dataset.period;
       ctx.render();
     }));
+    el.querySelector('[data-analysis-today]').addEventListener('click', () => {
+      const today = model().today();
+      filters.anchor = today;
+      if (filters.period === 'custom') {
+        filters.from = today;
+        filters.to = today;
+      }
+      ctx.render();
+      el.querySelector('[data-analysis-today]')?.focus({preventScroll:true});
+    });
     el.querySelectorAll('[data-step]').forEach(btn => btn.addEventListener('click', () => {
       const step = Number(btn.dataset.step);
       if (filters.period === 'month') {
@@ -201,7 +212,10 @@
         ctx.render();
       });
     }
-    el.querySelector('[data-print]').addEventListener('click', () => showReport(managementReport(s,filters.period),ctx));
+    el.querySelector('[data-print]').addEventListener('click', () => {
+      const author = window.JProfile?.display(ctx.state, ctx.user);
+      showReport(managementReport(s, filters.period, author), ctx);
+    });
     el.querySelector('[data-csv]').addEventListener('click', () => exportCSV(s));
     el.querySelectorAll('[data-task]').forEach(b => b.addEventListener('click', () => ctx.openTask(b.dataset.task)));
     const panel = el.querySelector('[data-distribution]');
@@ -248,7 +262,7 @@
   const longDate = value => model().formatDate(value, {day:'numeric',month:'long',year:'numeric'});
   const pctTime = (minutes, sum) => sum ? `${Math.round(100 * minutes / sum)}%` : '—';
 
-  function managementReport(s, period) {
+  function managementReport(s, period, author = null) {
     const daily = period === 'day';
     const dateText = daily ? longDate(s.range.from) : `${shortDate(s.range.from,true)} al ${shortDate(s.range.to,true)}`;
     const milestones = [...s.achieved].sort((a,b) => b.achievedOn.localeCompare(a.achievedOn) || a.title.localeCompare(b.title,'es'));
@@ -342,7 +356,7 @@
 
     const footnote = 'El tiempo registrado suma los tramos con hora de cierre. El cumplimiento del plan cuenta las actividades planificadas marcadas en «¿Se hizo?».'
       + (s.tasks.length ? ' En el registro de actividades, una raya indica un campo sin completar.' : '');
-    return {period,from:s.range.from,to:s.range.to,title:reportTitles[period],periodLabel:dateText,takeaway,metrics,sections,footnote,
+    return {period,from:s.range.from,to:s.range.to,title:reportTitles[period],periodLabel:dateText,author,takeaway,metrics,sections,footnote,
       filename:`Informe_${({day:'diario',week:'semanal',month:'mensual',custom:'de_gestion'})[period]}_${s.range.from}${s.range.from===s.range.to?'':'_'+s.range.to}.pdf`};
   }
 
@@ -368,7 +382,11 @@
   }
 
   function reportHTML(report) {
-    return `<article class="ji-paper"><header class="ji-paper-head"><h2 id="ji-report-title">${esc(report.title)}</h2><p>${esc(report.periodLabel)}</p></header>
+    const author = report.author;
+    const byline = author ? `<span class="ji-paper-author"><span class="ji-paper-avatar" aria-hidden="true">${esc(author.initials)}${author.photo ? `<img src="${esc(author.photo)}" alt="">` : ''}</span><span>${esc(author.name)}</span></span>` : '';
+    return `<article class="ji-paper"><header class="ji-paper-head">
+      <div class="ji-paper-masthead"><span class="ji-paper-brand"><img src="./assets/icons/mark.svg" alt="" width="26" height="26">Work Hub</span>${byline}</div>
+      <h2 id="ji-report-title">${esc(report.title)}</h2><p>${esc(report.periodLabel)}</p></header>
       <p class="ji-paper-lead">${esc(report.takeaway)}</p>
       <dl class="ji-paper-metrics" style="--ji-metric-count:${report.metrics.length}">${report.metrics.map(m=>`<div><dt>${esc(m.label)}</dt><dd>${esc(m.value)}</dd><small>${esc(m.note)}</small></div>`).join('')}</dl>
       ${report.sections.map(reportSection).join('')}
@@ -401,6 +419,8 @@
     dialog.className='ji-report-dialog'; dialog.setAttribute('aria-labelledby','ji-report-title');
     const trigger=document.activeElement;
     dialog.innerHTML=`<div class="ji-report-tools"><span>Vista previa del informe</span><div><button type="button" class="btn ghost" data-print-paper>${ctx.icon('printer',16)} Imprimir</button><button type="button" class="btn primary" data-pdf>${ctx.icon('download',16)} Descargar PDF</button><button type="button" class="icon-btn" aria-label="Cerrar informe" data-close-report>${ctx.icon('x',18)}</button></div></div><div class="ji-report-message" role="status" hidden></div><div class="ji-paper-wrap">${reportHTML(report)}</div>`;
+    const portrait = dialog.querySelector('.ji-paper-avatar img');
+    portrait?.addEventListener('error', () => portrait.remove(), {once:true});
     document.body.append(dialog);
     const download=dialog.querySelector('[data-pdf]'),message=dialog.querySelector('.ji-report-message');
     download.addEventListener('click',async()=>{
@@ -600,7 +620,9 @@
   }
 
   window.JInsights = {
-    makeReport(state, range, period) { return managementReport(summarize(state,range),period); },
+    makeReport(state, range, period, user) {
+      return managementReport(summarize(state, range), period, window.JProfile?.display(state, user));
+    },
     render(el, ctx, view) { if (view === 'goals') goalsView(el, ctx); else analysisView(el, ctx); },
     reset() { Object.assign(filters, { period: 'day', anchor: '', lastDate: '', from: '', to: '', scope: 'Todos', goalId: '', grouping: 'goals' }); }
   };

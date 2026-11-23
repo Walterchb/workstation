@@ -105,7 +105,7 @@
 
   function getContext() {
     const day=date;
-    return {state,date:day,setDate,mutate,toast:notify,render,icon,navigate,
+    return {state,user:session?.user,date:day,setDate,mutate,toast:notify,render,icon,navigate,
       updateTaskField:(id,field,value)=>updateTaskField(day,id,field,value),
       updateTaskFieldForDate:updateTaskField,
       openTask:(id=null,defaults={})=>window.JEditor.open(id,defaults,getContext())};

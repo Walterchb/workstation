@@ -50,6 +50,7 @@
 .jw-plan-task span { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; }
 .jw-plan-task:hover { background: #e9f1ee; text-decoration: underline; }
 .jw-board { height: var(--jw-height); position: relative; background: repeating-linear-gradient(135deg,#fff 0 5px,#eff3f4 5px 7px); }
+.jd-activities[data-filtered] .jw-board { background: #f8fafb; }
 .jw-ruler, .jw-lane { min-height: 0; height: 100%; }
 .jw-rules { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
 .jw-rules i { position: absolute; left: 0; right: 0; border-top: 1px solid #cbd8dc; }
