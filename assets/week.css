@@ -14,14 +14,18 @@
 .jw-short-index { max-width: 100%; font-size: .6875rem; color: #3e5c67; }
 .jw-short-index summary { width: fit-content; cursor: pointer; font-weight: 650; padding: 3px 0; }
 .jw-short-index[open] { flex: 1 0 100%; }
-.jw-short-index ul { list-style: none; display: flex; flex-wrap: wrap; gap: 3px; max-height: 122px; overflow: auto; padding: 4px 0; margin: 0; }
+.jw-short-index ul { list-style: none; display: flex; flex-wrap: wrap; gap: 3px; padding: 4px 0; margin: 0; }
 .jw-short-index button { padding: 4px 6px; max-width: 100%; text-align: left; border: 1px solid #d1dfe0; border-radius: 0; color: #284c56; background: #f1f6f5; }
 .jw-short-index time { font-weight: 720; }
 .jw-week .jw-empty { margin: 0 0 7px; color: var(--jw-muted); }
-.jw-scroller { position: relative; max-width: 100%; max-height: min(76dvh,900px); overflow: auto; overscroll-behavior: contain; border: 1px solid var(--jw-line); background: #fff; }
-.jw-sheet { min-width: var(--jw-min-width); }
+.jw-frame { min-width: 0; border: 1px solid var(--jw-line); background: #fff; }
+.jw-head-scroll, .jw-scroller { max-width: 100%; overflow-x: auto; overflow-y: hidden; }
+.jw-head-scroll { position: sticky; top: var(--jd-toolbar-height,0px); z-index: 5; scrollbar-width: none; }
+.jw-head-scroll::-webkit-scrollbar { display: none; }
+.jw-scroller { position: relative; }
+.jw-sheet, .jw-day-heads { min-width: var(--jw-min-width); }
 .jw-day-heads, .jw-plan-strip, .jw-board { display: grid; grid-template-columns: var(--jw-rail) repeat(var(--jw-days), minmax(0, 1fr)); }
-.jw-day-heads { position: sticky; top: 0; z-index: 5; border-bottom: 1px solid #bdced3; background: #edf3f4; }
+.jw-day-heads { border-bottom: 1px solid #bdced3; background: #edf3f4; }
 .jw-corner, .jw-ruler { position: sticky; left: 0; z-index: 2; background: #f1f5f6; border-right: 1px solid #cbd9dd; }
 .jw-corner { display: grid; align-items: center; justify-content: center; padding: 4px 2px; text-align: center; color: #47626c; font-size: .6875rem; font-weight: 690; }
 .jw-day-head { min-width: 0; min-height: 39px; text-align: left; padding: 4px 7px; border: 0; border-right: 1px solid var(--jw-line); border-radius: 0; background: #f2f6f7; color: #24434f; }
@@ -96,5 +100,4 @@
   .jw-totals > div { padding-inline: 6px; }
   .jw-totals > div:first-child { padding-left: 0; }
   .jw-totals > div:last-child { padding-right: 0; }
-  .jw-scroller { max-height: 72dvh; }
 }

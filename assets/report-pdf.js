@@ -6,7 +6,7 @@
   const PAGE = { width: 595.276, height: 841.89, margin: 38, bottom: 783 };
   const COLORS = {
     ink: '#191D24', text: '#2A3037', muted: '#545D67', accent: '#343A42',
-    line: '#CFD3D8', tint: '#F5F6F7', head: '#E9EBED', brand: '#101317',
+    line: '#CFD3D8', guide: '#8D979F', tint: '#F5F6F7', head: '#E9EBED', brand: '#101317',
     chevronTop: '#F7F8FA', chevronMiddle: '#DEE2E6', chevronBase: '#ADB5BE'
   };
   const mainWidth = PAGE.width - 2 * PAGE.margin;
@@ -308,29 +308,66 @@
       if (!rows.length) { flowing(section.empty || 'Sin registros en este período.',9.6,13,false,'muted'); y+=15; return; }
       if (y+subH+headerH+leading+rowPad>bodyEnd) continueTable();
       else { drawSubtitle(); drawColumns(); }
+      // El encabezado de un grupo pertenece a la página física en que se imprime.
+      // Dibujar la guía al terminar evita que el sombreado de otra fila la tape.
+      const joins = activityGroup && section.joins;
+      let guide = null;
+      function finishGuide() {
+        if (guide && guide.to > guide.from) {
+          const x = xs[0]+padding+3;
+          guide.page.drawLine({start:{x,y:PAGE.height-guide.from},end:{x,y:PAGE.height-guide.to},
+            color:palette.guide,thickness:1,lineCap:lib.LineCapStyle.Round,dashArray:[0.1,3]});
+        }
+        guide = null;
+      }
       for (const [i,row] of rows.entries()) {
         const cells=i===0?first:rowLines(row);
-        const count=Math.max(...cells.map(c=>c.length));
+        const label=cells[0];
+        const details=Math.max(1,...cells.slice(1).map(c=>c.length));
         // La fila que cabe en una página nueva se conserva completa. Las más largas
         // continúan línea por línea, con objetivo general y columnas en cada página.
         const fresh=bodyEnd-83-repeatH;
-        if (i>0 && rowHeight(cells)>bodyEnd-y && rowHeight(cells)<=fresh) continueTable();
-        let offset=0;
-        while (offset<count) {
-          if (bodyEnd-y<leading+rowPad) continueTable(offset>0);
-          const n=Math.min(count-offset,Math.floor((bodyEnd-y-rowPad)/leading));
+        const linked=joins?.[i] && guide?.page===page;
+        const heightHere=Math.max(linked?0:label.length,details)*leading+rowPad;
+        if (i>0 && heightHere>bodyEnd-y && rowHeight(cells)<=fresh) continueTable();
+        let detailOffset=0, labelOffset=0, firstPiece=true;
+        do {
+          if (bodyEnd-y<leading+rowPad) continueTable(!firstPiece);
+          const samePageGroup = firstPiece && joins?.[i] && guide?.page===page;
+          if (samePageGroup) labelOffset=label.length;
+          let shownLabel=samePageGroup ? [] : label.slice(labelOffset);
+          // Una fila que cruza la página vuelve a identificar su fecha o actividad.
+          // Un título que ocupa más de una página se escribe completo, por partes.
+          if (joins && !firstPiece && !shownLabel.length) {
+            shownLabel=label.length*leading+rowPad<=fresh-15 ? label : [label[0]+'…'];
+          }
+          const available=Math.floor((bodyEnd-y-rowPad)/leading);
+          const n=Math.min(Math.max(shownLabel.length,details-detailOffset),available);
           const h=n*leading+rowPad;
           if (i%2===1) rect(PAGE.margin,y,mainWidth,h,'tint');
+          if (joins) {
+            if (samePageGroup) guide.to=y+h-4;
+            else {
+              finishGuide();
+              guide={page,from:y+rowPad/2+Math.min(n,shownLabel.length)*leading+1,to:0};
+            }
+          }
           cells.forEach((cell,j)=>{
             const right=numeric[j] && j>0;
-            writeLines(cell.slice(offset,offset+n),xs[j]+(right?widths[j]-padding:padding),y+rowPad/2,
+            const lines=j===0 ? shownLabel.slice(0,n) : cell.slice(detailOffset,detailOffset+n);
+            writeLines(lines,xs[j]+(right?widths[j]-padding:padding),y+rowPad/2,
               textSize,leading,j===boldColumn,j===boldColumn?'ink':'text',right?'right':'left');
           });
-          y+=h; rule(PAGE.margin,y,PAGE.width-PAGE.margin);
-          offset+=n;
-          if (offset<count) continueTable(true);
-        }
+          labelOffset=Math.min(label.length,labelOffset+n);
+          detailOffset+=n;
+          const more=labelOffset<label.length || detailOffset<details;
+          y+=h; rule(!more && joins?.[i+1] ? xs[1] : PAGE.margin,y,PAGE.width-PAGE.margin);
+          if (!more) break;
+          continueTable(true);
+          firstPiece=false;
+        } while (true);
       }
+      finishGuide();
       y+=activityGroup?11:15;
     }
 

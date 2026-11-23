@@ -176,21 +176,28 @@
       'px;--jw-height:' + scale.total + 'px">' +
       '<div class="jw-overview">' + totals(columns) + briefIndex(columns,week.start,scale) + '</div>' +
       (noItems ? '<p class="jw-empty">Esta semana aún no tiene actividades.</p>' : '') +
+      '<div class="jw-frame"><div class="jw-head-scroll"><div class="jw-day-heads"><span class="jw-corner">Hora</span>' +
+        columns.map(day=>dayHead(day,ctx)).join('') + '</div></div>' +
       '<div class="jw-scroller" tabindex="0" role="region" aria-label="Calendario de lunes a ' +
-      esc(model.formatDate(columns.at(-1).date,{weekday:'long'})) + ', con desplazamiento">' +
-      '<div class="jw-sheet"><div class="jw-day-heads"><span class="jw-corner">Hora</span>' +
-        columns.map(day=>dayHead(day,ctx)).join('') + '</div>' +
+      esc(model.formatDate(columns.at(-1).date,{weekday:'long'})) + ', con desplazamiento horizontal"><div class="jw-sheet">' +
         '<div class="jw-board" data-start-minute="' + low + '" data-end-minute="' + high +
         '" data-hour-heights="' + scale.heights.join(',') + '" data-pixels-per-hour="' + baseHour +
         '"><div class="jw-rules" aria-hidden="true">' + lines.join('') + '</div><div class="jw-ruler" aria-hidden="true">' + ticks.join('') + '</div>' +
         columns.map(day=>'<div class="jw-lane" data-date="' + day.date + '"><ol aria-label="Tramos, ' + esc(civilLabel(day.date)) + '">' +
           day.entries.map(entry=>slot(entry,day.date,scale,ctx)).join('') + '</ol></div>').join('') +
-      '</div>' + planRows(columns,goals,ctx,week.start) + '</div></div>' + legend(columns,goals,ctx) + '</section>';
+      '</div>' + planRows(columns,goals,ctx,week.start) + '</div></div></div>' + legend(columns,goals,ctx) + '</section>';
 
     const scroller = mount.querySelector('.jw-scroller');
-    const previous = viewPositions.get(week.start);
-    if (previous) { scroller.scrollLeft = previous.left; scroller.scrollTop = previous.top; }
-    scroller.onscroll = () => viewPositions.set(week.start,{left:scroller.scrollLeft,top:scroller.scrollTop});
+    const headings = mount.querySelector('.jw-head-scroll');
+    const left = viewPositions.get(week.start) || 0;
+    headings.scrollLeft = scroller.scrollLeft = left;
+    function align(source,destination) {
+      const offset = source.scrollLeft;
+      if (destination.scrollLeft !== offset) destination.scrollLeft = offset;
+      viewPositions.set(week.start,offset);
+    }
+    scroller.onscroll = () => align(scroller,headings);
+    headings.onscroll = () => align(headings,scroller);
     const shortIndex = mount.querySelector('.jw-short-index');
     if (shortIndex) shortIndex.ontoggle = () => shortIndexes.set(week.start,shortIndex.open);
     const more = mount.querySelector('.jw-plan-more');

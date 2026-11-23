@@ -248,10 +248,12 @@
   function updateGeometry(view,entries,keepPlace=true) {
     const grid = view.querySelector(".jd-grid");
     if (!grid) return;
-    const wrap = view.querySelector(".jd-cal-scroll");
-    const previousTop = wrap.scrollTop || 0;
-    const anchor = keepPlace && liveScale ? liveScale.minuteAt(previousTop) : null;
-    const belowGrid = keepPlace && liveScale ? Math.max(0,previousTop-liveScale.total) : 0;
+    const headings = view.querySelector(".jd-cal-head");
+    const previousTop = keepPlace && liveScale
+      ? Math.max(0,headings.getBoundingClientRect().bottom-grid.getBoundingClientRect().top)
+      : 0;
+    const anchor = previousTop > 0 ? liveScale.minuteAt(previousTop) : null;
+    const belowGrid = previousTop > 0 ? Math.max(0,previousTop-liveScale.total) : 0;
     const content = measureContent(grid,entries);
     const scale = makeScale(Number(grid.dataset.startMinute),Number(grid.dataset.endMinute),entries,content);
     grid.dataset.hourHeights = scale.heights.join(",");
@@ -273,7 +275,11 @@
       tracks[i].style.setProperty("--jd-context-lines",fit.context);
       tracks[i].style.setProperty("--jd-comment-lines",fit.comment);
     });
-    if (anchor !== null) wrap.scrollTop = scale.at(anchor)+belowGrid;
+    if (anchor !== null) {
+      const targetTop = scale.at(anchor)+belowGrid;
+      const actualTop = headings.getBoundingClientRect().bottom-grid.getBoundingClientRect().top;
+      if (Math.abs(targetTop-actualTop)>1) window.scrollBy({top:targetTop-actualTop,behavior:"instant"});
+    }
     liveScale = scale;
   }
 
@@ -436,11 +442,26 @@
     }
   }
 
-  function readScroll(el,date) {
-    const previous = el.querySelector(".jd-view");
-    if (!previous || previous.dataset.date !== date) return;
-    const scroller = previous.querySelector(".jd-cal-scroll,.jd-list-scroll");
-    if (scroller) scrollPositions.set(previous.dataset.mode,{date,left:scroller.scrollLeft || 0,top:scroller.scrollTop || 0});
+  function pinHeadings(view,entries) {
+    const panel = view.querySelector(".jd-activities");
+    const toolbar = panel.querySelector(".jd-activities-head");
+    const headings = panel.querySelector(".jd-cal-head,.jd-list-head,.jw-day-heads");
+    const canvas = panel.querySelector(".jd-cal-canvas");
+    let width = canvas?.clientWidth;
+    function measure() {
+      if (!view.isConnected) return;
+      panel.style.setProperty("--jd-toolbar-height",toolbar.getBoundingClientRect().height+"px");
+      panel.style.setProperty("--jd-column-height",headings.getBoundingClientRect().height+"px");
+      if (canvas && width !== canvas.clientWidth) {
+        width = canvas.clientWidth;
+        updateGeometry(view,entries);
+      }
+    }
+    measure();
+    if (typeof ResizeObserver === "function") {
+      observer = new ResizeObserver(measure);
+      for (const node of [toolbar,headings,canvas]) if (node) observer.observe(node);
+    }
   }
 
   function openDay(date,ctx=current?.ctx) {
@@ -452,8 +473,10 @@
   function render(el,ctx) {
     if (observer) { observer.disconnect(); observer=null; }
     liveScale=null;
-    const sameDate = el.querySelector(".jd-view")?.dataset.date === ctx.date;
-    readScroll(el,ctx.date);
+    const previous = el.querySelector(".jd-view");
+    const sameDate = previous?.dataset.date === ctx.date;
+    const panelTop = sameDate ? previous.querySelector(".jd-activities").getBoundingClientRect().top : 0;
+    if (sameDate) scrollPositions.set(previous.dataset.mode,{date:ctx.date,depth:Math.max(0,-panelTop)});
     const active = sameDate && el.contains(document.activeElement) ? document.activeElement : null;
     const focusKey = active?.dataset.jdField ? {...active.dataset,field:active.dataset.jdField} : null;
     const detailKey = active?.matches("[data-jd-detail],[data-week-detail]") ? {...active.dataset} : null;
@@ -493,20 +516,11 @@
       });
     } else if (mode === "calendar") {
       updateGeometry(view,entries,false);
-      const canvas = view.querySelector(".jd-cal-canvas");
-      let lastWidth = canvas.clientWidth;
-      if (typeof ResizeObserver === "function") {
-        observer = new ResizeObserver(() => {
-          if (!view.isConnected || canvas.clientWidth === lastWidth) return;
-          lastWidth = canvas.clientWidth;
-          updateGeometry(view,entries);
-        });
-        observer.observe(canvas);
-      }
       document.fonts?.ready?.then(() => {
         if (view.isConnected) updateGeometry(view,entries);
       });
     }
+    pinHeadings(view,entries);
     view.addEventListener("change",event => {
       if (!event.target.matches("[data-jd-scale]")) { quickChange(event); return; }
       const next = event.target.value;
@@ -522,11 +536,9 @@
       if (btn.matches("[data-jd-detail]")) { openDetail(btn); return; }
       if (btn.matches("[data-jd-jump-plan]")) {
         const first = view.querySelector(".jd-plan-row");
-        const scroll = first?.closest(".jd-cal-scroll,.jd-list-scroll");
-        if (scroll) {
-          const head = scroll.querySelector(".jd-cal-head,.jd-list-head");
-          scroll.scrollTop += first.getBoundingClientRect().top-scroll.getBoundingClientRect().top-head.offsetHeight-scroll.clientTop;
+        if (first) {
           first.querySelector("[data-jd-detail]").focus({preventScroll:true});
+          first.scrollIntoView({block:"start",inline:"nearest"});
         }
         return;
       }
@@ -536,11 +548,11 @@
         el.querySelector('[data-jd-mode="' + mode + '"]')?.focus({preventScroll:true});
       }
     });
-    const scroller = view.querySelector(".jd-cal-scroll,.jd-list-scroll");
-    const savedScroll = scrollPositions.get(mode);
-    if (scroller && savedScroll?.date === ctx.date) {
-      scroller.scrollLeft = savedScroll.left;
-      scroller.scrollTop = savedScroll.top;
+    if (panelTop < 0) {
+      const saved = scrollPositions.get(mode);
+      const depth = saved?.date === ctx.date ? saved.depth : 0;
+      const delta = view.querySelector(".jd-activities").getBoundingClientRect().top + depth;
+      if (Math.abs(delta)>1) window.scrollBy({top:delta,behavior:"instant"});
     }
     if (!pending && focusKey) locate(el,"[data-jd-field]",focusKey)?.focus({preventScroll:true});
     else if (detailKey) locate(el,"[data-jd-detail],[data-week-detail]",detailKey)?.focus({preventScroll:true});

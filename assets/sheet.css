@@ -118,7 +118,7 @@ html:has(dialog.jsheet[open]) { overflow: hidden; }
 .jsheet-table .jsheet-row-selected td, .jsheet-table .jsheet-row-selected td.jsheet-c-duration { background: #e1f2ee; box-shadow: inset 0 1px #379580,inset 0 -1px #379580; }
 .jsheet-table .jsheet-row-selected th { background: #1c6759; color: white; }
 .jsheet-table .jsheet-row-selected th .jsheet-between { color: white; }
-.jsheet[data-cell-mode=navigate] .jsheet-table textarea:focus, .jsheet[data-cell-mode=row] .jsheet-table textarea:focus { caret-color: transparent; }
+.jsheet:not([data-cell-mode=edit]) .jsheet-table textarea:focus { caret-color: transparent; }
 .jsheet-table :is(textarea,select,input[type=time]) { display: block; width: 100%; max-width: none; font: inherit; color: #183d4d; line-height: 1.35; border: 1px solid transparent; border-radius: 0; background-color: transparent; }
 .jsheet-table textarea { padding: 8px; min-height: 47px; height: 100%; resize: vertical; }
 .jsheet-table td.jsheet-c-title textarea { font-weight: 650; }
@@ -144,6 +144,10 @@ html:has(dialog.jsheet[open]) { overflow: hidden; }
 .jsheet-table input[type=time]::-webkit-calendar-picker-indicator { width: 12px; padding: 0; opacity: .55; }
 .jsheet-table .jsheet-c-duration { background-color: #f4f8f7; }
 .jsheet-table .jsheet-current .jsheet-c-duration { background-color: #edf6f2; }
+.jsheet-table tr td.jsheet-in-range, .jsheet-table tr.jsheet-current td.jsheet-in-range { background-color: #d8eee7; border-right-color:#b8d6cd; border-bottom-color:#b8d6cd; }
+@media (forced-colors:active) {
+  .jsheet-table td.jsheet-in-range,.jsheet-table tr.jsheet-row-selected td { outline:1px dashed Highlight; outline-offset:-2px; }
+}
 .jsheet-table output { display: block; padding: 10px 3px; font-weight: 700; color: #35595d; font-variant-numeric: tabular-nums; }
 .jsheet :focus-visible { outline: 2px solid #147d91; outline-offset: 1px; }
 .jsheet-table :is(textarea,select,input[type=time]):focus, .jsheet-scroll:focus-visible { outline: 2px solid #278272; outline-offset: -2px; }

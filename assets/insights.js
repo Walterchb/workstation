@@ -315,20 +315,28 @@
     const usedCategories = s.categories.filter(c => c.count);
     if (usedCategories.length && (!daily || usedCategories.length > 1)) add('Dedicación por categoría','Distribución del mismo tiempo por función.',
       ['Categoría','Tiempo','% del tiempo'],[.55,.25,.2], usedCategories.map(c => [c.title,formatTime(c.minutes),pctTime(c.minutes,s.total)]));
-    const byGoal = new Map(rankedGoals.map(g => [g.id,[]]));
+    const byGoal = new Map(rankedGoals.map(g => [g.id,{rows:[],joins:[]}]));
     const recorded = value => value && value.trim() ? value : '—';
+    let previousGroup;
     for (const t of s.tasks) {
       const id = s.goalsById.has(t.goalId) ? t.goalId : '';
-      byGoal.get(id).push(withDate(t,[recorded(t.title),recorded(t.context),recorded(t.comment)]));
+      const group = byGoal.get(id);
+      const row = withDate(t,[recorded(t.title),recorded(t.context),recorded(t.comment)]);
+      const previous = group.rows.at(-1);
+      // En el diario, una intervención de otro objetivo también interrumpe la actividad.
+      group.joins.push(!!previous && (!daily || previousGroup === group) &&
+        previous[0].trim().normalize('NFC') === row[0].trim().normalize('NFC'));
+      group.rows.push(row);
+      previousGroup = group;
     }
     for (const g of rankedGoals) {
-      const rows = byGoal.get(g.id);
+      const {rows,joins} = byGoal.get(g.id);
       sections.push({
         group:'activities', groupTitle:'Actividades por objetivo general', goalId:g.id,
         title:goalName(g), subtitle:label(rows.length,'actividad','actividades'),
         columns:daily ? ['Actividad','Objetivo específico','Evidencia registrada'] : ['Fecha','Actividad','Objetivo específico','Evidencia registrada'],
         widths:daily ? [.25,.33,.42] : [.13,.21,.30,.36],
-        rows
+        rows, joins
       });
     }
 
@@ -343,10 +351,20 @@
     const groupHeading = grouped && sections[index - 1]?.group !== section.group
       ? `<h3 class="ji-paper-group-title">${esc(section.groupTitle)}</h3>` : '';
     const heading = grouped ? 'h4' : 'h3';
+    function bodyRow(row, index) {
+      const before = section.joins?.[index], after = section.joins?.[index + 1];
+      const phase = before ? (after ? 'mid' : 'end') : after ? 'start' : '';
+      const cells = row.map((cell,i) => {
+        const label = grouped ? ` data-label="${esc(section.columns[i])}"` : '';
+        if (i === 0 && phase) return `<td${label} class="ji-run-${phase}"><span>${esc(cell)}</span></td>`;
+        return `<td${label}>${esc(cell)}</td>`;
+      });
+      return '<tr>'+cells.join('')+'</tr>';
+    }
     return `${groupHeading}<section class="ji-paper-section${grouped ? ' ji-paper-activity-group' : ''}"><${heading}>${esc(section.title)}</${heading}><p>${esc(section.subtitle)}</p>
       <div class="ji-paper-scroll"><table><colgroup>${section.widths.map(w => `<col style="width:${Math.round(w*100)}%">`).join('')}</colgroup>
       <thead><tr>${section.columns.map(c => `<th scope="col">${esc(c)}</th>`).join('')}</tr></thead>
-      <tbody>${section.rows.map(row => `<tr>${row.map((cell,i) => `<td${grouped ? ` data-label="${esc(section.columns[i])}"` : ''}>${esc(cell)}</td>`).join('')}</tr>`).join('')}</tbody></table></div></section>`;
+      <tbody>${section.rows.map(bodyRow).join('')}</tbody></table></div></section>`;
   }
 
   function reportHTML(report) {
@@ -355,6 +373,27 @@
       <dl class="ji-paper-metrics" style="--ji-metric-count:${report.metrics.length}">${report.metrics.map(m=>`<div><dt>${esc(m.label)}</dt><dd>${esc(m.value)}</dd><small>${esc(m.note)}</small></div>`).join('')}</dl>
       ${report.sections.map(reportSection).join('')}
       <footer class="ji-paper-note">${esc(report.footnote)}</footer></article>`;
+  }
+
+  // En impresión nativa, el navegador repite el thead de cada grupo en una hoja nueva.
+  function printActivityTable(section) {
+    const tables = [];
+    for (let start=0;start<section.rows.length;) {
+      let end=start+1;
+      while (end<section.rows.length && section.joins[end]) end++;
+      const joined=end-start>1;
+      // Las filas sueltas comparten una tabla convencional, como en pantalla.
+      if (!joined) while (end<section.rows.length && !section.joins[end+1]) end++;
+      const headings=section.columns.map((title,i)=>joined && i===0
+        ? `<th><small>${esc(title)}</small>${esc(section.rows[start][0])}</th>`
+        : `<th scope="col">${esc(title)}</th>`);
+      const body=section.rows.slice(start,end).map(row=>'<tr>'+row.map((cell,i)=>joined && i===0
+        ? '<td class="ji-print-guide"></td>' : '<td>'+esc(cell)+'</td>').join('')+'</tr>');
+      tables.push('<table><colgroup>'+section.widths.map(w=>`<col style="width:${Math.round(w*100)}%">`).join('')+
+        '</colgroup><thead><tr>'+headings.join('')+'</tr></thead><tbody>'+body.join('')+'</tbody></table>');
+      start=end;
+    }
+    return tables.join('');
   }
 
   function showReport(report, ctx) {
@@ -371,13 +410,31 @@
       catch { message.textContent='No se pudo generar el PDF. Vuelve a intentarlo.'; message.hidden=false; }
       finally { download.disabled=false; download.removeAttribute('aria-busy'); }
     });
-    dialog.querySelector('[data-print-paper]').addEventListener('click',()=>{
+    function preparePaper(){
+      if (document.body.classList.contains('ji-printing')) return;
+      const groups=report.sections.filter(section=>section.group==='activities');
+      dialog.querySelectorAll('.ji-paper-activity-group .ji-paper-scroll').forEach((holder,index)=>{
+        const content=document.createElement('div');
+        content.className='ji-paper-print-groups';
+        content.innerHTML=printActivityTable(groups[index]);
+        holder.append(content);
+      });
       document.body.classList.add('ji-printing');
-      window.addEventListener('afterprint',()=>document.body.classList.remove('ji-printing'),{once:true});
-      window.print();
-    });
+    }
+    function restorePaper(){
+      document.body.classList.remove('ji-printing');
+      dialog.querySelectorAll('.ji-paper-print-groups').forEach(el=>el.remove());
+    }
+    const printWindow=dialog.ownerDocument.defaultView;
+    printWindow.addEventListener('beforeprint',preparePaper);
+    printWindow.addEventListener('afterprint',restorePaper);
+    dialog.querySelector('[data-print-paper]').addEventListener('click',()=>{preparePaper();printWindow.print();});
     dialog.querySelector('[data-close-report]').addEventListener('click',()=>dialog.close());
-    dialog.addEventListener('close',()=>{document.body.classList.remove('ji-printing');dialog.remove();if(trigger?.isConnected)trigger.focus({preventScroll:true});},{once:true});
+    dialog.addEventListener('close',()=>{
+      printWindow.removeEventListener('beforeprint',preparePaper);
+      printWindow.removeEventListener('afterprint',restorePaper);
+      restorePaper();dialog.remove();if(trigger?.isConnected)trigger.focus({preventScroll:true});
+    },{once:true});
     dialog.showModal(); dialog.querySelector('[data-close-report]').focus();
   }
 

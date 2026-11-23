@@ -24,6 +24,27 @@
     return Math.floor(value / 60) + ':' + String(value % 60).padStart(2,'0');
   }
 
+  function cellText(row,col,segment=null) {
+    if (col===3) return row.done ? 'Sí' : 'No';
+    if (col===6) return hourCount(durationValue(row.segments));
+    if (col===4 || col===5) {
+      const key=fields[col];
+      return segment===null ? row.segments.map(part=>part[key]).join('\n') : row.segments[segment]?.[key] || '';
+    }
+    return row[fields[col]] || '';
+  }
+
+  function exportValue(row,col,segment=null) {
+    const text=cellText(row,col,segment);
+    // Excel debe importar el texto escrito por el usuario como texto literal.
+    if ([1,2,7].includes(col) && (/^[＝＋－＠=+@-]/.test(text.trimStart()) || /^[\t\n\r]/.test(text))) return "'"+text;
+    return text;
+  }
+
+  function asTSV(lines) {
+    return lines.map(row=>row.map(s=>/["\n\r\t]/.test(s) ? '"'+s.replaceAll('"','""')+'"' : s).join('\t')).join('\r\n');
+  }
+
   function cellControl(row, index, col, seg = 0) {
     const field = fields[col];
     const attrs = 'data-col="' + col + '" aria-label="' + columns[col] + ', fila ' + (index + 1) +
@@ -77,7 +98,9 @@
     let selectedSegment = 0;
     let lastColumn=1;
     let editing = null;
-    let selectedWholeRow = false;
+    let selection = null;
+    let keepingSelection = false;
+    let removal = null;
     let panel = '';
     let pending = '';
     let busy = false;
@@ -108,12 +131,18 @@
         <div class="jsheet-guide"><p class="jsheet-tip" id="jsheet-tip" aria-live="polite"></p>
           <div class="jsheet-cell-tools"><button type="button" data-act="edit-cell" title="Editar contenido de la celda seleccionada (F2)">Editar celda</button><details class="jsheet-keys"><summary>Atajos de teclado</summary><dl>
             <div><dt>← ↑ ↓ →</dt><dd>Recorrer celdas</dd></div>
+            <div><dt>${commandKey} + flecha</dt><dd>Ir al borde de los datos</dd></div>
+            <div><dt>Mayús + flecha</dt><dd>Extender la selección una celda</dd></div>
+            <div><dt>${commandKey} + Mayús + flecha</dt><dd>Extender hasta el borde de los datos</dd></div>
+            <div><dt>${commandKey} + C</dt><dd>Copiar las celdas seleccionadas</dd></div>
             <div><dt>F2 / doble clic</dt><dd>Editar dentro de la celda</dd></div>
             <div><dt>${commandKey} + V en selección</dt><dd>Pegar por filas y columnas</dd></div>
             <div><dt>${commandKey} + V al editar texto</dt><dd>Pegar párrafos en una celda</dd></div>
             <div><dt>Esc al editar</dt><dd>Recuperar su contenido anterior</dd></div>
             <div><dt>Mayús + Espacio</dt><dd>Seleccionar la fila</dd></div>
+            <div><dt>${commandKey} + Espacio</dt><dd>Seleccionar la columna</dd></div>
             <div><dt>${commandKey} + signo más</dt><dd>Insertar una fila encima</dd></div>
+            <div><dt>${commandKey} + signo menos</dt><dd>Eliminar las filas seleccionadas</dd></div>
             <div><dt>Tab / Mayús + Tab</dt><dd>Siguiente celda / anterior</dd></div>
             <div><dt>Enter / Mayús + Enter</dt><dd>Bajar / subir una fila</dd></div>
             <div><dt>${commandKey} + Enter</dt><dd>Insertar actividad debajo</dd></div>
@@ -165,21 +194,63 @@
       updateTip();
     }
 
-    function markRow(active) {
-      const old=tbody.querySelector('.jsheet-row-selected');
-      if (old) { old.classList.remove('jsheet-row-selected'); old.querySelector('[data-act=row]').setAttribute('aria-pressed','false'); }
-      selectedWholeRow=active;
-      if (active) {
-        const row=tbody.querySelector('[data-index="'+selected+'"]');
-        row.classList.add('jsheet-row-selected'); row.querySelector('[data-act=row]').setAttribute('aria-pressed','true');
+    const firstColumn=()=>mode==='plan' ? 1 : 0;
+    const finalColumn=()=>mode==='plan' ? 2 : columns.length-1;
+
+    function selectedBounds() {
+      const anchor=selection?.anchor || {row:selected,col:lastColumn};
+      const end=selection?.end || anchor;
+      const wholeRow=selection?.kind==='row', wholeColumn=selection?.kind==='column';
+      return {
+        top:wholeColumn ? 0 : Math.min(anchor.row,end.row),
+        bottom:wholeColumn ? selection.lastRow : Math.max(anchor.row,end.row),
+        left:wholeRow ? firstColumn() : Math.min(anchor.col,end.col),
+        right:wholeRow ? finalColumn() : Math.max(anchor.col,end.col)
+      };
+    }
+
+    function clearSelection() {
+      if (!selection) return;
+      for (const td of tbody.querySelectorAll('.jsheet-in-range')) td.classList.remove('jsheet-in-range');
+      for (const tr of tbody.querySelectorAll('.jsheet-row-selected')) {
+        tr.classList.remove('jsheet-row-selected');
+        tr.querySelector('[data-act=row]').setAttribute('aria-pressed','false');
       }
-      dialog.dataset.cellMode=active?'row':editing?'edit':'navigate';
+      selection=null;
+      dialog.dataset.cellMode=editing ? 'edit' : 'navigate';
       updateTip();
+    }
+
+    function setSelection(anchor,end,kind='range') {
+      clearSelection();
+      selection={anchor,end,kind};
+      if (kind==='column') {
+        let last=draft.rows.length-1;
+        while (last>Math.max(anchor.row,end.row) && sheet.isUnused(draft,draft.rows[last])) last--;
+        selection.lastRow=last;
+      }
+      const {top,bottom,left,right}=selectedBounds();
+      for (let r=top;r<=bottom;r++) {
+        const tr=tbody.children[r];
+        if (kind==='row') {
+          tr.classList.add('jsheet-row-selected');
+          tr.querySelector('[data-act=row]').setAttribute('aria-pressed','true');
+        } else {
+          for (let c=left;c<=right;c++) tr.children[c+1].classList.add('jsheet-in-range');
+        }
+      }
+      dialog.dataset.cellMode=kind;
+      updateTip();
+    }
+
+    function selectBand(kind) {
+      const here={row:selected,col:lastColumn};
+      setSelection(selection?.anchor || here,selection?.end || here,kind);
     }
 
     function startEdit(cell,caret='keep') {
       if (cell.matches('output') || editing?.cell===cell) return;
-      finishEdit(); markRow(false);
+      finishEdit(); clearSelection();
       const row=draft.rows[Number(cell.closest('[data-index]').dataset.index)];
       editing={cell,original:cell.type==='checkbox' ? cell.checked : cell.value,
         segments:cell.type==='time' ? row.segments.map(part=>({...part})) : null};
@@ -193,7 +264,10 @@
     function updateTip() {
       const tip=$('.jsheet-tip');
       const column=document.activeElement?.dataset?.col;
-      const text=selectedWholeRow ? 'Fila '+(selected+1)+' seleccionada. '+commandKey+' + signo más inserta encima.' :
+      const {top,bottom,left,right}=selectedBounds();
+      const rows=bottom-top+1, cols=right-left+1;
+      const text=selection ? ((selection.kind==='row' && rows===1 ? 'Fila '+(top+1)+' seleccionada' :
+        rows+' '+(rows===1?'fila':'filas')+' × '+cols+' '+(cols===1?'columna':'columnas'))+'. '+commandKey+' + C para copiar.') :
         editing ? (editing.cell.tagName==='TEXTAREA' ? 'Editando texto. Pega párrafos en esta celda. Enter confirma y Esc recupera el valor anterior.' : 'Editando la celda. Enter confirma y Esc recupera el valor anterior.') :
         (column==='2' || column==='7') ? 'Pega una columna de Excel para repartirla entre actividades. F2 permite pegar párrafos en esta celda.' :
         'Usa las flechas para moverte. Escribe para reemplazar o pulsa F2 para editar el texto.';
@@ -209,13 +283,25 @@
       }
     }
 
-    function focusCell(index,col=1,seg=0) {
-      const row = tbody.querySelector('tr[data-index="' + index + '"]');
+    function focusCell(index,col=1,seg=0,keepSelection=false) {
+      const row = tbody.children[index];
       const selector = '[data-col="' + col + '"]';
       const field = row?.querySelector(selector + '[data-seg="' + seg + '"]') || row?.querySelector(selector);
       if (field) {
-        field.focus({preventScroll:true});
-        field.scrollIntoView({block:'nearest',inline:'nearest'});
+        keepingSelection=keepSelection;
+        try { field.focus({preventScroll:true}); } finally { keepingSelection=false; }
+        // Sólo se mueve el área de la hoja. La cabecera y los números de fila son fijos.
+        const box=scroll.getBoundingClientRect(), corner=$('thead th').getBoundingClientRect();
+        const top=Math.max(box.top+scroll.clientTop,corner.bottom), left=Math.max(box.left+scroll.clientLeft,corner.right);
+        const bottom=box.top+scroll.clientTop+scroll.clientHeight, right=box.left+scroll.clientLeft+scroll.clientWidth;
+        if (bottom>top && right>left) {
+          const fieldBox=field.getBoundingClientRect(), rowBox=row.getBoundingClientRect(), td=field.closest('td').getBoundingClientRect();
+          const target=rowBox.height<=bottom-top ? rowBox : fieldBox;
+          if (target.top<top || target.height>bottom-top) scroll.scrollTop+=target.top-top;
+          else if (target.bottom>bottom) scroll.scrollTop+=target.bottom-bottom;
+          if (td.left<left || td.width>right-left) scroll.scrollLeft+=td.left-left;
+          else if (td.right>right) scroll.scrollLeft+=td.right-right;
+        }
       }
       return field;
     }
@@ -249,7 +335,7 @@
     }
 
     function drawTable(focus = null) {
-      finishEdit(); markRow(false);
+      finishEdit(); clearSelection(); dialog.dataset.cellMode='navigate';
       const left = scroll.scrollLeft, top = scroll.scrollTop;
       tbody.innerHTML = draft.rows.map((row,i)=>rowMarkup(row,i,selected)).join('');
       for (const cell of tbody.querySelectorAll('textarea[data-col]')) {
@@ -426,19 +512,23 @@
       pending = kind;
       confirm.hidden = false; footer.hidden = true;
       const remove = kind === 'remove', segment = kind === 'remove-segment';
+      removal=remove ? selectedBounds() : null;
+      const several=remove && removal.bottom>removal.top;
       confirm.dataset.kind=kind;
-      confirm.querySelector('h3').textContent = remove ? 'Eliminar actividad' : segment ? 'Quitar tramo' : 'Descartar la edición';
+      const actionName=remove ? several ? 'Eliminar '+(removal.bottom-removal.top+1)+' filas' : 'Eliminar actividad' : segment ? 'Quitar tramo' : 'Descartar cambios';
+      confirm.querySelector('h3').textContent = kind==='discard' ? 'Descartar la edición' : actionName;
       const title=selectedRow()?.title.trim() || 'Actividad sin nombre';
-      confirm.querySelector('p').textContent = remove ? '¿Quitar «'+title+'» (fila ' + (selected+1) + ') y sus tramos? El cambio se aplicará al guardar la jornada.' :
+      confirm.querySelector('p').textContent = several ? '¿Quitar todas las filas de la '+(removal.top+1)+' a la '+(removal.bottom+1)+', incluidos sus tramos? El cambio se aplicará al guardar la jornada.' :
+        remove ? '¿Quitar «'+title+'» (fila ' + (selected+1) + ') y sus tramos? El cambio se aplicará al guardar la jornada.' :
         segment ? '¿Quitar el tramo ' + (selectedSegment+1) + ' de la fila ' + (selected+1) + '?' : 'Tienes cambios sin guardar. ¿Descartar la edición de esta jornada?';
-      btn('discard').textContent = remove ? 'Eliminar actividad' : segment ? 'Quitar tramo' : 'Descartar cambios';
-      btn('keep').textContent = remove ? 'Conservar actividad' : 'Seguir editando';
+      btn('discard').textContent = actionName;
+      btn('keep').textContent = several ? 'Conservar filas' : remove ? 'Conservar actividad' : 'Seguir editando';
       for (const node of [$('.jsheet-head'),$('.jsheet-command'),$('.jsheet-tools'),$('.jsheet-guide'),extra,scroll]) node.inert = true;
       btn('keep').focus();
     }
 
     function hideConfirm() {
-      pending = '';
+      pending = ''; removal=null;
       confirm.hidden = true; footer.hidden = false;
       for (const node of [$('.jsheet-head'),$('.jsheet-command'),$('.jsheet-tools'),$('.jsheet-guide'),extra,scroll]) node.inert = false;
     }
@@ -517,22 +607,32 @@
     }
 
     function sheetTSV() {
-      const encode = val => {
-        const s = String(val ?? '');
-        return /["\n\r\t]/.test(s) ? '"' + s.replaceAll('"','""') + '"' : s;
-      };
-      const plainText = value => {
-        const text = String(value ?? '');
-        return /^[＝＋－＠=+@-]/.test(text.trimStart()) || /^[\t\n\r]/.test(text) ? "'" + text : text;
-      };
       const lines = [columns];
       for (const row of draft.rows) {
         if (!row.title && !row.context && !row.comment && !row.segments.some(s=>s.start || s.end)) continue;
-        const segments = row.segments.length ? row.segments : [{start:'',end:''}];
-        lines.push([row.status,plainText(row.title),plainText(row.context),row.done?'Sí':'No',segments.map(s=>s.start).join('\n'),
-          segments.map(s=>s.end).join('\n'),hourCount(durationValue(segments)),plainText(row.comment)]);
+        lines.push(columns.map((_,col)=>exportValue(row,col)));
       }
-      return lines.map(row=>row.map(encode).join('\t')).join('\r\n');
+      return asTSV(lines);
+    }
+
+    function copySelection(event) {
+      if (pending || busy || editing || !event.clipboardData) return;
+      // Al copiar desde una casilla o un resultado, algunos navegadores envían copy al documento.
+      const origin=event.target===document.body || event.target===document ? document.activeElement : event.target;
+      const cell=origin?.closest?.('[data-col]');
+      if (!cell || !tbody.contains(cell)) return;
+      const {top,bottom,left,right}=selectedBounds();
+      const lines=[];
+      for (let r=top;r<=bottom;r++) {
+        const line=[];
+        for (let c=left;c<=right;c++) line.push(exportValue(draft.rows[r],c,selection ? null : selectedSegment));
+        lines.push(line);
+      }
+      event.clipboardData.setData('text/plain',asTSV(lines));
+      const cells=lines.map(row=>'<tr>'+row.map(s=>'<td style="border:1px solid #c8d4d8;padding:3px 6px;vertical-align:top">'+
+        esc(s).replace(/\r\n?|\n/g,'<br style="mso-data-placement:same-cell">')+'</td>').join('')+'</tr>').join('');
+      event.clipboardData.setData('text/html','<table style="border-collapse:collapse"><tbody>'+cells+'</tbody></table>');
+      event.preventDefault();
     }
 
     function paste(event) {
@@ -598,22 +698,23 @@
         return;
       }
       if (key === 'mode-plan' || key === 'mode-full') {
+        clearSelection();
         mode=key==='mode-full' ? 'full' : 'plan';
         try { localStorage.setItem('workhub:sheet-mode',mode); } catch { /* Mantener el modo en esta hoja. */ }
         refreshControls(); focusCell(selected); return;
       }
-      if (key === 'keep') { hideConfirm(); focusCell(selected); return; }
+      if (key === 'keep') { hideConfirm(); focusCell(selected,lastColumn,selectedSegment,true); return; }
       if (key === 'discard') {
-        const operation = pending; hideConfirm();
+        const operation = pending, rows=removal; hideConfirm();
         if (operation === 'discard') { dialog.close(); return; }
         if (operation === 'remove-segment') {
           selectedRow().segments.splice(selectedSegment,1); selectedSegment = 0;
         } else {
-          draft.rows.splice(selected,1);
+          draft.rows.splice(rows.top,rows.bottom-rows.top+1);
           if (!draft.rows.length) draft.rows.push(sheet.newRow(draft));
-          selected = Math.min(selected,draft.rows.length-1); selectedSegment = 0;
+          selected = Math.min(rows.top,draft.rows.length-1); selectedSegment = 0;
         }
-        drawTable({col:1}); feedback(); return;
+        drawTable({col:lastColumn}); feedback(); return;
       }
       if (key === 'append' || key === 'append-bottom') { appendActivity(); return; }
       if (key === 'between') { newAt(Number(button.closest('[data-index]').dataset.index)+1); return; }
@@ -628,7 +729,7 @@
       }
       if (key === 'row') {
         const rowIndex=Number(button.closest('[data-index]').dataset.index);
-        focusCell(rowIndex); markRow(true); return;
+        clearSelection(); focusCell(rowIndex); selectBand('row'); return;
       }
       if (key === 'insert-plan') {
         if (planRows.length) insertPlan(planRows,importAt(planPosition==='end'),true);
@@ -718,9 +819,45 @@
       focusCell(next,col,last);
     }
 
+    function moveAcrossData(key,row,col,seg,jump,extend) {
+      const vertical=key==='ArrowDown' || key==='ArrowUp';
+      const step=key==='ArrowDown' || key==='ArrowRight' ? 1 : -1;
+      if (!jump && !extend && vertical) {
+        clearSelection(); moveVertical(row,col,seg,step,false); return;
+      }
+      const start=vertical ? row : col;
+      const limit=vertical ? (step>0 ? draft.rows.length-1 : 0) : (step>0 ? finalColumn() : firstColumn());
+      const filled=pos=>{
+        const r=vertical ? pos : row, c=vertical ? col : pos;
+        const item=draft.rows[r];
+        // La fila de captura vacía tiene valores predeterminados que no forman parte de los datos.
+        if ([0,3,6].includes(c) && !item.title && sheet.isUnused(draft,item)) return false;
+        return Boolean(cellText(item,c).trim());
+      };
+      let pos=start;
+      if (pos!==limit) {
+        pos+=step;
+        if (jump) {
+          if (filled(start) && filled(pos)) {
+            while (pos!==limit && filled(pos+step)) pos+=step;
+          } else {
+            while (pos!==limit && !filled(pos)) pos+=step;
+          }
+        }
+      }
+      const end={row:vertical ? pos : row,col:vertical ? col : pos};
+      if (extend) {
+        const kind=(vertical && selection?.kind==='row') || (!vertical && selection?.kind==='column') ? selection.kind : 'range';
+        setSelection(selection?.anchor || {row,col},end,kind);
+      } else clearSelection();
+      focusCell(end.row,end.col,seg,extend);
+    }
+
     function keyboard(event) {
-      if (event.isComposing || event.keyCode===229 || event.target.closest('.jsheet-extra,.jsheet-menu,.jsheet-keys,.jsheet-confirm')) return;
       const key=event.key, command=event.ctrlKey || event.metaKey;
+      const removeShortcut=command && !event.altKey && (key==='-' || key==='Subtract' || event.code==='NumpadSubtract');
+      if (pending && removeShortcut) { event.preventDefault(); return; }
+      if (event.isComposing || event.keyCode===229 || event.target.closest('.jsheet-extra,.jsheet-menu,.jsheet-keys,.jsheet-confirm')) return;
       if (command && key.toLowerCase()==='s' && !event.altKey) { event.preventDefault(); finishEdit(); save(); return; }
       const cell=event.target.closest('[data-col]');
       if (!cell || pending || busy) return;
@@ -731,8 +868,8 @@
         if (cell.matches('output')) feedback('La duración se calcula con las horas de los tramos.');
         return;
       }
-      if (key==='Escape' && (editing || selectedWholeRow)) {
-        event.preventDefault(); event.stopPropagation(); finishEdit(true); markRow(false); return;
+      if (key==='Escape' && (editing || selection)) {
+        event.preventDefault(); event.stopPropagation(); finishEdit(true); clearSelection(); return;
       }
       if (event.altKey && key==='Enter' && !command && cell.tagName==='TEXTAREA') {
         event.preventDefault(); startEdit(cell,'end');
@@ -744,25 +881,26 @@
       if (!editing && !event.altKey && command && (key==='+' || event.code==='NumpadAdd' || (event.shiftKey && (key==='=' || event.code==='Equal')))) {
         event.preventDefault(); newAt(row); return;
       }
+      if (!editing && removeShortcut) { event.preventDefault(); showConfirm('remove'); return; }
       if (!editing && event.shiftKey && !command && !event.altKey && (key===' ' || event.code==='Space')) {
-        event.preventDefault(); markRow(true); return;
+        event.preventDefault(); selectBand('row'); return;
       }
-      if (key==='Tab' && !command && !event.altKey) { finishEdit(); markRow(false); moveTab(event,row,col,seg); return; }
+      if (!editing && command && !event.shiftKey && !event.altKey && (key===' ' || event.code==='Space')) {
+        event.preventDefault(); selectBand('column'); return;
+      }
+      if (key==='Tab' && !command && !event.altKey) { finishEdit(); clearSelection(); moveTab(event,row,col,seg); return; }
       if (key==='Enter' && !command && !event.altKey) {
-        event.preventDefault(); finishEdit(); markRow(false); moveVertical(row,col,seg,event.shiftKey?-1:1,true); return;
+        event.preventDefault(); finishEdit(); clearSelection(); moveVertical(row,col,seg,event.shiftKey?-1:1,true); return;
       }
-      if (editing || command || event.altKey) return;
-      if (['ArrowDown','ArrowUp','ArrowLeft','ArrowRight'].includes(key) && !event.shiftKey) {
-        event.preventDefault(); markRow(false);
-        if (key==='ArrowDown' || key==='ArrowUp') { moveVertical(row,col,seg,key==='ArrowDown'?1:-1,false); return; }
-        const next=col+(key==='ArrowRight'?1:-1);
-        if (next>=(mode==='plan'?1:0) && next<=(mode==='plan'?2:7)) focusCell(row,next,seg);
-        return;
+      if (editing || event.altKey) return;
+      if (['ArrowDown','ArrowUp','ArrowLeft','ArrowRight'].includes(key)) {
+        event.preventDefault(); moveAcrossData(key,row,col,seg,command,event.shiftKey); return;
       }
+      if (command) return;
       if (Array.from(key).length===1 || key==='Dead') {
         if (cell.tagName==='TEXTAREA') startEdit(cell,'replace');
         else if (cell.type==='time' || cell.tagName==='SELECT') startEdit(cell);
-        else if (cell.type==='checkbox' && key===' ') markRow(false);
+        else if (cell.type==='checkbox' && key===' ') clearSelection();
       }
     }
 
@@ -772,8 +910,9 @@
       if (cell) {
         lastColumn=Number(cell.dataset.col);
         btn('edit-cell').disabled=lastColumn===6;
-        markRow(false);
+        if (!keepingSelection) clearSelection();
         select(Number(cell.closest('[data-index]').dataset.index),Number(cell.dataset.seg || 0));
+        updateTip();
       }
     });
     dialog.addEventListener('dblclick',event=>{
@@ -783,7 +922,7 @@
     dialog.addEventListener('pointerdown',event=>{
       const cell=event.target.closest('[data-col]');
       if (!cell || pending || busy) return;
-      if (selectedWholeRow) markRow(false);
+      clearSelection();
       if (cell.tagName==='SELECT' || cell.type==='time') {
         startEdit(cell);
       }
@@ -804,11 +943,12 @@
     });
     dialog.addEventListener('change',updateField);
     dialog.addEventListener('paste',paste);
+    document.addEventListener('copy',copySelection);
     dialog.addEventListener('keydown',keyboard);
     dialog.addEventListener('cancel',event=>{
       event.preventDefault();
       if (busy) return;
-      if (pending) { hideConfirm(); focusCell(selected); }
+      if (pending) { hideConfirm(); focusCell(selected,lastColumn,selectedSegment,true); }
       else if (menu.open) menu.open=false;
       else if ($('.jsheet-keys').open) $('.jsheet-keys').open=false;
       else requestClose();
@@ -820,6 +960,7 @@
     };
     window.addEventListener('beforeunload',warnBeforeReload);
     dialog.addEventListener('close',()=>{
+      document.removeEventListener('copy',copySelection);
       window.removeEventListener('beforeunload',warnBeforeReload);
       currentDialog=null; dialog.remove();
       const returnTo = trigger?.isConnected ? trigger : document.querySelector('.jd-view [data-edit-day]');
