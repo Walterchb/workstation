@@ -23,7 +23,7 @@
 .jw-head-scroll { position: sticky; top: var(--jd-toolbar-height,0px); z-index: 5; scrollbar-width: none; }
 .jw-head-scroll::-webkit-scrollbar { display: none; }
 .jw-scroller { position: relative; }
-.jw-sheet, .jw-day-heads { min-width: var(--jw-min-width); }
+.jw-sheet, .jw-day-heads { min-width: calc(var(--jw-rail) + var(--jw-days) * 8.875rem); }
 .jw-day-heads, .jw-plan-strip, .jw-board { display: grid; grid-template-columns: var(--jw-rail) repeat(var(--jw-days), minmax(0, 1fr)); }
 .jw-day-heads { border-bottom: 1px solid #bdced3; background: #edf3f4; }
 .jw-corner, .jw-ruler { position: sticky; left: 0; z-index: 2; background: #f1f5f6; border-right: 1px solid #cbd9dd; }
@@ -66,22 +66,29 @@
 .jw-point::after { content: ''; position: absolute; top: 0; left: 0; right: 0; border-top: 1px dashed var(--event-accent); }
 .jw-event { display: flex; flex-direction: column; justify-content: flex-start; align-items: stretch; width: 100%; height: 100%; padding: 0; margin: 0; overflow: hidden; text-align: left; border: 0; border-radius: 0; color: #294751; background-color: #eef4f3; background-color: color-mix(in srgb,var(--event-accent,#527e80) 9%,white); box-shadow: inset 3px 0 var(--event-accent),inset 0 -1px white; cursor: pointer; }
 /* Cada incremento añade líneas completas, con un margen para el borde inferior. */
-.jw-name, .jw-context { display: -webkit-box; flex: none; -webkit-box-orient: vertical; overflow: hidden; padding-inline: 6px 4px; font-size: .6875rem; line-height: 14px; overflow-wrap: anywhere; }
-.jw-name { -webkit-line-clamp: 1; background: var(--ribbon-color,#dcebe7); box-shadow: inset 3px 0 var(--event-accent); color: var(--ribbon-ink,#294952); font-weight: 750; }
+.jw-slot-heading { display: flex; align-items: baseline; gap: 4px; flex: none; padding-inline: 6px 4px; background: var(--ribbon-color,#dcebe7); box-shadow: inset 3px 0 var(--event-accent); color: var(--ribbon-ink,#294952); }
+.jw-name, .jw-context { display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden; font-size: .6875rem; line-height: 14px; overflow-wrap: anywhere; }
+.jw-name { min-width: 0; -webkit-line-clamp: 1; font-weight: 750; }
+.jw-part, .jw-short-duration { flex: none; margin-inline-start: auto; font-size: .6875rem; line-height: 14px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.jw-part { display: none; }
+.jw-short-duration { font-weight: 680; }
 .jw-range, .jw-context { display: none; color: #435f67; }
-.jw-range { flex: none; margin-top: 2px; padding-inline: 6px 3px; overflow: hidden; font-size: .6875rem; line-height: 14px; white-space: nowrap; text-overflow: ellipsis; font-weight: 650; font-variant-numeric: tabular-nums; }
-.jw-context { margin-top: 1px; -webkit-line-clamp: 1; }
+.jw-range { flex: none; margin-top: 2px; padding-inline: 6px 3px; overflow: hidden; font-size: .6875rem; line-height: 14px; white-space: nowrap; text-overflow: ellipsis; font-weight: 550; font-variant-numeric: tabular-nums; }
+.jw-time-separator { color: #7b8f97; }
+.jw-range strong { color: var(--jw-ink); font-weight: 740; }
+.jw-context { flex: none; padding-inline: 6px 4px; margin-top: 1px; -webkit-line-clamp: 1; }
 .jw-event:hover .jw-name { text-decoration: underline; }
 .jw-open .jw-event { box-shadow: inset 3px 0 var(--event-accent),inset 0 -1px #378776; }
 .jw-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 3px 13px; padding-top: 7px; }
 .jw-legend > span { display: inline-flex; align-items: center; gap: 5px; line-height: 1.3; color: var(--jw-muted); overflow-wrap: anywhere; }
 .jw-legend i { width: 7px; height: 7px; flex: none; background: var(--event-accent,#7b9299); }
 @container weekly-slot (max-height: 14.99px) {
-  .jw-name { display: none; }
+  .jw-slot-heading { display: none; }
   .jw-event { background: var(--ribbon-color,#dcebe7); }
 }
 @container weekly-slot (min-height: 31px) {
-  .jw-range { display: block; }
+  .jw-range, .jw-part { display: block; }
+  .jw-short-duration { display: none; }
 }
 @container weekly-slot (min-height: 47px) {
   .jw-name { -webkit-line-clamp: 2; }

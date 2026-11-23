@@ -34,12 +34,25 @@
     return model.formatDate(date,{weekday:'long',day:'numeric',month:'long',year:'numeric'});
   }
 
-  function timeRange(entry) {
-    return entry.segment.start + '–' + (entry.segment.end || (entry.live ? 'ahora' : 'sin cierre'));
+  function segmentTime(entry) {
+    const range = entry.segment.start + ' – ' + (entry.segment.end || (entry.live ? 'ahora' : 'sin cierre'));
+    if (!entry.segment.end && !entry.live) return {range,duration:'',description:range};
+    const minutes = entry.end - entry.start;
+    const hours = Math.floor(minutes / 60);
+    const remainder = minutes % 60;
+    const parts = [];
+    if (hours) parts.push(hours + 'h');
+    if (remainder || !hours) parts.push(remainder + 'm');
+    const description = range + (entry.live ? ', tiempo transcurrido ' : ', duración ') + model.duration(minutes);
+    return {range,duration:parts.join(' '),description};
   }
 
-  function entryName(entry,day) {
-    const pieces = [entry.task.title, civilLabel(day), timeRange(entry)];
+  function timeMarkup(time) {
+    return esc(time.range) + (time.duration ? '<span class="jw-time-separator"> | </span><strong>' + time.duration + '</strong>' : '');
+  }
+
+  function entryName(entry,day,time) {
+    const pieces = [entry.task.title, civilLabel(day), time.description];
     if (entry.count>1) pieces.push('tramo ' + entry.index + ' de ' + entry.count);
     if (entry.goal) pieces.push(entry.goal.title);
     return pieces.join(' · ');
@@ -119,7 +132,8 @@
   function slot(entry,day,scale,ctx) {
     const length = entry.end - entry.start;
     const open = !entry.segment.end;
-    const label = entryName(entry,day);
+    const time = segmentTime(entry);
+    const label = entryName(entry,day,time);
     const y = scale.at(entry.start);
     const position = 'top:' + y + 'px;height:' + (scale.at(entry.end)-y) + 'px;';
     return '<li class="jw-slot' + (length===0 ? ' jw-point' : '') + (open ? ' jw-open' : '') + '" data-id="' +
@@ -127,21 +141,26 @@
       position + ctx.eventPaint(entry.goal) + '">' +
       '<button class="jw-event" type="button" ' + identity(entry.task.id,entry.index,'week') + ' title="' +
       esc(label) + '" aria-label="' + esc(label) + '"' + (length===0 ? ' tabindex="-1" aria-hidden="true"' : '') + '>' +
-      '<span class="jw-name">' + esc(entry.task.title) + '</span>' +
-      '<span class="jw-range">' + esc(timeRange(entry)) + (entry.count>1 ? ' · ' + entry.index + '/' + entry.count : '') + '</span>' +
+      '<span class="jw-slot-heading"><span class="jw-name">' + esc(entry.task.title) + '</span>' +
+      (entry.count>1 ? '<small class="jw-part">' + entry.index + '/' + entry.count + '</small>' : '') +
+      (time.duration ? '<small class="jw-short-duration">' + time.duration + '</small>' : '') + '</span>' +
+      '<span class="jw-range">' + timeMarkup(time) + '</span>' +
       (entry.task.context ? '<span class="jw-context">' + esc(entry.task.context) + '</span>' : '') +
       '</button></li>';
   }
 
   function briefIndex(columns,start,scale) {
-    const items = columns.flatMap(day=>day.entries.filter(e=>e.end-e.start<15 || scale.at(e.end)-scale.at(e.start)<16).map(e=>[e,day.date]));
+    const items = columns.flatMap(day=>day.entries.filter(e=>e.end-e.start<15 || scale.at(e.end)-scale.at(e.start)<31).map(e=>[e,day.date]));
     if (!items.length) return '';
     return '<details class="jw-short-index"' + (shortIndexes.get(start) ? ' open' : '') +
       '><summary>Tramos breves (' + items.length + ')</summary><ul>' +
-      items.map(([entry,date])=>'<li><button type="button" ' + identity(entry.task.id,entry.index,'week-index') +
-        ' aria-label="' + esc(entryName(entry,date)) + '"><time datetime="' + date + '">' +
-        esc(model.formatDate(date,{day:'2-digit',month:'2-digit'})) + ' · ' + esc(timeRange(entry)) +
-        '</time> ' + esc(entry.task.title) + '</button></li>').join('') + '</ul></details>';
+      items.map(([entry,date])=>{
+        const time = segmentTime(entry);
+        return '<li><button type="button" ' + identity(entry.task.id,entry.index,'week-index') +
+          ' aria-label="' + esc(entryName(entry,date,time)) + '"><time datetime="' + date + '">' +
+          esc(model.formatDate(date,{day:'2-digit',month:'2-digit'})) + '</time> · ' + timeMarkup(time) +
+          ' · ' + esc(entry.task.title) + '</button></li>';
+      }).join('') + '</ul></details>';
   }
 
   function legend(columns,goals,ctx) {
@@ -169,11 +188,9 @@
         '" style="top:' + y + 'px">' + hour(minute) + '</span>');
       if (minute<high) lines.push('<i style="top:' + y + 'px"></i>');
     }
-    const minWidth = 43 + columns.length * 124;
     const noItems = !columns.some(day=>day.tasks.length);
     mount.innerHTML = '<section class="jw-week" aria-label="Calendario laboral semanal" data-week-start="' + week.start +
-      '" data-week-end="' + week.end + '" style="--jw-days:' + columns.length + ';--jw-min-width:' + minWidth +
-      'px;--jw-height:' + scale.total + 'px">' +
+      '" data-week-end="' + week.end + '" style="--jw-days:' + columns.length + ';--jw-height:' + scale.total + 'px">' +
       '<div class="jw-overview">' + totals(columns) + briefIndex(columns,week.start,scale) + '</div>' +
       (noItems ? '<p class="jw-empty">' + (ctx.filtered ? 'Ninguna actividad coincide con los filtros de esta semana.' : 'Esta semana aún no tiene actividades.') + '</p>' : '') +
       '<div class="jw-frame"><div class="jw-head-scroll"><div class="jw-day-heads"><span class="jw-corner">Hora</span>' +
