@@ -101,19 +101,40 @@
     return id === noGoalFilter || id.startsWith("~") ? "~" + id : id;
   }
 
-  function filterBar(goals,visible,total,filtered) {
+  function filterBar(goals,icon,open) {
     const option = (value,label,selected) =>
       `<option value="${esc(value)}"${value===selected ? " selected" : ""}>${esc(label)}</option>`;
-    const statusOptions = [option("","Todos",statusFilter),...model.statuses.map(status=>option(status,status,statusFilter))];
-    const goalOptions = [option("","Todos",goalFilter),option(noGoalFilter,"Sin objetivo",goalFilter),
+    const statusOptions = [option("","Todos los estados",statusFilter),...model.statuses.map(status=>option(status,status,statusFilter))];
+    const goalOptions = [option("","Todos los objetivos",goalFilter),option(noGoalFilter,"Sin objetivo",goalFilter),
       ...[...goals.values()].sort((a,b)=>a.title.localeCompare(b.title,"es")).map(g=>option(goalValue(g.id),g.title,goalFilter))];
-    const count = filtered ? visible + " de " + plural(total,"actividad","actividades") : plural(total,"actividad","actividades");
-    return `<div class="jd-filters" role="group" aria-label="Filtros de actividades">
-      <label class="jd-filter-control"><span>Estado</span><select aria-label="Filtrar por estado" aria-describedby="jd-filter-count" data-jd-status-filter${statusFilter ? " data-active" : ""}>${statusOptions.join("")}</select></label>
-      <label class="jd-filter-control jd-goal-filter"><span>Objetivo</span><select aria-label="Filtrar por objetivo" aria-describedby="jd-filter-count" data-jd-goal-filter${goalFilter ? " data-active" : ""}>${goalOptions.join("")}</select></label>
-      ${filtered ? '<button type="button" class="jd-filter-clear" data-jd-clear-filters aria-label="Limpiar filtros">Limpiar filtros</button>' : ""}
-      <span class="jd-filter-count" id="jd-filter-count" role="status">${count}</span></div>`;
+    const active = Number(Boolean(statusFilter)) + Number(Boolean(goalFilter));
+    const caption = active ? "Filtros, " + plural(active,"activo","activos") : "Filtros";
+    return `<div class="jd-filter-slot">
+      <button type="button" class="jd-filter-toggle" data-jd-filter-toggle aria-controls="jd-filter-panel" aria-expanded="${open}" aria-label="${caption}" title="${caption}"${active ? " data-active" : ""}>
+        ${icon("filter",16)}<span>Filtros</span>${active ? `<b aria-hidden="true">${active}</b>` : ""}
+      </button>
+      <div class="jd-filters" id="jd-filter-panel" role="group" aria-label="Filtros de actividades">
+        <label class="jd-filter-control"><span>Estado</span><select aria-label="Filtrar por estado" aria-describedby="jd-filter-count" data-jd-status-filter${statusFilter ? " data-active" : ""}>${statusOptions.join("")}</select></label>
+        <label class="jd-filter-control jd-goal-filter"><span>Objetivo</span><select aria-label="Filtrar por objetivo" aria-describedby="jd-filter-count" data-jd-goal-filter${goalFilter ? " data-active" : ""}>${goalOptions.join("")}</select></label>
+        ${active ? `<button type="button" class="jd-filter-clear" data-jd-clear-filters aria-label="Limpiar filtros" title="Limpiar filtros">${icon("x",14)}<span>Limpiar filtros</span></button>` : ""}
+      </div></div>`;
   }
+
+  // El panel compacto sale del flujo. Los selectores son los mismos en todos los tamaños.
+  function filterFocusTarget(container) {
+    const toggle = container?.querySelector("[data-jd-filter-toggle]");
+    if (toggle?.offsetWidth && toggle.getAttribute("aria-expanded") !== "true") return toggle;
+    return container?.querySelector("[data-jd-status-filter]");
+  }
+  function closeFilterPanel(restoreFocus = false) {
+    const toggle = current?.el.querySelector('[data-jd-filter-toggle][aria-expanded="true"]');
+    if (!toggle) return;
+    toggle.setAttribute("aria-expanded","false");
+    if (restoreFocus) toggle.focus({preventScroll:true});
+  }
+  document.addEventListener("pointerdown",event => {
+    if (!event.target.closest?.(".jd-filter-slot")) closeFilterPanel();
+  });
 
   function paint(goal) {
     const color = accent(goal);
@@ -304,8 +325,8 @@
     liveScale = scale;
   }
 
-  function scalePicker() {
-    return `<label class="jd-density jd-scale-picker" title="Cada hora se ajusta al texto de sus tramos. Los minutos conservan su posición dentro de esa hora.">Escala <select data-jd-scale aria-label="Escala del horario"><option value="detailed" ${density === "detailed" ? "selected" : ""}>Detallada</option><option value="compact" ${density === "compact" ? "selected" : ""}>Compacta</option></select></label>`;
+  function scalePicker(icon) {
+    return `<label class="jd-density jd-scale-picker" title="Escala del horario. Cada hora se ajusta al texto de sus tramos. Los minutos conservan su posición dentro de esa hora."><span class="jd-scale-label">Escala</span><span class="jd-scale-icon" aria-hidden="true">${icon("layers",16)}</span><select data-jd-scale aria-label="Escala del horario"><option value="detailed" ${density === "detailed" ? "selected" : ""}>Detallada</option><option value="compact" ${density === "compact" ? "selected" : ""}>Compacta</option></select></label>`;
   }
 
   function columnTitles() {
@@ -401,7 +422,7 @@
       const task = detail?.editTask;
       detail = null;
       dialog.remove();
-      (locate(current?.el,"[data-jd-detail],[data-week-detail]",key) || current?.el.querySelector("[data-jd-status-filter]"))?.focus({preventScroll:true});
+      (locate(current?.el,"[data-jd-detail],[data-week-detail]",key) || filterFocusTarget(current?.el))?.focus({preventScroll:true});
       if (task && current) window.JSheet.open({...current.ctx,date:task.date},{taskId:task.id,mode:"full"});
     },{once:true});
     dialog.addEventListener("change",quickChange);
@@ -457,7 +478,7 @@
         reflect(id,field,saved ? value : current.ctx.state.tasks.find(row=>row.id === id)?.[field] ?? previous);
         const container = key.place === "detail" ? detail?.dialog : current.el;
         if (hadFocus && (!document.activeElement || document.activeElement === document.body || document.activeElement === input)) {
-          (locate(container,"[data-jd-field]",key) || container?.querySelector("[data-jd-status-filter]"))?.focus({preventScroll:true});
+          (locate(container,"[data-jd-field]",key) || filterFocusTarget(container))?.focus({preventScroll:true});
         }
       }
     }
@@ -499,6 +520,8 @@
     }
     const previous = el.querySelector(".jd-view");
     const sameDate = previous?.dataset.date === ctx.date;
+    const filtersOpen = Boolean(sameDate && previous.dataset.mode === mode &&
+      current?.ctx.user?.id === ctx.user?.id && previous.querySelector('[data-jd-filter-toggle][aria-expanded="true"]'));
     const panelTop = sameDate ? previous.querySelector(".jd-activities").getBoundingClientRect().top : 0;
     if (sameDate) scrollPositions.set(previous.dataset.mode,{date:ctx.date,depth:Math.max(0,-panelTop)});
     const active = sameDate && el.contains(document.activeElement) ? document.activeElement : null;
@@ -506,7 +529,7 @@
     const detailKey = active?.matches("[data-jd-detail],[data-week-detail]") ? {...active.dataset} : null;
     const weekDate = active?.dataset.weekDay;
     const stableFocus = [".jw-plan-more summary",".jw-short-index summary",".jw-scroller",".jd-cal-scroll",".jd-list-scroll",
-      "[data-jd-scale]","[data-jd-jump-plan]","[data-jd-status-filter]","[data-jd-goal-filter]","[data-jd-clear-filters]","[data-edit-day]:not(:disabled)"].find(selector=>active?.matches(selector));
+      "[data-jd-scale]","[data-jd-filter-toggle]","[data-jd-jump-plan]","[data-jd-status-filter]","[data-jd-goal-filter]","[data-jd-clear-filters]","[data-edit-day]:not(:disabled)"].find(selector=>active?.matches(selector));
     const week = mode === "week";
     const period = week ? window.JWeek.range(ctx.date) : {start:ctx.date,end:ctx.date};
     const periodTasks = ctx.state.tasks.filter(task=>task.date >= period.start && task.date <= period.end);
@@ -526,7 +549,7 @@
     const schedule = week ? '<div class="jd-week-host"></div>' : mode === "calendar" ? calendar(entries,planRows,ctx,filtered) : listOfEntries(entries,planRows,filtered);
     const last = entries[entries.length-1];
     const end = last && (last.segment.end || (last.live ? "ahora" : "sin cierre"));
-    const hatchKey = mode === "calendar" && !filtered ? '<span class="jd-hatch-key"><i aria-hidden="true"></i><span class="jd-sr">Rayado: </span>Sin registro</span>' : "";
+    const hatchKey = mode === "calendar" && !filtered ? '<span class="jd-hatch-key" title="Sin registro"><i aria-hidden="true"></i><span class="jd-sr">Rayado: </span><span class="jd-hatch-caption">Sin registro</span></span>' : "";
     const planCount = unplaced.length + " sin horario";
     const jump = unplaced.length ? `<span aria-hidden="true"> · </span><button type="button" data-jd-jump-plan title="Ir a la primera actividad sin horario">${planCount}</button>` : "";
     const meta = entries.length ? `<p class="jd-schedule-meta">${esc(entries[0].segment.start)} – ${esc(end)}<span aria-hidden="true"> · </span>${plural(entries.length,"tramo","tramos")}${jump} ${hatchKey}</p>` :
@@ -534,11 +557,15 @@
     const modeButtons = [["calendar","Horario","calendar-days"],["list","Lista","list"],["week","Semana","calendar-days"]].map(([key,title,icon]) =>
       `<button type="button" data-jd-mode="${key}" aria-pressed="${mode===key}">${ctx.icon(icon,15)} ${title}</button>`).join("");
     el.innerHTML = `<div class="jd-view" data-date="${esc(ctx.date)}" data-mode="${mode}"><h1 class="jd-sr">${week ? "Agenda semanal" : "Actividades"}, ${esc(model.formatDate(ctx.date))}</h1>${week ? "" : `<div class="jd-overview">${stats(periodTasks,ctx)}${timeline(dayEntries,ctx)}</div>`}
-      <section class="jd-activities" aria-labelledby="jd-schedule-title"${filtered ? " data-filtered" : ""}><header class="jd-activities-head${week ? " jd-week-heading" : ""}"><div class="jd-activities-intro">
-        <h2 id="jd-schedule-title">${week ? "Agenda semanal" : "Actividades del día"}</h2>${week ? "" : meta}</div>${mode === "calendar" ? scalePicker() : ""}
-        <div class="jd-view-switch" role="group" aria-label="Vista de actividades">${modeButtons}</div>
-        ${week ? "" : `<button type="button" class="btn primary jd-edit-day" data-edit-day aria-label="Editar actividades" title="Editar actividades" ${pending ? "disabled" : ""}>${ctx.icon("pencil",17)}</button>`}
-        ${filterBar(goals,visibleTasks.length,periodTasks.length,filtered)}</header>
+      <section class="jd-activities" aria-labelledby="jd-schedule-title"${filtered ? " data-filtered" : ""}><header class="jd-activities-head"><div class="jd-activities-intro">
+        <h2 id="jd-schedule-title">${week ? "Agenda semanal" : "Actividades del día"}</h2>
+        <span class="jd-filter-count" id="jd-filter-count" role="status">${filtered ? visibleTasks.length + " de " : ""}${periodTasks.length}<span class="jd-sr"> ${periodTasks.length === 1 ? "actividad" : "actividades"}</span></span></div>
+        <div class="jd-actions">
+          ${mode === "calendar" ? scalePicker(ctx.icon) : ""}
+          <div class="jd-view-switch" role="group" aria-label="Vista de actividades">${modeButtons}</div>
+          ${filterBar(goals,ctx.icon,filtersOpen)}
+          ${week ? "" : `<button type="button" class="btn primary jd-edit-day" data-edit-day aria-label="Editar actividades" title="Editar actividades" ${pending ? "disabled" : ""}>${ctx.icon("pencil",17)}</button>`}
+        </div>${week ? "" : meta}</header>
         ${schedule}</section></div>`;
     const view = el.querySelector(".jd-view");
     if (!week) window.JTimeline.bind(view.querySelector(".jd-timeline"),dayEntries,ctx,hourLabel);
@@ -555,6 +582,16 @@
       });
     }
     pinHeadings(view,entries);
+    const filterSlot = view.querySelector(".jd-filter-slot");
+    filterSlot.addEventListener("focusout",event => {
+      if (event.relatedTarget && !filterSlot.contains(event.relatedTarget)) closeFilterPanel();
+    });
+    filterSlot.addEventListener("keydown",event => {
+      if (event.key === "Escape" && filterSlot.querySelector('[aria-expanded="true"]')) {
+        event.preventDefault();
+        closeFilterPanel(true);
+      }
+    });
     function applyFilters(focusSelector) {
       const pinned = view.querySelector(".jd-activities").getBoundingClientRect().top < 0;
       current.ctx.render();
@@ -582,6 +619,10 @@
     view.addEventListener("click",event => {
       const btn = event.target.closest("button");
       if (!btn) return;
+      if (btn.matches("[data-jd-filter-toggle]")) {
+        btn.setAttribute("aria-expanded",String(btn.getAttribute("aria-expanded") !== "true"));
+        return;
+      }
       if (btn.matches("[data-jd-clear-filters]")) {
         statusFilter = goalFilter = "";
         applyFilters("[data-jd-status-filter]");
