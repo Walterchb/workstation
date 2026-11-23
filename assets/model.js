@@ -12,6 +12,7 @@
   const categories = ['Control de gestión', 'Mercado de capitales', 'Coordinación', 'Otros'];
   const categoryColors = ['#087F79', '#3067B6', '#8759A4', '#B16B32'];
   const categoryIds = ['gestion', 'mercados', 'coordinacion', 'otros'];
+  const profileLimits = Object.freeze({name:80, side:256, bytes:65536});
   const priorities = ['Alta', 'Media', 'Baja'];
   const origins = ['Planificada', 'Imprevista'];
   const statuses = ['Pendiente', 'En proceso', 'Culminado'];
@@ -205,9 +206,58 @@
     ids.add(record.id);
   }
 
+  function validProfilePhoto(value) {
+    if (value === '') return true;
+    const prefix = 'data:image/jpeg;base64,';
+    const maxLength = prefix.length + Math.ceil(profileLimits.bytes / 3) * 4;
+    if (typeof value !== 'string' || value.length > maxLength || !value.startsWith(prefix)) return false;
+    const data = value.slice(prefix.length);
+    if (data.length % 4 || !/^\/9j\/[A-Za-z0-9+/]*={0,2}$/.test(data)) return false;
+    let bytes;
+    try { bytes = atob(data); } catch { return false; }
+    if (bytes.length > profileLimits.bytes || !bytes.endsWith('\xff\xd9')) return false;
+    // Leer las dimensiones del cuadro JPEG y verificar que también haya datos de imagen.
+    let frame = false, at = 2;
+    while (at < bytes.length - 3 && bytes.charCodeAt(at) === 255) {
+      while (bytes.charCodeAt(at) === 255) at++;
+      const marker = bytes.charCodeAt(at++);
+      const length = bytes.charCodeAt(at) * 256 + bytes.charCodeAt(at + 1);
+      if (length < 2 || at + length > bytes.length - 2) return false;
+      if (marker === 0xda) return frame && at + length < bytes.length - 2;
+      if (marker >= 0xc0 && marker <= 0xc2) {
+        if (length < 8) return false;
+        const height = bytes.charCodeAt(at + 3) * 256 + bytes.charCodeAt(at + 4);
+        const width = bytes.charCodeAt(at + 5) * 256 + bytes.charCodeAt(at + 6);
+        if (!height || !width || Math.max(height, width) > profileLimits.side) return false;
+        frame = true;
+      }
+      at += length;
+    }
+    return false;
+  }
+
+  function validateProfile(profile) {
+    requireValue(isRecord(profile), 'El formato del perfil no es válido.');
+    const {name = '', photo = ''} = profile;
+    requireValue(typeof name === 'string' && name.length <= profileLimits.name && !/[\u0000-\u001f\u007f]/.test(name),
+      'El nombre del perfil debe tener hasta ' + profileLimits.name + ' caracteres en una línea.');
+    requireValue(validProfilePhoto(photo), 'La foto del perfil debe ser un JPEG reducido de hasta 256 píxeles y 64 KB.');
+  }
+
+  function saveProfile(state, expected, changes) {
+    const current = state.profile || {};
+    for (const key of ['name', 'photo']) {
+      requireValue((current[key] ?? '') === (expected[key] ?? ''), 'El perfil cambió desde que lo abriste. Vuelve a abrirlo para ver la versión actual.');
+    }
+    const profile = {...current, name:changes.name.trim(), photo:changes.photo};
+    validateProfile(profile);
+    state.profile = profile;
+  }
+
   function validate(state) {
     requireValue(isRecord(state) && state.version === 1 && Array.isArray(state.goals) && Array.isArray(state.tasks),
       'El formato de la agenda no es válido.');
+    if (state.profile !== undefined) validateProfile(state.profile);
     const catalog = categoryList(state);
     validateCategories(catalog);
     const categoryNames = new Set(catalog.map(item => item.title));
@@ -271,6 +321,7 @@
 
   globalThis.JModel = {
     id, today, timeNow, shiftDate, formatDate, minutes, duration, empty, task, validate, reusableActivities, reuseActivities,
+    profileLimits, validProfilePhoto, saveProfile,
     categoryList, categoryOptions, defaultCategory, categoryForNewTask, saveCategory, setCategoryArchived,
     categories: Object.freeze(categories), priorities: Object.freeze(priorities),
     origins: Object.freeze(origins), statuses: Object.freeze(statuses)

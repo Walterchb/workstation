@@ -381,9 +381,19 @@
     dialog.showModal(); dialog.querySelector('[data-close-report]').focus();
   }
 
+  function goalIconInk(background) {
+    const linear = [1,3,5].map(start => {
+      const channel = parseInt(background.slice(start,start + 2),16) / 255;
+      return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+    });
+    const luminance = 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2];
+    return luminance > 0.179 ? '#000000' : '#FFFFFF';
+  }
+
   function goalCard(g, tasks, ctx) {
     const minutes = tasks.reduce((sum, t) => sum + model().minutes(t), 0);
-    return `<button class="panel ji-goal-card" data-goal="${esc(g.id)}" style="--ji-accent:${color(g.color)}"><span class="ji-goal-cap"><i class="ji-goal-icon">${ctx.icon('target', 21)}</i><span class="ji-badge ${g.status === 'Alcanzado' ? 'is-achieved' : ''}">${esc(g.status)}</span></span><strong>${esc(g.title)}</strong>${g.description ? `<span class="ji-card-description">${esc(g.description)}</span>` : ''}<span class="ji-card-foot"><span>${ctx.icon('clock', 15)} ${esc(formatTime(minutes))}</span><span>${label(tasks.length, 'actividad', 'actividades')}</span></span></button>`;
+    const accent = color(g.color);
+    return `<button class="panel ji-goal-card" data-goal="${esc(g.id)}" style="--ji-accent:${accent};--ji-accent-ink:${goalIconInk(accent)}"><span class="ji-goal-cap"><i class="ji-goal-icon">${ctx.icon('target', 21)}</i><span class="ji-badge ${g.status === 'Alcanzado' ? 'is-achieved' : ''}">${esc(g.status)}</span></span><strong>${esc(g.title)}</strong>${g.description ? `<span class="ji-card-description">${esc(g.description)}</span>` : ''}<span class="ji-card-foot"><span>${ctx.icon('clock', 15)} ${esc(formatTime(minutes))}</span><span>${label(tasks.length, 'actividad', 'actividades')}</span></span></button>`;
   }
 
   function goalDetail(el, ctx, goal) {
@@ -427,15 +437,49 @@
     dlg.id = 'ji-goal-form'; dlg.className = 'ji-dialog'; dlg.setAttribute('aria-labelledby', 'ji-form-title');
     const isReached = goal?.status === 'Alcanzado';
     const currentColor = color(goal?.color || palette[ctx.state.goals.length % palette.length]);
-    const swatches = palette.includes(currentColor) ? palette : [...palette, currentColor];
-    const toneNames = ['Verde azulado', 'Azul', 'Violeta', 'Ocre', 'Rosado', 'Verde', 'Personalizado'];
-    dlg.innerHTML = `<form class="ji-form"><header><h2 id="ji-form-title">${goal ? 'Editar objetivo general' : 'Nuevo objetivo general'}</h2><button type="button" class="icon-btn" data-cancel aria-label="Cerrar">${ctx.icon('x',18)}</button></header><div class="ji-form-body"><label>Nombre del objetivo general<input name="title" required autofocus value="${esc(goal?.title || '')}"></label><label>Descripción <small>(opcional)</small><textarea rows="2" name="description" placeholder="¿Qué esperas conseguir?">${esc(goal?.description || '')}</textarea></label><fieldset><legend>Color del objetivo general</legend><div class="ji-swatches">${swatches.map((c, i) => `<label style="--ji-color:${c}" title="${toneNames[i]}"><input name="color" type="radio" value="${c}" aria-label="${toneNames[i]}" ${c === currentColor ? 'checked' : ''}><span></span></label>`).join('')}</div></fieldset><div class="ji-form-row"><label>Estado<select name="status"><option${!isReached ? ' selected' : ''}>En curso</option><option${isReached ? ' selected' : ''}>Alcanzado</option></select></label><label data-date-wrap>Fecha del resultado<input type="date" name="date" max="${esc(model().today())}" value="${esc(goal?.achievedOn || model().today())}"></label></div><label><span data-result-label></span><textarea rows="3" name="result" placeholder="Describe el hito o entregable concreto">${esc(goal?.result || '')}</textarea></label><p class="ji-form-error" role="alert" hidden></p><div class="ji-delete-prompt" hidden><strong>¿Eliminar este objetivo general?</strong><p>Las actividades conservarán sus horas y comentarios y pasarán a figurar sin objetivo general asignado.</p><div><button type="button" class="btn ghost" data-keep>Conservar</button><button type="button" class="btn ji-danger" data-remove>Confirmar eliminación</button></div></div></div><footer>${goal ? `<button class="ji-delete" type="button" data-ask-remove>${ctx.icon('trash',16)} Eliminar</button>` : ''}<span></span><button class="btn ghost" type="button" data-cancel>Cancelar</button><button class="btn primary" type="submit">Guardar objetivo general</button></footer></form>`;
+    const toneNames = ['Verde azulado', 'Azul', 'Violeta', 'Ocre', 'Rosado', 'Verde'];
+    const colorControls = `<fieldset class="ji-colors"><legend>Color del objetivo general</legend>
+      <div class="ji-color-row">
+        <div class="ji-swatches">${palette.map((value,i) => `<button type="button" class="ji-swatch" data-swatch="${value}" style="--ji-color:${value}" aria-label="${toneNames[i]}" title="${toneNames[i]}" aria-pressed="${value.toUpperCase() === currentColor.toUpperCase()}"></button>`).join('')}</div>
+        <label class="ji-color-field">Personalizar<input type="color" name="color" aria-label="Color personalizado" value="${currentColor}"></label>
+        <label class="ji-color-field">Hexadecimal<input type="text" name="colorHex" aria-label="Código hexadecimal" required maxlength="7" size="7" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="#RRGGBB" value="${currentColor.toUpperCase()}"></label>
+      </div></fieldset>`;
+    dlg.innerHTML = `<form class="ji-form"><header><h2 id="ji-form-title">${goal ? 'Editar objetivo general' : 'Nuevo objetivo general'}</h2><button type="button" class="icon-btn" data-cancel aria-label="Cerrar">${ctx.icon('x',18)}</button></header><div class="ji-form-body"><label>Nombre del objetivo general<input name="title" required autofocus value="${esc(goal?.title || '')}"></label><label>Descripción <small>(opcional)</small><textarea rows="2" name="description" placeholder="¿Qué esperas conseguir?">${esc(goal?.description || '')}</textarea></label>${colorControls}<div class="ji-form-row"><label>Estado<select name="status"><option${!isReached ? ' selected' : ''}>En curso</option><option${isReached ? ' selected' : ''}>Alcanzado</option></select></label><label data-date-wrap>Fecha del resultado<input type="date" name="date" max="${esc(model().today())}" value="${esc(goal?.achievedOn || model().today())}"></label></div><label><span data-result-label></span><textarea rows="3" name="result" placeholder="Describe el hito o entregable concreto">${esc(goal?.result || '')}</textarea></label><p class="ji-form-error" role="alert" hidden></p><div class="ji-delete-prompt" hidden><strong>¿Eliminar este objetivo general?</strong><p>Las actividades conservarán sus horas y comentarios y pasarán a figurar sin objetivo general asignado.</p><div><button type="button" class="btn ghost" data-keep>Conservar</button><button type="button" class="btn ji-danger" data-remove>Confirmar eliminación</button></div></div></div><footer>${goal ? `<button class="ji-delete" type="button" data-ask-remove>${ctx.icon('trash',16)} Eliminar</button>` : ''}<span></span><button class="btn ghost" type="button" data-cancel>Cancelar</button><button class="btn primary" type="submit">Guardar objetivo general</button></footer></form>`;
     document.body.append(dlg);
     const form = dlg.querySelector('form'), fields = form.elements;
     const message = dlg.querySelector('.ji-form-error');
     let busy = false;
     const showError = txt => { message.textContent = txt; message.hidden = false; };
     const close = () => dlg.close();
+    const colorInput = fields.color;
+    const hexInput = fields.colorHex;
+    const swatches = [...dlg.querySelectorAll('[data-swatch]')];
+    const colorError = 'Escribe un código hexadecimal de seis dígitos, como #327C9B.';
+    const readHex = () => {
+      const typed = hexInput.value.trim().replace(/^#/, '');
+      return /^[a-f0-9]{6}$/i.test(typed) ? '#' + typed.toUpperCase() : '';
+    };
+    function syncColor(value) {
+      if (value) colorInput.value = value;
+      for (const swatch of swatches) {
+        swatch.setAttribute('aria-pressed', String(swatch.dataset.swatch === value));
+      }
+      hexInput.setCustomValidity(value ? '' : colorError);
+      if (value) hexInput.removeAttribute('aria-invalid');
+    }
+    function chooseColor(value) {
+      hexInput.value = value.toUpperCase();
+      syncColor(hexInput.value);
+    }
+    for (const swatch of swatches) swatch.addEventListener('click', () => chooseColor(swatch.dataset.swatch));
+    for (const event of ['input','change']) colorInput.addEventListener(event, () => chooseColor(colorInput.value));
+    hexInput.addEventListener('input', () => syncColor(readHex()));
+    hexInput.addEventListener('change', () => {
+      const selected = readHex();
+      if (selected) chooseColor(selected);
+      else syncColor('');
+    });
+    hexInput.addEventListener('invalid', () => hexInput.setAttribute('aria-invalid','true'));
     const updateStatus = () => {
       const reached = fields.status.value === 'Alcanzado';
       dlg.querySelector('[data-date-wrap]').hidden = !reached;
@@ -471,8 +515,15 @@
     });
     form.addEventListener('submit', async e => {
       e.preventDefault(); if (busy) return;
+      const selectedColor = readHex();
+      if (!selectedColor) {
+        syncColor('');
+        hexInput.reportValidity();
+        hexInput.focus();
+        return;
+      }
       const reached = fields.status.value === 'Alcanzado';
-      const entry = { id: goal?.id || model().id(), title: fields.title.value.trim(), description: fields.description.value.trim(), color: fields.color.value, status: fields.status.value, result: fields.result.value.trim(), achievedOn: reached ? fields.date.value : '' };
+      const entry = { id: goal?.id || model().id(), title: fields.title.value.trim(), description: fields.description.value.trim(), color: selectedColor === goal?.color.toUpperCase() ? goal.color : selectedColor, status: fields.status.value, result: fields.result.value.trim(), achievedOn: reached ? fields.date.value : '' };
       if (!entry.title || (reached && !entry.result)) { showError(!entry.title ? 'Escribe el nombre del objetivo.' : 'Describe el resultado alcanzado.'); return; }
       setBusy(true); message.hidden = true;
       try {

@@ -72,14 +72,9 @@
     ticks.push(high);
     const legend = new Map();
     for (const entry of entries) legend.set(entry.task.goalId, entry.goal);
-    const blocks = entries.map(entry => {
-      const info = entryRange(entry) + " · " + entry.task.title;
-      const left = (entry.start - low) * 100 / width;
-      const span = (entry.end - entry.start) * 100 / width;
-      return `<span class="jd-block${entry.segment.end ? "" : " jd-open-bar"}" style="--event-accent:${accent(entry.goal)};left:${left}%;width:${Math.min(span,100-left)}%" title="${esc(info)}"></span>`;
-    }).join("");
+    const track = window.JTimeline.track(entries,low,high,accent,hourLabel);
     return `<section class="jd-timeline" aria-labelledby="jd-line-title"><div class="jd-line-heading"><h2 id="jd-line-title">${ctx.icon("clock",17)} Línea de tiempo</h2><span>Inicio de jornada <b>08:00</b></span></div>
-      <div class="jd-scale" aria-hidden="true"><div class="jd-track">${blocks}</div><div class="jd-ticks">${ticks.map((t,i) =>
+      <div class="jd-scale">${track}<div class="jd-ticks" aria-hidden="true">${ticks.map((t,i) =>
         `<span class="${i === 0 ? "first" : i === ticks.length-1 ? "last" : ""}" style="left:${(t-low) * 100 / width}%">${hourLabel(t)}</span>`).join("")}</div></div>
       ${legend.size ? `<div class="jd-legend">${[...legend.values()].map(goal => `<span><i style="--event-accent:${accent(goal)}"></i>${esc(goal?.title || "Sin objetivo")}</span>`).join("")}</div>` : ""}
     </section>`;
@@ -254,7 +249,9 @@
     const grid = view.querySelector(".jd-grid");
     if (!grid) return;
     const wrap = view.querySelector(".jd-cal-scroll");
-    const anchor = keepPlace && liveScale ? liveScale.minuteAt(wrap.scrollTop || 0) : null;
+    const previousTop = wrap.scrollTop || 0;
+    const anchor = keepPlace && liveScale ? liveScale.minuteAt(previousTop) : null;
+    const belowGrid = keepPlace && liveScale ? Math.max(0,previousTop-liveScale.total) : 0;
     const content = measureContent(grid,entries);
     const scale = makeScale(Number(grid.dataset.startMinute),Number(grid.dataset.endMinute),entries,content);
     grid.dataset.hourHeights = scale.heights.join(",");
@@ -276,7 +273,7 @@
       tracks[i].style.setProperty("--jd-context-lines",fit.context);
       tracks[i].style.setProperty("--jd-comment-lines",fit.comment);
     });
-    if (anchor !== null) wrap.scrollTop = scale.at(anchor);
+    if (anchor !== null) wrap.scrollTop = scale.at(anchor)+belowGrid;
     liveScale = scale;
   }
 
@@ -284,24 +281,28 @@
     return `<label class="jd-density jd-scale-picker" title="Cada hora se ajusta al texto de sus tramos. Los minutos conservan su posición dentro de esa hora.">Escala <select data-jd-scale aria-label="Escala del horario"><option value="detailed" ${density === "detailed" ? "selected" : ""}>Detallada</option><option value="compact" ${density === "compact" ? "selected" : ""}>Compacta</option></select></label>`;
   }
 
-  function columnTitles(withHour) {
-    const columns = [["activity","Actividad"],["comments","Comentarios"],["start","Inicio"],
-      ["end","Cierre"],["duration","Duración"],["status","Estado"],["done","¿Se hizo?"]];
-    if (withHour) columns.unshift(["hour","Hora"]);
+  function columnTitles() {
+    const columns = [["hour","Hora"],["activity","Actividad"],...headers];
     return columns.map(([key,label]) => '<span data-col="' + key + '">' + label + '</span>').join("");
   }
 
-  function listOfEntries(entries) {
-    if (!entries.length) return '<section class="jd-list-view" aria-label="Lista de tramos"><p class="jd-list-empty">Aún no hay tramos registrados.</p></section>';
-    const rows = entries.map(entry => `<li class="jd-list-row${entry.segment.end ? "" : " jd-list-open"}" data-start-minute="${entry.start}" data-end-minute="${entry.end}" style="${paint(entry.goal)}">
-      ${eventHead(entry.task,entry,"list")}${taskFields(entry.task,entry,"list")}</li>`);
-    return `<section class="jd-list-view" aria-label="Lista de tramos"><div class="jd-list-scroll"><div class="jd-list-canvas">
-      <div class="jd-list-head" aria-hidden="true">${columnTitles(false)}</div>
-      <ol class="jd-readable-list" aria-label="Todos los tramos en orden cronológico">${rows.join("")}</ol>
+  function activityRow(task,entry,goal) {
+    const place = entry ? "list" : "plan";
+    const hour = entry ? `<time datetime="${entry.segment.start}">${entry.segment.start}</time>` : "Sin horario";
+    const row = entry ? `class="jd-list-row${entry.segment.end ? "" : " jd-list-open"}" data-start-minute="${entry.start}" data-end-minute="${entry.end}"` : 'class="jd-plan-row"';
+    return `<li ${row} style="${paint(goal)}"><span class="jd-row-hour">${hour}</span>
+      <div class="jd-row-data" data-has-comment="${!!task.comment}">${eventHead(task,entry,place)}${taskFields(task,entry,place)}</div></li>`;
+  }
+
+  function listOfEntries(entries,planRows) {
+    const rows = entries.map(entry => activityRow(entry.task,entry,entry.goal)).join("") + planRows;
+    return `<section class="jd-list-view" aria-label="Lista de actividades"><div class="jd-list-scroll" tabindex="0" role="region" aria-label="Actividades en orden de inicio y tareas sin horario"><div class="jd-list-canvas">
+      <div class="jd-list-head" aria-hidden="true">${columnTitles()}</div>
+      ${rows ? '<ol class="jd-readable-list" aria-label="Actividades del día">'+rows+'</ol>' : '<p class="jd-list-empty">Aún no hay actividades para este día.</p>'}
     </div></div></section>`;
   }
 
-  function calendar(entries,ctx) {
+  function calendar(entries,planRows,ctx) {
     const low = Math.min(dayStart,...entries.map(entry => Math.floor(entry.start/60)*60));
     const high = Math.max(dayStart + 60,...entries.map(entry => Math.ceil(Math.max(entry.start+1,entry.end)/60)*60));
     const content = entries.map(estimatedContent);
@@ -312,18 +313,12 @@
     }
     return `<section class="jd-calendar" data-density="${density}" aria-label="Horario de la jornada">
       <div class="jd-cal-scroll" tabindex="0" role="region" aria-label="Horario por hora, actividad y registro"><div class="jd-cal-canvas">
-        <div class="jd-cal-head" aria-hidden="true">${columnTitles(true)}</div>
+        <div class="jd-cal-head" aria-hidden="true">${columnTitles()}</div>
         <div class="jd-grid" data-start-minute="${low}" data-end-minute="${high}" data-pixels-per-hour="${hourScales[density]}" data-hour-heights="${scale.heights.join(",")}" style="--grid-height:${scale.total}px;height:var(--grid-height)">${rules.join("")}
           ${entries.length ? `<ol class="jd-events" aria-label="Tramos por hora">${entries.map((entry,i)=>scheduledSlot(entry,scale,content[i],ctx)).join("")}</ol>` :
           '<p class="jd-calendar-empty">Aún no hay tramos registrados.</p>'}</div>
+        ${planRows ? '<ol class="jd-plan-list" aria-label="Actividades sin horario en orden del plan">'+planRows+'</ol>' : ''}
       </div></div></section>`;
-  }
-
-  function unscheduled(tasks,goals) {
-    if (!tasks.length) return "";
-    return `<section class="jd-unscheduled" aria-labelledby="jd-pending-title"><div class="jd-plan-head"><h3 id="jd-pending-title">Sin horario</h3><span>${tasks.length}</span></div>
-      <ol class="jd-plan-list" aria-label="Actividades sin horario en orden del plan">${tasks.map(task =>
-        `<li class="jd-plan-row" style="${paint(goals.get(task.goalId))}">${eventHead(task,null,"plan")}${taskFields(task,null,"plan")}</li>`).join("")}</ol></section>`;
   }
 
   function locate(container,selector,key) {
@@ -461,18 +456,25 @@
     readScroll(el,ctx.date);
     const active = sameDate && el.contains(document.activeElement) ? document.activeElement : null;
     const focusKey = active?.dataset.jdField ? {...active.dataset,field:active.dataset.jdField} : null;
-    const detailKey = active?.matches("[data-jd-detail]") ? {...active.dataset} : null;
+    const detailKey = active?.matches("[data-jd-detail],[data-week-detail]") ? {...active.dataset} : null;
+    const weekDate = active?.dataset.weekDay;
+    const stableFocus = [".jw-plan-more summary",".jw-short-index summary",".jw-scroller",".jd-cal-scroll",".jd-list-scroll",
+      "[data-jd-scale]","[data-jd-jump-plan]","[data-edit-day]:not(:disabled)"].find(selector=>active?.matches(selector));
     const tasks = ctx.state.tasks.filter(task=>task.date === ctx.date);
     const goals = new Map(ctx.state.goals.map(goal=>[goal.id,goal]));
     const entries = entriesFor(tasks,goals,ctx.date);
     current = {el,ctx,tasks,goals,entries};
-    const plan = unscheduled(tasks.filter(task=>!task.segments.length),goals);
     const week = mode === "week";
-    const schedule = week ? '<div class="jd-week-host"></div>' : mode === "calendar" ? calendar(entries,ctx) : listOfEntries(entries);
+    const unplaced = tasks.filter(task=>!task.segments.length);
+    const planRows = week ? "" : unplaced.map(task=>activityRow(task,null,goals.get(task.goalId))).join("");
+    const schedule = week ? '<div class="jd-week-host"></div>' : mode === "calendar" ? calendar(entries,planRows,ctx) : listOfEntries(entries,planRows);
     const last = entries[entries.length-1];
     const end = last && (last.segment.end || (last.live ? "ahora" : "sin cierre"));
     const hatchKey = mode === "calendar" ? '<span class="jd-hatch-key"><i aria-hidden="true"></i><span class="jd-sr">Rayado: </span>Sin registro</span>' : "";
-    const meta = entries.length ? `<p class="jd-schedule-meta">${esc(entries[0].segment.start)} – ${esc(end)}<span aria-hidden="true"> · </span>${plural(entries.length,"tramo","tramos")} ${hatchKey}</p>` : "";
+    const planCount = unplaced.length + " sin horario";
+    const jump = unplaced.length ? `<span aria-hidden="true"> · </span><button type="button" data-jd-jump-plan title="Ir a la primera actividad sin horario">${planCount}</button>` : "";
+    const meta = entries.length ? `<p class="jd-schedule-meta">${esc(entries[0].segment.start)} – ${esc(end)}<span aria-hidden="true"> · </span>${plural(entries.length,"tramo","tramos")}${jump} ${hatchKey}</p>` :
+      unplaced.length ? `<p class="jd-schedule-meta">${plural(unplaced.length,"actividad sin horario","actividades sin horario")}</p>` : "";
     const modeButtons = [["calendar","Horario","calendar-days"],["list","Lista","list"],["week","Semana","calendar-days"]].map(([key,title,icon]) =>
       `<button type="button" data-jd-mode="${key}" aria-pressed="${mode===key}">${ctx.icon(icon,15)} ${title}</button>`).join("");
     el.innerHTML = `<div class="jd-view" data-date="${esc(ctx.date)}" data-mode="${mode}"><h1 class="jd-sr">${week ? "Agenda semanal" : "Actividades"}, ${esc(model.formatDate(ctx.date))}</h1>${week ? "" : `<div class="jd-overview">${stats(tasks,ctx)}${timeline(entries,ctx)}</div>`}
@@ -480,8 +482,9 @@
         <h2 id="jd-schedule-title">${week ? "Agenda semanal" : "Actividades del día"}</h2>${week ? "" : meta}</div>${mode === "calendar" ? scalePicker() : ""}
         <div class="jd-view-switch" role="group" aria-label="Vista de actividades">${modeButtons}</div>
         ${week ? "" : `<button type="button" class="btn primary jd-edit-day" data-edit-day ${pending ? "disabled" : ""}>${ctx.icon("pencil",16)} Editar actividades</button>`}</header>
-        ${week ? schedule : entries.length ? schedule + plan : plan + schedule}</section></div>`;
+        ${schedule}</section></div>`;
     const view = el.querySelector(".jd-view");
+    if (!week) window.JTimeline.bind(view.querySelector(".jd-timeline"),entries,ctx,hourLabel);
     if (week) {
       window.JWeek.render(view.querySelector(".jd-week-host"),{
         ...ctx,weekEntries:entriesFor,eventPaint:paint,openDay:date=>openDay(date,ctx),
@@ -517,6 +520,16 @@
       if (!btn) return;
       if (btn.matches("[data-edit-day]")) { window.JSheet.open(current.ctx); return; }
       if (btn.matches("[data-jd-detail]")) { openDetail(btn); return; }
+      if (btn.matches("[data-jd-jump-plan]")) {
+        const first = view.querySelector(".jd-plan-row");
+        const scroll = first?.closest(".jd-cal-scroll,.jd-list-scroll");
+        if (scroll) {
+          const head = scroll.querySelector(".jd-cal-head,.jd-list-head");
+          scroll.scrollTop += first.getBoundingClientRect().top-scroll.getBoundingClientRect().top-head.offsetHeight-scroll.clientTop;
+          first.querySelector("[data-jd-detail]").focus({preventScroll:true});
+        }
+        return;
+      }
       if (btn.matches("[data-jd-mode]") && btn.dataset.jdMode !== mode) {
         mode = btn.dataset.jdMode;
         current.ctx.render();
@@ -530,10 +543,10 @@
       scroller.scrollTop = savedScroll.top;
     }
     if (!pending && focusKey) locate(el,"[data-jd-field]",focusKey)?.focus({preventScroll:true});
-    else if (detailKey) locate(el,"[data-jd-detail]",detailKey)?.focus({preventScroll:true});
+    else if (detailKey) locate(el,"[data-jd-detail],[data-week-detail]",detailKey)?.focus({preventScroll:true});
+    else if (weekDate) el.querySelector('[data-week-day="'+weekDate+'"]')?.focus({preventScroll:true});
+    else if (stableFocus) el.querySelector(stableFocus)?.focus({preventScroll:true});
     else if (active?.matches("[data-jd-mode]")) el.querySelector('[data-jd-mode="' + active.dataset.jdMode + '"]')?.focus({preventScroll:true});
-    else if (active?.matches("[data-jd-scale]")) el.querySelector("[data-jd-scale]")?.focus({preventScroll:true});
-    else if (active?.matches("[data-edit-day]") && !pending) el.querySelector("[data-edit-day]")?.focus({preventScroll:true});
     if (detail) refreshDetail();
   }
 

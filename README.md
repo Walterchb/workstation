@@ -2,7 +2,7 @@
 
 Agenda personal para planificar antes de las 08:00, registrar el tiempo efectivo de cada actividad y relacionar varios días de trabajo con un resultado. El sitio se publica como archivos estáticos. Supabase gestiona las cuentas y los registros.
 
-**[Abrir la guía de instalación y uso](./GUIA.html)**. Para leerla desde Windows, extrae el ZIP y abre `GUIA.html` con Edge o Chrome. En GitHub se verá su código fuente. Cuando actives Pages, podrás leerla en `/jornada-personal/GUIA.html` desde el dominio de tu sitio.
+**[Abrir la instrucciones de instalación](./GUIA.html)**. Para leerla desde Windows, extrae el ZIP y abre `GUIA.html` con Edge o Chrome. En GitHub se verá su código fuente. Cuando actives Pages, podrás leerla en `/jornada-personal/GUIA.html` desde el dominio de tu sitio.
 
 ## Actualizar una instalación existente
 
@@ -10,7 +10,7 @@ Extrae el contenido del ZIP de actualización sobre la carpeta del repositorio q
 
 ## Acceder a la agenda
 
-Abre tu sitio e inicia sesión con el correo y la contraseña de tu cuenta en Supabase. Work Hub carga las actividades, los objetivos generales y las categorías de esa cuenta. Una cuenta nueva tiene las actividades y los objetivos vacíos. Si falta configurar la conexión, la pantalla inicial enlaza a la guía.
+Abre tu sitio e inicia sesión con el correo y la contraseña de tu cuenta en Supabase. Work Hub carga las actividades, los objetivos generales y las categorías de esa cuenta. Una cuenta nueva tiene las actividades y los objetivos vacíos. Si falta configurar la conexión, la pantalla inicial indica qué datos completar.
 
 ## Conectar tu propia cuenta
 
@@ -37,16 +37,6 @@ El navegador utiliza la clave publicable. Mantén fuera del repositorio tu contr
 5. Inicia sesión con tu correo y contraseña. Abre **Actividades → Editar actividades → Planificar**, escribe tu primera actividad y su contexto, y guarda la jornada. Al volver a entrar desde otro dispositivo, encontrarás la actividad en la misma fecha.
 
 Tu sesión de Work Hub pertenece a la pestaña actual. Si la cierras, vuelve a ingresar para consultar los mismos datos. Las solicitudes de la cuenta real van directamente a Supabase y la tipografía Manrope está incluida en el paquete.
-
-## Uso diario
-
-- **Consultar el día**. Elige la fecha en la barra superior. Bajo los indicadores y la línea de tiempo, elige **Horario** para ver los tramos a escala y los espacios rayados **Sin registro**, o **Lista** para leerlos por orden de inicio. Cada hora parte de una altura reducida y se amplía cuando sus actividades necesitan más espacio. Las horas anotadas y las duraciones permanecen exactas. Pulsa el título de cualquier tramo para ver su detalle completo, incluso si dura pocos minutos. Las actividades sin horas aparecen en **Sin horario**. Las 08:00 son tu referencia de entrada.
-- **Consultar la semana**. En **Semana**, las columnas siguen el orden de lunes a viernes. El sábado y el domingo se incorporan por separado cuando tienen alguna actividad, incluso sin horas. Las flechas de la barra avanzan o retroceden siete días. Pulsa el encabezado de un día para abrirlo.
-- **Editar el plan**. Abre **Actividades → Editar actividades → Planificar**. La hoja te deja el cursor en una fila lista para escribir. Usa **Tab** para pasar de actividad a contexto. El botón **+** de una fila inserta otra justo debajo. **Pegar plan** te permite revisar e incorporar las dos columnas que copiaste desde Excel. **Registro completo** muestra las ocho columnas del registro diario en su orden habitual. Las dos vistas comparten el borrador. Para editar una actividad del horario diario o semanal, pulsa su título y elige **Editar actividad**.
-- **Registrar horas y avances**. Anota el inicio real y guarda la jornada. Al terminar, completa el cierre y los comentarios en la hoja. Puedes cambiar **Estado** y marcar **¿Se hizo?** por separado desde **Horario**, **Lista** o **Sin horario**. Los comentarios y ambos controles se comparten entre los tramos de la misma actividad. Así puedes dar por cumplido el avance de hoy mientras el encargo sigue **En proceso**. Si retomas una actividad, selecciona su fila y usa **Añadir tramo**. **Duración** suma los tramos cerrados. **Detalle de fila** permite vincular un objetivo o marcar el origen como imprevisto. **Guardar jornada** o **Ctrl + S** aplica los cambios de la hoja en conjunto.
-- **Categorías**. Gestiona los nombres, colores y la categoría predeterminada desde el menú lateral. Un cambio de nombre se aplica también a tus registros anteriores. Archivar una categoría la conserva en el historial. En el editor, asigna la categoría a la actividad desde **Detalle de fila**.
-- **Objetivos generales**. Vincula las actividades que contribuyen a un mismo resultado. Cuando se concrete, marca el objetivo como alcanzado y registra el resultado y su fecha.
-- **Informe gerencial**. En **Análisis**, selecciona **Diario** o **Semanal**, revisa el período y pulsa **Informe gerencial → Descargar PDF**. Cada actividad del período aparece con su título, su contexto como **Objetivo específico** y sus comentarios como **Evidencia registrada**. Se conserva el vínculo con el **Objetivo general**, incluso si reúne actividades de varios días. Los resultados confirmados aparecen cuando registras un logro con fecha en el período. **Exportar CSV** descarga el detalle por tramo para Excel.
 
 ## Si algo falla
 

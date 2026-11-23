@@ -33,20 +33,17 @@
 .jw-day-head > span::first-letter { text-transform: uppercase; }
 .jw-day-head time { padding-left: 3px; font-variant-numeric: tabular-nums; }
 .jw-day-head small { display: block; color: var(--jw-muted); font-size: .6875rem; line-height: 1.35; font-variant-numeric: tabular-nums; }
-.jw-plan-strip { border-bottom: 1px solid #cbd9de; background: #fff; }
-.jw-plan-caption { padding-block: 5px; }
-.jw-plan-cell { min-width: 0; padding: 3px; border-right: 1px solid var(--jw-line); }
+.jw-plan-strip { border-top: 1px solid #d6e0e3; background: #fafbfc; }
+.jw-plan-caption { padding-block: 5px; line-height: 1.25; }
+.jw-plan-cell { min-width: 0; display: flex; align-items: stretch; border-right: 1px solid var(--jw-line); }
 .jw-plan-cell:last-child { border-right: 0; }
-.jw-plan-list { display: grid; grid-template-columns: minmax(0,1fr); align-content: start; gap: 2px; list-style: none; margin: 0; padding: 0; }
-.jw-plan-list > li { min-width: 0; }
-.jw-plan-more { min-width: 0; margin-top: 2px; }
-.jw-plan-more summary { display: inline-block; padding: 2px 4px; color: #286857; font-weight: 680; cursor: pointer; }
-.jw-plan-more summary::-webkit-details-marker { display: none; }
+.jw-plan-more { min-width: 0; border-top: 1px solid #d6e0e3; }
+.jw-plan-more summary { position: sticky; left: 0; width: max-content; padding: 6px 9px; color: #286857; font-weight: 680; cursor: pointer; }
 .jw-plan-more summary:hover { text-decoration: underline; }
 .jw-plan-more .jw-more-open, .jw-plan-more[open] .jw-more-closed { display: none; }
 .jw-plan-more[open] .jw-more-open { display: inline; }
-.jw-dash { display: block; padding: 1px 4px; color: #77878e; }
-.jw-plan-task { display: block; width: 100%; padding: 2px 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 1.35; text-align: left; border: 0; border-left: 3px solid var(--event-accent,#607d84); border-radius: 0; color: var(--jw-ink); background: #f3f6f6; cursor: pointer; }
+.jw-plan-task { display: block; width: 100%; padding: 4px 5px; overflow-wrap: anywhere; line-height: 1.35; text-align: left; border: 0; border-left: 3px solid var(--event-accent,#607d84); border-radius: 0; color: var(--jw-ink); background: #f3f6f6; cursor: pointer; }
+.jw-plan-task span { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; }
 .jw-plan-task:hover { background: #e9f1ee; text-decoration: underline; }
 .jw-board { height: var(--jw-height); position: relative; background: repeating-linear-gradient(135deg,#fff 0 5px,#eff3f4 5px 7px); }
 .jw-ruler, .jw-lane { min-height: 0; height: 100%; }

@@ -1,0 +1,23 @@
+.jprofile-dialog {width:min(440px,calc(100% - 24px));max-height:90dvh;margin:auto;padding:0;overflow:auto;background:#fff;border:1px solid var(--line);border-radius:5px;color:var(--ink);box-shadow:0 14px 64px #132a363c}
+.jprofile-dialog::backdrop {background:#14283470}
+.jprofile-dialog header,.jprofile-dialog footer {display:flex;align-items:center;gap:10px;padding:15px 20px}
+.jprofile-dialog header {justify-content:space-between;border-bottom:1px solid var(--line)}
+.jprofile-dialog footer {justify-content:flex-end;border-top:1px solid var(--line)}
+.jprofile-dialog h2 {margin:0;color:var(--navy);font-size:1.22rem;letter-spacing:-.025em}
+.jprofile-body {display:grid;gap:20px;padding:21px}
+.jprofile-photo,.jprofile-pick>div {display:flex;align-items:center;gap:12px}
+.jprofile-preview {width:78px;height:78px;flex:none;display:grid;place-items:center;overflow:hidden;background:#e1efea;border:1px solid #c5d9d4;border-radius:5px;color:#195e51;font-size:1.55rem;font-weight:750}
+.jprofile-preview img {display:block;width:100%;height:100%;object-fit:cover}
+.jprofile-pick {min-width:0}
+.jprofile-pick>div {flex-wrap:wrap;gap:5px 10px}
+.jprofile-pick .btn {min-height:33px;padding:7px 11px}
+.jprofile-pick small {display:block;margin-top:7px;color:var(--muted);font-size:.79rem}
+.jprofile-remove {background:transparent;border:0;color:#65565a;font-size:.85rem;padding:5px 0;text-decoration:underline;text-underline-offset:3px}
+.jprofile-field,.jprofile-account {display:grid;gap:6px;font-size:.9rem}
+.jprofile-field span,.jprofile-account span {font-weight:650;color:var(--navy)}
+.jprofile-field input {min-width:0;width:100%;min-height:39px;border:1px solid #c0d1d8;border-radius:4px;padding:8px 10px;background:white}
+.jprofile-account strong {font-size:.9rem;font-weight:500;color:var(--muted);overflow-wrap:anywhere}
+.jprofile-error,.jprofile-feedback {font-size:.86rem;line-height:1.45;margin:0}
+.jprofile-feedback {color:var(--teal-deep)}
+.jprofile-error {padding:9px 11px;background:#fff2f1;border:1px solid #efcdcd;border-radius:4px;color:#8a2929}
+@media(max-width:420px){.jprofile-dialog header,.jprofile-dialog footer,.jprofile-body{padding:14px}.jprofile-photo{gap:9px}.jprofile-preview{width:63px;height:63px}.jprofile-pick small{font-size:.75rem}}

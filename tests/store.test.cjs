@@ -170,3 +170,37 @@ test('Una renovación denegada quita credenciales de la pestaña y exige ingreso
   assert.equal((await tab.store.boot()).mode,'auth');assert.equal(tab.credentials.entries.size,0);
   assert.equal(api.records.size,0);
 });
+
+test('El perfil opcional se conserva con el historial en Supabase y jamás pasa a las credenciales de la pestaña',async()=>{
+  const api=service(),app=openTab(api.fetch),other=openTab(api.fetch);
+  const original=app.model.empty();
+  original.tasks.push(app.model.task({title:'Seguimiento histórico'}));
+  original.goals.push({id:'a',title:'Reporte',description:'',color:'#336699',status:'En curso',result:'',achievedOn:''});
+  const dateSnapshot=copy(original);
+  api.records.set('ana',{revision:5,document:dateSnapshot});
+  const state=(await app.store.signIn('ana','pass')).state;
+  assert.equal(state.profile,undefined);
+  const jpeg='data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAoHBwgHBgoICAgLCgoLDhgQDg0NDh0VFhEYIx8lJCIfIiEmKzcvJik0KSEiMEExNDk7Pj4+JS5ESUM8SDc9Pjv/2wBDAQoLCw4NDhwQEBw7KCIoOzs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozv/wAARCAAEAAQDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAb/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAABAb/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwCVAPTT/9k=';
+  assert.equal(app.model.validProfilePhoto(jpeg),true);
+  const updates={name:'Ana Pérez',photo:jpeg};
+  app.model.saveProfile(state,{},updates);
+  await app.store.save(state);
+  const loaded=(await openTab(api.fetch,config,app.credentials).store.boot()).state;
+  assert.deepEqual(copy(loaded.profile),updates);
+  assert.deepEqual(copy(loaded.tasks),dateSnapshot.tasks);
+  assert.deepEqual(copy(loaded.goals),dateSnapshot.goals);
+  assert.equal(api.records.get('ana').revision,6);
+  assert.equal((await other.store.signIn('otra','pass')).state.profile,undefined);
+  assert.deepEqual([app.legacy.reads,app.legacy.writes,app.legacy.removals],[0,0,0]);
+  for(const raw of app.credentials.entries.values()) {assert.ok(!raw.includes(jpeg));assert.ok(!raw.includes(updates.name));}
+  assert.throws(()=>app.model.saveProfile(state,{},updates),/cambió/);
+  for(const bad of ['https://servidor.invalid/foto.jpg','data:image/svg+xml,<svg/>','data:image/jpeg;base64,/9j/AABB',
+    'data:image/jpeg;base64,/9j/'+ 'A'.repeat(100000)]) {
+    assert.throws(()=>app.model.saveProfile(state,updates,{name:'Ana',photo:bad}),/JPEG/);
+    assert.deepEqual(copy(state.profile),updates);
+  }
+  app.model.saveProfile(state,updates,{name:'Ana',photo:''});
+  await app.store.save(state);
+  assert.equal(api.records.get('ana').document.profile.photo,'');
+  assert.deepEqual(api.records.get('ana').document.tasks,dateSnapshot.tasks);
+});

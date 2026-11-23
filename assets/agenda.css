@@ -127,6 +127,8 @@
 .jd-activities-intro { min-width: 0; }
 .jd-activities-intro h2 { color: #153848; font-size: 1.18rem; font-weight: 760; line-height: 1.3; letter-spacing: -.035em; }
 .jd-activities-head .jd-schedule-meta { margin: 4px 0 0; font-size: .82rem; line-height: 1.35; color: #576a76; font-variant-numeric: tabular-nums; }
+.jd-schedule-meta [data-jd-jump-plan] { padding: 0; border: 0; background: transparent; color: #27675e; font: inherit; text-decoration: underline; text-decoration-color: #a8c5bc; text-underline-offset: 2px; }
+.jd-schedule-meta [data-jd-jump-plan]:hover { text-decoration-color: currentColor; }
 .jd-view-switch { display: inline-flex; align-items: center; align-self: center; border: 1px solid #cbd9dd; padding: 2px; border-radius: 4px; background: #f2f5f6; }
 .jd-view-switch button { display: inline-flex; justify-content: center; align-items: center; gap: 5px; min-height: 29px; padding: 4px 9px; color: #526571; background: transparent; border: 1px solid transparent; border-radius: 3px; font: inherit; font-size: .81rem; font-weight: 650; line-height: 1.3; }
 .jd-view-switch button:hover { color: #176457; background: #e8efec; }
@@ -139,6 +141,11 @@
 .jd-hatch-key i { width: 15px; height: 10px; flex: none; border: 1px solid #c8d6dc; border-radius: 2px; background: repeating-linear-gradient(135deg,#fff 0 3px,#dce5e9 3px 5px); }
 .jd-scale-picker select:not([multiple]) { min-height: 28px; padding: 3px 22px 3px 7px; background-color: #fff; background-position: right 4px center; background-size: 13px; border: 1px solid #d1dee1; border-radius: 3px; font: inherit; font-weight: 650; color: #3b5764; }
 .jd-cal-scroll, .jd-list-scroll { position: relative; min-width: 0; max-height: min(76dvh,910px); overflow: auto; overscroll-behavior: contain; background: #fff; border: 1px solid #d3dfe3; border-radius: 4px; }
+.jd-cal-scroll, .jd-list-scroll, .jd-detail, .jw-scroller, .jw-short-index ul { scrollbar-width: thin; scrollbar-color: #839198 transparent; }
+:is(.jd-cal-scroll,.jd-list-scroll,.jd-detail,.jw-scroller,.jw-short-index ul):is(:hover,:focus-within) { scrollbar-color: #677c85 transparent; }
+@media (forced-colors: active) {
+  :is(.jd-cal-scroll,.jd-list-scroll,.jd-detail,.jw-scroller,.jw-short-index ul) { scrollbar-color: auto; }
+}
 .jd-cal-canvas, .jd-list-canvas { position: relative; width: 100%; min-width: 0; }
 @container jornada (min-width: 701px) {
   .jd-calendar[data-density="compact"] .jd-cal-scroll { max-height: min(100dvh,1030px); }
@@ -148,11 +155,10 @@
   background: #f1f5f6; border-bottom: 1px solid #cedbe0; color: #465f6a;
   font-size: .77rem; font-weight: 720; line-height: 1.25;
 }
-.jd-cal-head { grid-template-columns: var(--jd-hour-width) var(--jd-data-columns); }
-.jd-list-head { grid-template-columns: var(--jd-data-columns); }
+.jd-cal-head, .jd-list-head { grid-template-columns: var(--jd-hour-width) var(--jd-data-columns); }
 .jd-cal-head > span, .jd-list-head > span { display: flex; align-items: center; min-width: 0; padding: 6px var(--jd-cell-inset); overflow-wrap: anywhere; }
-.jd-cal-head > :first-child { justify-content: center; padding-inline: 2px; }
-.jd-cal-head > :nth-child(2), .jd-list-head > :first-child { padding-left: var(--jd-title-inset); }
+.jd-cal-head > :first-child, .jd-list-head > :first-child { justify-content: center; padding-inline: 2px; }
+.jd-cal-head > :nth-child(2), .jd-list-head > :nth-child(2) { padding-left: var(--jd-title-inset); }
 .jd-cal-head > :last-child, .jd-list-head > :last-child { justify-content: center; text-align: center; padding-inline: 1px; }
 
 .jd-grid {
@@ -175,7 +181,7 @@
 .jd-grid .jd-calendar-empty { position: absolute; left: calc(var(--jd-hour-width) + 12px); top: 11px; max-width: calc(100% - var(--jd-hour-width) - 18px); padding: 3px 7px; color: #4d6572; background: #fff; font-size: .83rem; line-height: 1.4; }
 
 /* El ancho de estas siete columnas es el mismo en cabecera, tramo y medición. */
-.jd-event, .jd-list-row, .jd-plan-row {
+.jd-event, .jd-row-data {
   display: grid; grid-template-columns: var(--jd-data-columns); align-items: start; align-content: start;
   position: relative; min-width: 0; border-radius: 0;
   --jd-ribbon: var(--ribbon-color,#d7e8e7);
@@ -250,22 +256,20 @@
 }
 
 .jd-readable-list, .jd-plan-list { margin: 0; padding: 0; list-style: none; }
-.jd-readable-list { display: grid; gap: 3px; background: #f5f8f8; }
-.jd-list-row { min-height: 58px; padding-bottom: 6px; }
+.jd-readable-list, .jd-plan-list { display: grid; gap: 1px; background: #dbe4e8; }
+.jd-plan-list { border-top: 1px solid #cbd7dc; }
+.jd-list-row, .jd-plan-row { display: grid; grid-template-columns: var(--jd-hour-width) minmax(0,1fr); min-width: 0; }
+.jd-row-hour { display: grid; align-content: start; justify-items: center; min-width: 0; padding: 4px 2px; text-align: center; border-right: 1px solid #cbd8dd; background: #f8fafb; color: #4b6370; font-size: .6875rem; font-weight: 650; line-height: 1.3; font-variant-numeric: tabular-nums; }
+.jd-plan-row .jd-row-hour { background: #eff3f4; }
+.jd-row-data { padding: 0 0 4px; min-height: 34px; }
+.jd-row-data .jd-field { padding-block: 4px; }
+.jd-row-data .jd-field-status, .jd-row-data .jd-field-done { padding-block: 2px; }
+.jd-row-data .jd-done { min-height: 18px; }
 .jd-list-row .jd-event-title, .jd-plan-row .jd-event-title { height: auto; min-height: var(--jd-band-height); padding-block: 7px; overflow: visible; white-space: normal; line-height: 18px; overflow-wrap: anywhere; }
 .jd-list-row .jd-event-context, .jd-plan-row .jd-event-context { padding-top: 4px; }
 .jd-list-view > p, .jd-list-empty { margin: 0; padding: 14px 10px; color: #546b75; font-size: .84rem; }
-.jd-unscheduled { padding: 13px var(--jd-gutter) 16px; border-top: 1px solid #dce4e7; }
-.jd-plan-head { display: flex; align-items: center; gap: 7px; margin: 0 0 8px; }
-.jd-plan-head h3 { color: #264958; font-size: .95rem; line-height: 1.3; font-weight: 750; }
-.jd-plan-head > span { background: #edf2f3; color: #526974; font-size: .75rem; padding: 1px 6px; font-weight: 650; border-radius: 3px; }
-.jd-plan-list { display: grid; gap: 4px; }
-.jd-plan-row { min-height: 57px; padding-bottom: 5px; background: #f8fafb; box-shadow: inset 3px 0 var(--event-accent,#67818b),inset 0 0 0 1px #e1e8eb; }
+.jd-plan-row .jd-row-data { background: #f8fafb; box-shadow: inset 3px 0 var(--event-accent,#67818b); }
 .jd-plan-row .jd-event-title { color: #244553; }
-.jd-plan-row .jd-field { display: grid; gap: 3px; align-content: start; padding-block: 6px 2px; }
-.jd-plan-row .jd-field-done { justify-items: center; }
-.jd-plan-row .jd-field-label { position: static; width: auto; height: auto; margin: 0; clip-path: none; overflow: visible; white-space: normal; font-size: .74rem; line-height: 1.3; font-weight: 600; color: #5a6e79; }
-.jd-plan-row .jd-done { height: 24px; }
 
 .jd-detail { width: min(565px,calc(100% - 20px)); max-width: 100%; max-height: 88dvh; margin: auto; padding: 20px; overflow: auto; border: 1px solid #c4d2d7; border-radius: 5px; background: #fff; color: #254553; box-shadow: 0 16px 55px #12374730; }
 .jd-detail::backdrop { background: #12304865; }
@@ -291,7 +295,12 @@
   .jd-calendar { padding-inline: 9px; }
   .jd-cal-head { grid-template-columns: var(--jd-hour-width) var(--jd-mobile-columns); }
   .jd-cal-head > :is([data-col=comments],[data-col=start],[data-col=end],[data-col=duration]), .jd-calendar .jd-field-comments, .jd-calendar .jd-field-start, .jd-calendar .jd-field-end, .jd-calendar .jd-field-duration { display: none; }
-  .jd-calendar .jd-event { grid-template-columns: var(--jd-mobile-columns); }
+  .jd-calendar .jd-row-data { grid-template-columns: var(--jd-mobile-columns); }
+  .jd-calendar .jd-row-data .jd-event-head { display: contents; }
+  .jd-calendar .jd-row-data .jd-event-title { grid-column: 1; grid-row: 1; }
+  .jd-calendar .jd-row-data .jd-event-context { grid-column: 1/-1; grid-row: 2; }
+  .jd-calendar .jd-row-data[data-has-comment=true] .jd-field-comments { display: block; grid-column: 1/-1; grid-row: 3; padding: 2px var(--jd-title-inset); }
+  .jd-calendar .jd-row-data[data-has-comment=true] .jd-field-comments .jd-field-value::before { content: 'Comentarios '; font-weight: 680; }
   .jd-cal-head > :first-child, .jd-grid-rule time { font-size: .6875rem; }
   .jd-calendar .jd-event, .jd-probe-card { grid-template-columns: var(--jd-mobile-columns); }
   .jd-event .jd-event-title, .jd-probe-title { grid-row: 1; grid-column: 1; }
@@ -302,16 +311,15 @@
   .jd-calendar .jd-event[data-has-comment=true] .jd-field-comments .jd-field-label, .jd-probe-comment::before { position: static; width: auto; height: auto; margin: 0 3px 0 0; padding: 0; clip-path: none; overflow: visible; white-space: normal; font-weight: 680; }
   .jd-probe-comment::before { content: "Comentarios"; }
   .jd-calendar .jd-field-comments .jd-field-value { display: inline; }
-  .jd-list-scroll { max-height: none; border: 0; overflow: visible; }
+  .jd-list-scroll { max-height: 72dvh; }
   .jd-list-head { display: none; }
-  .jd-readable-list { gap: 8px; background: #fff; }
-  .jd-list-row, .jd-plan-row { grid-template-columns: minmax(0,1fr); gap: 2px; padding-bottom: 9px; }
-  .jd-list-row .jd-event-fields, .jd-plan-row .jd-event-fields { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); align-items: start; gap: 7px; padding: 1px 9px 0; }
-  .jd-list-row .jd-field, .jd-plan-row .jd-field { display: grid; justify-items: start; gap: 3px; padding: 0; }
-  .jd-list-row .jd-field-label, .jd-plan-row .jd-field-label { position: static; width: auto; height: auto; margin: 0; clip-path: none; overflow: visible; color: #5b6d76; font-size: .75rem; line-height: 1.25; font-weight: 620; }
-  .jd-list-row .jd-field-comments, .jd-plan-row .jd-field-comments { grid-column: 1/-1; }
-  .jd-list-row .jd-field-status, .jd-plan-row .jd-field-status { grid-column: span 2; }
-  .jd-list-row .jd-done, .jd-plan-row .jd-done { height: 24px; }
+  .jd-list-view .jd-row-data { grid-template-columns: minmax(0,1fr); gap: 2px; padding-bottom: 8px; }
+  .jd-list-view .jd-event-fields { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); align-items: start; gap: 6px; padding: 1px 8px; }
+  .jd-list-view .jd-field { display: grid; justify-items: start; gap: 2px; padding: 0; }
+  .jd-list-view .jd-field-label { position: static; width: auto; height: auto; margin: 0; clip-path: none; overflow: visible; color: #5b6d76; font-size: .6875rem; line-height: 1.25; font-weight: 620; }
+  .jd-list-view .jd-field-comments { grid-column: 1/-1; }
+  .jd-list-view .jd-field-status { grid-column: span 2; }
+  .jd-list-view .jd-done { height: 24px; }
 }
 @container jornada (max-width: 540px) {
   .jd-activities { --jd-gutter: 10px; }
@@ -329,9 +337,8 @@
 
 /* El horario, la lista y las actividades sin hora usan la misma letra compacta. */
 .jd-activities { --jd-band-height: 21px; }
-.jd-calendar, .jd-list-view, .jd-unscheduled, .jd-cal-head, .jd-list-head, .jd-grid-rule time,
-.jd-calendar .jd-calendar-empty, .jd-list-view .jd-list-empty, .jd-plan-row .jd-field-label,
-.jd-list-row .jd-field-label, .jd-plan-head > span { font-size: .6875rem; }
+.jd-calendar, .jd-list-view, .jd-cal-head, .jd-list-head, .jd-grid-rule time,
+.jd-calendar .jd-calendar-empty, .jd-list-view .jd-list-empty { font-size: .6875rem; }
 .jd-list-row, .jd-plan-row { border-radius: 0; min-height: 34px; }
 .jd-plan-list, .jd-readable-list { gap: 1px; }
 .jd-list-row .jd-event-title, .jd-plan-row .jd-event-title { padding-block: 3px; line-height: 1.25; }
@@ -360,14 +367,14 @@
 }
 
 /* Cortar en líneas enteras impide que el borde de un tramo muestre media letra. */
-.jd-calendar .jd-event-title, .jd-calendar .jd-event-context > span,
-.jd-calendar .jd-field-comments .jd-field-value {
+.jd-slot-track .jd-event-title, .jd-slot-track .jd-event-context > span,
+.jd-slot-track .jd-field-comments .jd-field-value {
   display:-webkit-box; -webkit-box-orient:vertical; overflow:hidden;
   line-height:1.25; overflow-wrap:anywhere;
 }
-.jd-calendar .jd-event-title { -webkit-line-clamp:var(--jd-title-lines,1); }
-.jd-calendar .jd-event-context > span { -webkit-line-clamp:var(--jd-context-lines,1); }
-.jd-calendar .jd-field-comments .jd-field-value { -webkit-line-clamp:var(--jd-comment-lines,1); }
+.jd-slot-track .jd-event-title { -webkit-line-clamp:var(--jd-title-lines,1); }
+.jd-slot-track .jd-event-context > span { -webkit-line-clamp:var(--jd-context-lines,1); }
+.jd-slot-track .jd-field-comments .jd-field-value { -webkit-line-clamp:var(--jd-comment-lines,1); }
 .jd-calendar .jd-slot-track[data-context-lines="0"] .jd-event-context,
 .jd-calendar .jd-slot-track[data-comment-lines="0"] .jd-field-comments { display:none; }
 @container jornada (max-width:700px) {

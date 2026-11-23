@@ -94,30 +94,26 @@
       esc(model.formatDate(day.date,{day:'2-digit',month:'2-digit'})) + '</time></span><small>' + esc(meta) + '</small></button>';
   }
 
-  function planList(tasks,day,goals,ctx) {
-    return '<ul class="jw-plan-list" aria-label="Sin horario, ' + esc(civilLabel(day.date)) + '">' +
-      tasks.map(t=>'<li><button type="button" class="jw-plan-task" ' + identity(t.id,0,'week') +
-        ' style="' + ctx.eventPaint(goals.get(t.goalId)) + '" aria-label="' +
-        esc(t.title + ' · Sin horario · ' + civilLabel(day.date)) + '" title="' + esc(t.title) + '">' +
-        esc(t.title) + '</button></li>').join('') + '</ul>';
-  }
-
-  function planCell(day,goals,ctx) {
-    if (!day.unplaced.length) return '<span class="jw-dash" aria-hidden="true">—</span>';
-    const initial = planList(day.unplaced.slice(0,2),day,goals,ctx);
-    if (day.unplaced.length<=2) return initial;
-    const other = day.unplaced.slice(2);
-    return initial + '<details class="jw-plan-more" data-date="' + day.date + '"' +
-      (expandedPlans.has(day.date) ? ' open' : '') + '><summary>' +
-      '<span class="jw-more-closed">+' + other.length + ' más</span><span class="jw-more-open">Ver menos</span>' +
-      '</summary>' + planList(other,day,goals,ctx) + '</details>';
-  }
-
-  function planStrip(columns,goals,ctx) {
-    if (!columns.some(day=>day.unplaced.length)) return '';
-    return '<div class="jw-plan-strip"><span class="jw-corner jw-plan-caption">Sin horario</span>' +
-      columns.map(day=>'<div class="jw-plan-cell" data-date="' + day.date + '">' +
-        planCell(day,goals,ctx) + '</div>').join('') + '</div>';
+  function planRows(columns,goals,ctx,weekStart) {
+    const count = Math.max(...columns.map(day=>day.unplaced.length));
+    const visible = 4;
+    const rows = Array.from({length:count},(_,i)=>{
+      const cells = columns.map(day=>{
+        const task = day.unplaced[i];
+        const button = task ? '<button type="button" class="jw-plan-task" ' + identity(task.id,0,'week') +
+          ' style="' + ctx.eventPaint(goals.get(task.goalId)) + '" aria-label="' +
+          esc(task.title + ' · Sin horario · ' + civilLabel(day.date)) + '" title="' + esc(task.title) + '">' +
+          '<span>' + esc(task.title) + '</span></button>' : '';
+        return '<div class="jw-plan-cell" data-date="' + day.date + '">' + button + '</div>';
+      }).join('');
+      return '<div class="jw-plan-strip"><span class="jw-corner jw-plan-caption">Sin horario</span>' + cells + '</div>';
+    });
+    if (rows.length<=visible) return rows.join('');
+    const remaining = columns.reduce((n,day)=>n+Math.max(day.unplaced.length-visible,0),0);
+    const show = 'Mostrar ' + remaining + (remaining===1 ? ' actividad más' : ' actividades más');
+    return rows.slice(0,visible).join('') + '<details class="jw-plan-more"' +
+      (expandedPlans.has(weekStart) ? ' open' : '') + '><summary><span class="jw-more-closed">' +
+      show + '</span><span class="jw-more-open">Mostrar menos</span></summary>' + rows.slice(visible).join('') + '</details>';
   }
 
   function slot(entry,day,scale,ctx) {
@@ -183,13 +179,13 @@
       '<div class="jw-scroller" tabindex="0" role="region" aria-label="Calendario de lunes a ' +
       esc(model.formatDate(columns.at(-1).date,{weekday:'long'})) + ', con desplazamiento">' +
       '<div class="jw-sheet"><div class="jw-day-heads"><span class="jw-corner">Hora</span>' +
-        columns.map(day=>dayHead(day,ctx)).join('') + '</div>' + planStrip(columns,goals,ctx) +
+        columns.map(day=>dayHead(day,ctx)).join('') + '</div>' +
         '<div class="jw-board" data-start-minute="' + low + '" data-end-minute="' + high +
         '" data-hour-heights="' + scale.heights.join(',') + '" data-pixels-per-hour="' + baseHour +
         '"><div class="jw-rules" aria-hidden="true">' + lines.join('') + '</div><div class="jw-ruler" aria-hidden="true">' + ticks.join('') + '</div>' +
         columns.map(day=>'<div class="jw-lane" data-date="' + day.date + '"><ol aria-label="Tramos, ' + esc(civilLabel(day.date)) + '">' +
           day.entries.map(entry=>slot(entry,day.date,scale,ctx)).join('') + '</ol></div>').join('') +
-      '</div></div></div>' + legend(columns,goals,ctx) + '</section>';
+      '</div>' + planRows(columns,goals,ctx,week.start) + '</div></div>' + legend(columns,goals,ctx) + '</section>';
 
     const scroller = mount.querySelector('.jw-scroller');
     const previous = viewPositions.get(week.start);
@@ -197,9 +193,8 @@
     scroller.onscroll = () => viewPositions.set(week.start,{left:scroller.scrollLeft,top:scroller.scrollTop});
     const shortIndex = mount.querySelector('.jw-short-index');
     if (shortIndex) shortIndex.ontoggle = () => shortIndexes.set(week.start,shortIndex.open);
-    for (const details of mount.querySelectorAll('.jw-plan-more')) {
-      details.ontoggle = () => details.open ? expandedPlans.add(details.dataset.date) : expandedPlans.delete(details.dataset.date);
-    }
+    const more = mount.querySelector('.jw-plan-more');
+    if (more) more.ontoggle = () => more.open ? expandedPlans.add(week.start) : expandedPlans.delete(week.start);
     mount.onclick = event=>{
       const button = event.target.closest('button');
       if (!button || !mount.contains(button)) return;

@@ -5,7 +5,7 @@
   const model=window.JModel;
   const store=window.JStore;
   const root=document.getElementById('root');
-  const titles={agenda:'Actividades',goals:'Objetivos generales',analysis:'Análisis',categories:'Categorías'};
+  const titles={agenda:'Actividades',goals:'Objetivos',analysis:'Análisis',categories:'Categorías'};
   let view='agenda', date=model.today(), calendarMonth=date.slice(0,7);
   let session=null, state=null, saving=false, clockHandle;
   const mark='<img src="./assets/icons/mark.svg" width="37" height="37" alt="">';
@@ -36,21 +36,6 @@
     }
     host.append(node);
     if(!action) setTimeout(()=>node.remove(),5500);
-  }
-
-  function showGuide() {
-    const dialog=document.createElement('dialog');
-    dialog.className='shell-dialog';
-    dialog.setAttribute('aria-labelledby','help-title');
-    dialog.innerHTML='<div class="dialog-top"><h2 id="help-title">Cómo usar Work Hub</h2><button class="icon-btn" aria-label="Cerrar ayuda">'+icon('x')+'</button></div>'+
-      '<div class="help-list"><div><strong>Al planificar</strong><p>En Actividades, abre Editar actividades y elige Planificar. Escribe el título y el contexto de cada fila o usa Pegar plan para traerlos de Excel. Usa el signo + de una fila para insertar otra justo debajo.</p></div>'+
-      '<div><strong>Al trabajar</strong><p>Registra las horas y los comentarios en Editar actividades. En el horario puedes cambiar el estado y marcar «¿Se hizo?» de forma independiente. Marca la casilla cuando hayas cumplido el avance que planificaste para hoy, incluso si el encargo continúa.</p></div>'+
-      '<div><strong>Al revisar con gerencia</strong><p>El contexto de cada actividad aparece como su objetivo específico y el comentario como evidencia registrada. Vincula las actividades a un objetivo general para seguir su avance. Desde Análisis puedes descargar el informe gerencial del período.</p></div></div>'+
-      '<div class="help-actions"><a class="btn" href="./GUIA.html" target="_blank" rel="noopener">'+icon('book',16)+' Guía de instalación y uso</a></div>';
-    dialog.querySelector('button').onclick=()=>dialog.close();
-    dialog.addEventListener('close',()=>dialog.remove(),{once:true});
-    document.body.append(dialog);
-    dialog.showModal();
   }
 
   function toggleMenu(open) {
@@ -255,18 +240,31 @@
     if(view==='agenda') window.JAgenda.render(el,getContext());
     else if(view==='categories') window.JCategories.render(el,getContext());
     else window.JInsights.render(el,getContext(),view);
-    updateContext(el); renderCalendar(); updateStatus(); updateDateTools();
+    updateContext(el); renderCalendar(); updateProfile(); updateStatus(); updateDateTools();
+  }
+
+  function updateProfile() {
+    const {name,initials,photo}=window.JProfile.display(state,session.user);
+    const trigger=root.querySelector('[data-profile]');
+    const avatar=trigger.querySelector('.monogram');
+    const label=trigger.querySelector('.usercopy b');
+    label.textContent=name;
+    trigger.title='Editar perfil · '+name;
+    if(photo) {
+      let img=avatar.querySelector('img');
+      if(!img){img=document.createElement('img');img.alt='';avatar.replaceChildren(img);}
+      if(img.getAttribute('src')!==photo)img.src=photo;
+    } else if(avatar.textContent!==initials||avatar.querySelector('img')) {
+      avatar.textContent=initials;
+    }
   }
 
   function shell() {
-    const email=session.user?.email||'';
-    const userName=email.split('@')[0] || 'Mi cuenta';
-    const initials=userName.split(/[._\s-]+/).slice(0,2).map(p=>p.charAt(0)).join('').toUpperCase();
     root.innerHTML='<div class="app-shell"><button type="button" class="backdrop" aria-label="Cerrar navegación"></button><aside id="side-menu" class="rail" aria-label="Menú de Work Hub">'+
       '<div class="brandbar">'+mark+'<span>Work Hub</span><button class="close-menu" aria-label="Cerrar menú">'+icon('x')+'</button></div>'+
       '<nav class="rail-nav" aria-label="Vistas principales">'+[['agenda','calendar-days'],['goals','target'],['analysis','bar-chart'],['categories','layers']].map(([v,i])=>'<button data-view="'+v+'">'+icon(i,19)+titles[v]+'</button>').join('')+'</nav>'+
       '<section class="cal-wrap" aria-label="Calendario de jornadas"></section>'+
-      '<div class="rail-bottom"><button class="rail-link" data-help>'+icon('help',18)+' Guía de uso</button><div class="rail-user"><span class="monogram">'+esc(initials)+'</span><div class="usercopy"><b title="'+esc(email)+'">'+esc(userName)+'</b><span class="account-mode" role="status"></span></div>'+
+      '<div class="rail-bottom"><div class="rail-user"><button class="profile-trigger" data-profile type="button" aria-label="Editar perfil" aria-haspopup="dialog"><span class="monogram" aria-hidden="true"></span><span class="usercopy"><b></b><span class="account-mode" role="status"></span></span>'+icon('pencil',13)+'</button>'+
       '<button data-logout aria-label="Cerrar sesión" title="Cerrar sesión">'+icon('logout',18)+'</button></div></div></aside>'+
       '<div class="shell-content"><header class="workbar"><div class="toolbar-left"><button class="hamburger icon-btn" aria-label="Abrir menú" aria-controls="side-menu" aria-expanded="false">'+icon('menu',20)+'</button><nav class="work-context" aria-label="Ubicación actual"></nav></div>'+
       '<div class="bar-right"><span class="work-running" hidden></span>'+dateTools()+'</div></header><main id="main" tabindex="-1" class="stage"></main></div></div>';
@@ -277,7 +275,7 @@
     root.querySelector('.hamburger').onclick=()=>toggleMenu(true);
     root.querySelector('.close-menu').onclick=root.querySelector('.backdrop').onclick=()=>toggleMenu(false);
     root.querySelectorAll('[data-view]').forEach(btn=>btn.onclick=()=>navigate(btn.dataset.view));
-    root.querySelector('[data-help]').onclick=()=>{if(root.querySelector('.rail.is-open'))toggleMenu(false);showGuide();};
+    root.querySelector('[data-profile]').onclick=()=>window.JProfile.open(getContext(),session.user);
     const logout=root.querySelector('[data-logout]');
     if(logout)logout.onclick=async()=>{
       if(saving){notify('Espera a que termine el guardado.');return;}
@@ -303,7 +301,7 @@
       '<div class="banner-body"><p>Agenda personal</p><h2>Mercado de Capitales y Control de Gestión</h2></div><div class="banner-chart" aria-hidden="true"><div class="auth-hours"><span>08:00</span><span>12:00</span><span>16:00</span></div><div class="auth-bars"><i></i><i></i><i></i><i></i></div></div></div>'+
       '<section class="auth-main"><div class="auth-card"><span class="auth-ico">'+icon('lock',24)+'</span><h1>Iniciar sesión</h1><p>Ingresa a tu agenda personal.</p>'+
       '<form><label>Correo electrónico<input name="email" type="email" autocomplete="username" required placeholder="tu@correo.com"></label><label>Contraseña<span class="pass-field"><input name="password" type="password" autocomplete="current-password" required><button class="icon-btn" type="button" aria-label="Mostrar contraseña">'+icon('eye',18)+'</button></span></label>'+
-      '<p class="auth-err" role="alert" hidden></p><button class="btn primary" type="submit">Ingresar</button></form><a href="./GUIA.html" target="_blank" rel="noopener" class="auth-guide">Guía de configuración de la cuenta</a></div></section></main>';
+      '<p class="auth-err" role="alert" hidden></p><button class="btn primary" type="submit">Ingresar</button></form></div></section></main>';
     document.title='Work Hub · Iniciar sesión';
     const form=root.querySelector('form');
     const password=form.elements.password;
@@ -330,7 +328,7 @@
     catch(error){
       const configuration=error.code==='CONFIG';
       document.title=(configuration?'Configuración':'Acceso')+' · Work Hub';
-      root.innerHTML='<main id="main" class="boot boot-error">'+mark+'<h1>'+(configuration?'Configura la conexión de Work Hub':'No se pudo abrir Work Hub')+'</h1><p role="status"></p><button class="btn primary">Reintentar</button><a href="./GUIA.html'+(configuration?'#conectar':'#problemas')+'" target="_blank" rel="noopener">Ver guía de configuración</a></main>';
+      root.innerHTML='<main id="main" class="boot boot-error">'+mark+'<h1>'+(configuration?'Configura la conexión de Work Hub':'No se pudo abrir Work Hub')+'</h1><p role="status"></p><button class="btn primary">Reintentar</button></main>';
       root.querySelector('p').textContent=error.message;
       root.querySelector('button').onclick=()=>location.reload();
     }

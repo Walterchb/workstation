@@ -144,6 +144,18 @@
     return incoming.length;
   }
 
+  function pasteTextColumn(draft, index, column, table) {
+    if (![2,7].includes(column) || !Number.isInteger(index) || index<0 || table.some(cells => cells.length!==1)) {
+      throw new Error('Selecciona una sola columna de Contexto o Comentarios.');
+    }
+    const rows = table.length>1 && headers[column].includes(label(table[0][0])) ? table.slice(1) : table;
+    if (!rows.length) return 0;
+    if (rows.some((_,i) => !draft.rows[index+i]?.title.trim())) {
+      throw new Error('El bloque alcanza una fila sin actividad. Crea las actividades o copia menos filas antes de pegar.');
+    }
+    return paste(draft,index,column,rows);
+  }
+
   // Ignorar el orden de las claves de objetos JSON, conservando el de sus arreglos.
   function sameJSON(a, b) {
     if (a === b) return true;
@@ -167,13 +179,14 @@
     const result = [];
     for (let i = 0; i < table.length; i++) {
       const cells = table[i];
-      if (i === 0 && (headerStart(cells) === 1 ||
+      if (i === 0 && (headerStart(cells) === 1 || (cells.length===3 && headerStart(cells.slice(0,2))===1 && headers[7].includes(label(cells[2]))) ||
           (table.length > 1 && cells.length === 1 && headers[1].includes(label(cells[0]))))) continue;
-      if (cells.slice(2).some(value => value.trim())) throw new Error('Línea ' + (i+1) + '. Copia solo las columnas Actividad y Contexto.');
+      if (cells.slice(3).some(value => value.trim())) throw new Error('Línea ' + (i+1) + '. Copia Actividad, Contexto y, si corresponde, Comentarios.');
       const title = (cells[0] || '').trim(), context = (cells[1] || '').trim();
-      if (!title && !context) continue;
+      const comment = cells[2] || '';
+      if (!title && !context && !comment.trim()) continue;
       if (!title) throw new Error('Línea ' + (i+1) + '. Escribe la actividad que corresponde a este contexto.');
-      result.push({title,context});
+      result.push(comment ? {title,context,comment} : {title,context});
     }
     return result;
   }
@@ -239,5 +252,5 @@
     state.tasks = tasks;
   }
 
-  globalThis.JSheetModel = {createDraft, newRow, insertRow, moveRow, normalizeTime, parseTSV, paste, readPlan, insertPlan, isUnused, applyDay};
+  globalThis.JSheetModel = {createDraft, newRow, insertRow, moveRow, normalizeTime, parseTSV, paste, pasteTextColumn, readPlan, insertPlan, isUnused, applyDay};
 })();

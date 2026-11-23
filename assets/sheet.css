@@ -84,11 +84,15 @@ html:has(dialog.jsheet[open]) { overflow: hidden; }
 .jsheet-extra [data-plan-preview] li { display: grid; grid-template-columns: 2em minmax(0,1fr) minmax(0,1.45fr); gap: 7px; padding: 3px 7px; }
 .jsheet-extra [data-plan-preview] li + li { border-top: 1px solid #e0eae5; }
 .jsheet-extra [data-plan-preview] li > * { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.jsheet-extra [data-plan-preview] .jsheet-plan-comments li { grid-template-columns: 2em minmax(0,1fr) minmax(0,1.2fr) minmax(0,1.2fr); }
 .jsheet-guide { flex: none; display: flex; gap: 10px; align-items: baseline; justify-content: space-between; padding: 7px 20px; }
 .jsheet-tip { margin: 0; font-size: .77rem; line-height: 1.4; color: #516871; }
+.jsheet-cell-tools { display: flex; flex: none; align-items: baseline; gap: 9px; }
+.jsheet-cell-tools button { padding: 3px 5px; color: #145e52; font-size: .76rem; font-weight: 650; background: #eff7f3; border: 1px solid #bed5cb; border-radius: 3px; }
+.jsheet-cell-tools button:disabled { color: #687a76; background: #f1f4f2; }
 .jsheet-keys { position: relative; flex: none; font-size: .75rem; color: #45616d; }
 .jsheet-keys summary { white-space: nowrap; cursor: pointer; }
-.jsheet-keys dl { position: absolute; z-index: 6; top: 100%; right: 0; width: min(345px,80vw); margin: 4px 0; padding: 9px; background: white; border: 1px solid #c8d6db; border-radius: 3px; box-shadow: 0 4px 18px #17334725; }
+.jsheet-keys dl { position: absolute; z-index: 6; top: 100%; right: 0; width: min(345px,80vw); max-height: min(50dvh,330px); overflow: auto; margin: 4px 0; padding: 9px; background: white; border: 1px solid #c8d6db; border-radius: 3px; box-shadow: 0 4px 18px #17334725; }
 .jsheet-keys dl > div { display: flex; justify-content: space-between; align-items: baseline; gap: 6px; padding: 3px; }
 .jsheet-keys dt { font-weight: 680; color: #204852; }
 .jsheet-keys dd { margin: 0; text-align: right; }
@@ -111,6 +115,10 @@ html:has(dialog.jsheet[open]) { overflow: hidden; }
 .jsheet-table td { vertical-align: top; font-size: .84rem; }
 .jsheet-table .jsheet-current th { background: #dceee6; color: #115e53; box-shadow: inset 3px 0 #237a69; }
 .jsheet-table .jsheet-current td { background-color: #fcfefd; }
+.jsheet-table .jsheet-row-selected td, .jsheet-table .jsheet-row-selected td.jsheet-c-duration { background: #e1f2ee; box-shadow: inset 0 1px #379580,inset 0 -1px #379580; }
+.jsheet-table .jsheet-row-selected th { background: #1c6759; color: white; }
+.jsheet-table .jsheet-row-selected th .jsheet-between { color: white; }
+.jsheet[data-cell-mode=navigate] .jsheet-table textarea:focus, .jsheet[data-cell-mode=row] .jsheet-table textarea:focus { caret-color: transparent; }
 .jsheet-table :is(textarea,select,input[type=time]) { display: block; width: 100%; max-width: none; font: inherit; color: #183d4d; line-height: 1.35; border: 1px solid transparent; border-radius: 0; background-color: transparent; }
 .jsheet-table textarea { padding: 8px; min-height: 47px; height: 100%; resize: vertical; }
 .jsheet-table td.jsheet-c-title textarea { font-weight: 650; }
@@ -140,6 +148,8 @@ html:has(dialog.jsheet[open]) { overflow: hidden; }
 .jsheet :focus-visible { outline: 2px solid #147d91; outline-offset: 1px; }
 .jsheet-table :is(textarea,select,input[type=time]):focus, .jsheet-scroll:focus-visible { outline: 2px solid #278272; outline-offset: -2px; }
 .jsheet-table :is(textarea,input[type=time]):focus { background-color: #f3fbf7; }
+.jsheet-table .jsheet-editing:focus { outline-color: #0e6874; background-color: white; caret-color: #123f4b; }
+.jsheet-table output:focus { outline: 2px solid #278272; outline-offset: -2px; }
 .jsheet-notice, .jsheet-alert { flex: none; font-size: .82rem; line-height: 1.45; padding: 7px 20px; background: #eef8f3; color: #155e51; }
 .jsheet-alert { color: #85372e; background: #fff1ec; }
 .jsheet-foot, .jsheet-confirm { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 9px; padding: 12px 18px; background: #fff; }
@@ -148,8 +158,15 @@ html:has(dialog.jsheet[open]) { overflow: hidden; }
 .jsheet-foot-actions, .jsheet-confirm > div { display: flex; gap: 5px; align-items: center; }
 .jsheet-confirm { border-top: 1px solid #dcc7ba; background: #fffbf6; }
 .jsheet-confirm p { font-size: .86rem; margin: 0; }
+.jsheet-confirm section { min-width: 0; }
+.jsheet-confirm h3 { margin: 0 0 3px; color: #693e30; font-size: .91rem; }
+.jsheet-confirm p { overflow-wrap: anywhere; }
 .jsheet-confirm button { background: #fff; border: 1px solid #d3dce0; }
 .jsheet-confirm button[data-act=discard] { color: #913429; border-color: #dfb7ad; }
+.jsheet-confirm[data-kind=remove] { border-left: 4px solid #a0352b; border-top-color: #dabbb5; background: #fff2ee; }
+.jsheet-confirm[data-kind=remove] h3 { color: #79261f; }
+.jsheet-confirm[data-kind=remove] button[data-act=discard] { color: #fff; background: #992f27; border-color: #7c201c; }
+.jsheet-confirm[data-kind=remove] button[data-act=discard]:hover { background: #7d211c; }
 .jsheet-copy { position: absolute; opacity: 0; width: 1px; height: 1px; padding: 0; border: none; }
 .jsheet[aria-busy=true] .jsheet-foot { opacity: .7; }
 @media (min-width: 851px) and (min-height: 550px) {
@@ -186,7 +203,8 @@ html:has(dialog.jsheet[open]) { overflow: hidden; }
   .jsheet-tools .j-icon { width: 13px; }
   .jsheet-command { gap: 5px; padding: 0 9px 7px; }
   .jsheet-modes button, .jsheet-paste-plan { padding-inline: 6px; font-size: .76rem; }
-  .jsheet-guide { padding: 4px 9px; gap: 6px; }
+  .jsheet-guide { padding: 4px 9px; gap: 4px 8px; align-items: center; flex-wrap: wrap; }
+  .jsheet-cell-tools { margin-left: auto; }
   .jsheet-tip { font-size: .71rem; }
   .jsheet-keys { font-size: .7rem; }
   .jsheet[data-mode=plan] .jsheet-col-row { width: 29px; }
