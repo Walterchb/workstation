@@ -124,18 +124,29 @@
         !Number.isInteger(startCol) || startCol < 0 || startCol >= fields.length ||
         !Number.isInteger(segmentIndex) || segmentIndex < 0) throw new Error('Selecciona una celda válida para pegar.');
     if (!table.length) return 0;
-    const header = headerStart(table[0]);
+    const typedSheet = table[0].length === fields.length + 1 &&
+      label(table[0].at(-1)) === 'tipo de fila' && headerStart(table[0].slice(0,-1)) === 0;
+    const header = typedSheet ? 0 : headerStart(table[0]);
     const firstColumn = header < 0 ? startCol : header;
     const incoming = header < 0 ? table : table.slice(1);
     if (!incoming.length) return 0;
     // Trabajar sobre copias preserva todo el borrador si una de las celdas no es válida.
     const rows = draft.rows.slice();
-    incoming.forEach((cells, i) => {
+    incoming.forEach((source, i) => {
       const rowIndex = startRow + i;
+      const cells = typedSheet ? source.slice(0,fields.length) : source;
       if (cells.length + firstColumn > fields.length) {
         throw fieldError('El bloque supera la columna Comentarios. Elige una celda más a la izquierda.', rowIndex, fields[firstColumn]);
       }
       const row = rows[rowIndex] ? clone(rows[rowIndex]) : newRow(draft);
+      if (typedSheet) {
+        const type = label(source[fields.length]);
+        if (source.length !== fields.length + 1 || !['actividad','espacio sin objetivo'].includes(type)) {
+          throw fieldError('En Tipo de fila, usa Actividad o Espacio sin objetivo.',rowIndex,'title');
+        }
+        row.kind = type === 'actividad' ? 'activity' : 'space';
+        if (row.kind === 'space') row.goalId = '';
+      }
       const segment = i === 0 && header < 0 && (startCol === 4 || startCol === 5) ? segmentIndex : 0;
       cells.forEach((value, j) => setPastedValue(row, fields[firstColumn + j], value, rowIndex, segment));
       rows[rowIndex] = row;
@@ -220,7 +231,7 @@
         return [segment];
       });
       if (!existing.has(row.id) && emptyNewRow(row,draft.defaultCategory)) return [];
-      if (!row.title.trim()) throw fieldError('Escribe el nombre de la actividad.', rowIndex, 'title');
+      if (!row.title.trim()) throw fieldError(row.kind === 'space' ? 'Escribe el nombre del espacio.' : 'Escribe el nombre de la actividad.', rowIndex, 'title');
       const open = row.segments.findIndex(segment => !segment.end);
       if (open >= 0) {
         if (row.status === 'Culminado') throw fieldError('Completa la hora de fin antes de marcar la actividad como culminada.', rowIndex, 'end', open);

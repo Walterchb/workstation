@@ -139,10 +139,10 @@
     }
     function fill(slot) {
       const entry=slot.entry, task=entry?.task;
-      kicker.textContent=entry ? entry.count>1 ? 'Tramo '+entry.index+' de '+entry.count : 'Tramo de actividad' : 'Intervalo sin actividad';
+      kicker.textContent=task?.kind==='space' ? 'Espacio sin objetivo' : entry ? entry.count>1 ? 'Tramo '+entry.index+' de '+entry.count : 'Tramo de actividad' : 'Intervalo sin actividad';
       title.textContent=task?.title || 'Sin registro';
       refreshTime(slot);
-      const values=[entry?.goal?.title,task?.category,task?.status];
+      const values=[task?.kind==='space' ? '' : entry?.goal?.title,task?.kind==='space' ? '' : task?.category,task?.status];
       labels.forEach((dt,index)=>{
         const dd=dt.nextElementSibling, value=values[index] || '';
         dt.hidden=dd.hidden=!value;

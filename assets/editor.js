@@ -56,26 +56,28 @@
         <div class="je-body">
           <section id="je-plan" data-panel="plan" role="tabpanel" aria-labelledby="je-plan-tab">
             <div class="je-grid">
-              <label class="je-field je-wide"><span>Actividad</span>
+              <label class="je-field je-wide"><span>Tipo de fila</span><select name="kind">
+                <option value="activity">Actividad</option><option value="space">Espacio sin objetivo</option></select></label>
+              <label class="je-field je-wide"><span data-title-label>Actividad</span>
                 <input name="title" type="text" maxlength="180" required placeholder="Ej. Revisar el reporte de posición" value="${esc(activity.title)}" autocomplete="off">
               </label>
               <label class="je-field je-wide"><span>Contexto</span>
                 <textarea name="context" rows="2" maxlength="2000" placeholder="¿Qué necesitas avanzar exactamente?">${esc(activity.context)}</textarea>
               </label>
               <label class="je-field"><span>Fecha</span><input name="date" type="date" required value="${esc(activity.date)}"></label>
-              <label class="je-field"><span>Prioridad</span><select name="priority">${selectOptions(priorities,activity.priority)}</select></label>
-              <label class="je-field je-wide"><span>Objetivo general</span><select name="goalId"><option value="">Sin objetivo</option>${goalOptions}</select></label>
-              <label class="je-field"><span>Categoría</span><select name="category">${categoryOptions}</select></label>
-              <label class="je-field"><span>Origen</span><select name="origin">${selectOptions(origins,activity.origin)}</select></label>
+              <label class="je-field" data-activity-field><span>Prioridad</span><select name="priority">${selectOptions(priorities,activity.priority)}</select></label>
+              <label class="je-field je-wide" data-activity-field><span>Objetivo general</span><select name="goalId"><option value="">Sin objetivo</option>${goalOptions}</select></label>
+              <label class="je-field" data-activity-field><span>Categoría</span><select name="category">${categoryOptions}</select></label>
+              <label class="je-field" data-activity-field><span>Origen</span><select name="origin">${selectOptions(origins,activity.origin)}</select></label>
             </div>
           </section>
           <section id="je-log" data-panel="log" role="tabpanel" aria-labelledby="je-log-tab">
-            <div class="je-interval-heading"><h3>Tramos de trabajo</h3><span class="je-duration"></span></div>
+            <div class="je-interval-heading"><h3>Tramos registrados</h3><span class="je-duration"></span></div>
             <div class="je-rows"></div>
             <button type="button" class="je-text-btn je-add">+ Añadir tramo</button>
-            <p class="je-help">Deja la hora de fin vacía si sigues trabajando en este tramo.</p>
+            <p class="je-help">Deja la hora de fin vacía mientras el tramo siga abierto.</p>
             <div class="je-grid je-log-fields">
-              <label class="je-field"><span>Estado de la actividad</span><select name="status">${selectOptions(statuses,activity.status)}</select></label>
+              <label class="je-field"><span>Estado</span><select name="status">${selectOptions(statuses,activity.status)}</select></label>
               <label class="je-check"><input name="done" type="checkbox"${activity.done ? ' checked' : ''}><span>Cumplí lo previsto</span></label>
               <label class="je-field je-wide"><span>Comentarios y evidencia</span>
                 <textarea name="comment" rows="3" placeholder="Ej. Envié la consulta al área comercial y recibí su confirmación.">${esc(activity.comment)}</textarea>
@@ -84,7 +86,7 @@
           </section>
           <div class="je-continuation" hidden>
             <label class="je-field"><span>Continuar el</span><input type="date" name="nextDate"></label>
-            <p>Se creará una actividad pendiente con el mismo contexto y objetivo. Las horas y los comentarios quedarán en la fecha original.</p>
+            <p>Se copiará la planificación a la nueva fecha. Las horas y los comentarios quedarán en la fecha original.</p>
           </div>
           <p class="je-error" role="alert" hidden></p>
         </div>
@@ -98,7 +100,7 @@
           </div>
         </footer>
         <div class="je-confirm" hidden>
-          <p><strong>¿Eliminar esta actividad?</strong><br>Se eliminarán también sus tramos y comentarios.</p>
+          <p><strong>¿Eliminar este registro?</strong><br>Se eliminarán también sus tramos y comentarios.</p>
           <button type="button" class="btn ghost je-keep">Conservar</button>
           <button type="button" class="btn je-danger">Sí, eliminar</button>
         </div>
@@ -116,6 +118,19 @@
     const saveButton = dialog.querySelector('.je-save');
     let busy = false;
     let continuationOpen = false;
+
+    function showKind() {
+      const space = fields.kind.value === 'space';
+      for (const field of dialog.querySelectorAll('[data-activity-field]')) field.hidden = space;
+      dialog.querySelector('[data-title-label]').textContent = space ? 'Nombre del espacio' : 'Actividad';
+      fields.title.placeholder = space ? 'Ej. Almuerzo' : 'Ej. Revisar el reporte de posición';
+      dialog.querySelector('#je-heading').textContent = space ? (existing ? 'Editar espacio' : 'Nuevo espacio') :
+        (existing ? 'Editar actividad' : 'Nueva actividad');
+      if (!existing) saveButton.textContent = space ? 'Crear espacio' : 'Crear actividad';
+    }
+    fields.kind.value = activity.kind || 'activity';
+    fields.kind.addEventListener('change',showKind);
+    showKind();
 
     function selectTab(name, focusTab = false) {
       dialog.querySelectorAll('[data-tab]').forEach(button => {
@@ -169,12 +184,12 @@
     function readActivity() {
       return {...activity, title:fields.title.value.trim(), context:fields.context.value.trim(),
         date:fields.date.value, priority:fields.priority.value, category:fields.category.value,
-        origin:fields.origin.value, goalId:fields.goalId.value, status:fields.status.value,
+        origin:fields.origin.value, kind:fields.kind.value, goalId:fields.kind.value === 'space' ? '' : fields.goalId.value, status:fields.status.value,
         done:fields.done.checked, comment:fields.comment.value.trim(), segments:readSegments()};
     }
 
     function validFields() {
-      fields.title.setCustomValidity(fields.title.value.trim() ? '' : 'Escribe el nombre de la actividad.');
+      fields.title.setCustomValidity(fields.title.value.trim() ? '' : 'Escribe un nombre.');
       if (continuationOpen) {
         fields.nextDate.setCustomValidity(fields.nextDate.value <= fields.date.value ? 'Elige una fecha posterior a la actividad.' : '');
       } else {
@@ -220,7 +235,7 @@
       }
       let following;
       if (!remove && continuationOpen) {
-        following = model.task({title:updated.title, context:updated.context, goalId:updated.goalId,
+        following = model.task({title:updated.title, context:updated.context, goalId:updated.goalId, kind:updated.kind,
           category:model.categoryForNewTask(ctx.state,updated.category), priority:updated.priority, origin:'Planificada', date:fields.nextDate.value,
           status:'Pendiente',done:false,comment:'',segments:[]});
       }
@@ -245,8 +260,9 @@
           return;
         }
         dialog.close();
-        ctx.toast(remove ? 'Actividad eliminada.' : following ? 'Avance guardado y continuación planificada.' :
-          existing ? 'Cambios guardados.' : 'Actividad creada.');
+        const space = updated.kind === 'space';
+        ctx.toast(remove ? (space ? 'Espacio eliminado.' : 'Actividad eliminada.') : following ? 'Avance guardado y continuación planificada.' :
+          existing ? 'Cambios guardados.' : (space ? 'Espacio creado.' : 'Actividad creada.'));
       } catch (err) {
         showError(err.message || 'No se pudo guardar la actividad.');
       } finally {

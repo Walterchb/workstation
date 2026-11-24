@@ -281,20 +281,21 @@
       widths.reduce((x,w)=>{ xs.push(x); return x+w; },PAGE.margin);
       const padding=7, textSize=9.4, leading=12.2, rowPad=8;
       const boldColumn = activityGroup ? columns.indexOf('Actividad') : 0;
-      const numeric=columns.map(c=>/^(tiempo|%|actividades$|plan cumplido|imprevistos|duración|minutos)/i.test(c));
+      const numeric=columns.map(c=>/^(tiempo|%|actividades$|culminadas$|iniciadas$|sin iniciar$|plan cumplido|imprevistos|espacios$|duración|minutos)/i.test(c));
       const headerLines=columns.map((c,i)=>wrap(c,widths[i]-padding*2,8.8,true));
       const headerH=Math.max(...headerLines.map(h=>h.length))*11.1+9;
       const rowLines=row=>columns.map((c,i)=>wrap(row[i],widths[i]-padding*2,textSize,i===boldColumn));
       const rowHeight=lines=>Math.max(...lines.map(cell=>cell.length))*leading+rowPad;
       const first=rows.length?rowLines(rows[0]):null;
-      const subtitleText=clean(section.subtitle);
+      const subtitleText=section.stageLabel ? clean(section.stageLabel+' · '+section.subtitle) : clean(section.subtitle);
+      const stageInk = {completed:'tealInk', started:'slate', pending:'amberInk'}[section.stage] || 'muted';
       const countWidth=width(subtitleText,9.1);
-      const inlineCount=activityGroup && subtitleText && countWidth<mainWidth/3;
+      const inlineCount=activityGroup && !section.stageLabel && subtitleText && countWidth<mainWidth/3;
       const headingWidth=mainWidth-inset-6-(inlineCount?countWidth+16:0);
       const fullHeading=wrap(section.title,headingWidth,headingSize,true);
       const groupName=clean(section.groupTitle) || 'Actividades por objetivo general';
       const groupH=firstGroup?wrap(groupName,mainWidth-6,15.5,true).length*19+5:0;
-      const subLines=rows.length && subtitleText && !inlineCount ? wrap(subtitleText,mainWidth-inset-6,9.1) : [];
+      const subLines=rows.length && subtitleText && !inlineCount ? wrap(subtitleText,mainWidth-inset-6,9.1,!!section.stageLabel) : [];
       const subH=subLines.length?subLines.length*12+4:0;
       // Un nombre excepcionalmente largo se publica completo al abrir su sección.
       // En la cabecera de continuidad queda una referencia breve al mismo objetivo.
@@ -316,7 +317,7 @@
       }
       function drawSubtitle() {
         if (!subLines.length) return;
-        writeLines(subLines,PAGE.margin+inset,y,9.1,12,false,'muted');
+        writeLines(subLines,PAGE.margin+inset,y,9.1,12,!!section.stageLabel,stageInk);
         y+=subH;
       }
       function continueTable(insideRow=false) {

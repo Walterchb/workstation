@@ -54,7 +54,7 @@ html:has(dialog.jsheet[open]) { overflow: hidden; }
 .jsheet-extra-head, .jsheet-segments, .jsheet-reuse-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .jsheet-extra-head strong { font-size: .89rem; overflow-wrap: anywhere; }
 .jsheet-extra-head > button { flex-shrink: 0; }
-.jsheet-details { display: grid; grid-template-columns: minmax(175px,1.65fr) minmax(95px,.65fr) minmax(120px,1fr) minmax(140px,1.2fr); gap: 10px; margin-block: 5px 9px; }
+.jsheet-details { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(145px,100%),1fr)); gap: 10px; margin-block: 5px 9px; }
 .jsheet-extra label { font-size: .78rem; font-weight: 650; color: #435f68; }
 .jsheet-details label { display: grid; gap: 3px; min-width: 0; }
 .jsheet-extra select:not([multiple]) { min-height: 32px; min-width: 0; border: 1px solid #bfd0d4; border-radius: 3px; background-color: #fff; font-size: .82rem; color: #183b49; padding: 4px 27px 4px 8px; }
@@ -83,7 +83,7 @@ html:has(dialog.jsheet[open]) { overflow: hidden; }
 .jsheet-extra [data-plan-preview] ol { margin: 3px 0; padding: 0; list-style: none; background: #fff; border: 1px solid #d4e2dc; }
 .jsheet-extra [data-plan-preview] li { display: grid; grid-template-columns: 2em minmax(0,1fr) minmax(0,1.45fr); gap: 7px; padding: 3px 7px; }
 .jsheet-extra [data-plan-preview] li + li { border-top: 1px solid #e0eae5; }
-.jsheet-extra [data-plan-preview] li > * { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.jsheet-extra [data-plan-preview] li > * { min-width: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 .jsheet-extra [data-plan-preview] .jsheet-plan-comments li { grid-template-columns: 2em minmax(0,1fr) minmax(0,1.2fr) minmax(0,1.2fr); }
 .jsheet-guide { flex: none; display: flex; gap: 10px; align-items: baseline; justify-content: space-between; padding: 7px 20px; }
 .jsheet-tip { margin: 0; font-size: .77rem; line-height: 1.4; color: #516871; }
@@ -122,6 +122,7 @@ html:has(dialog.jsheet[open]) { overflow: hidden; }
 .jsheet-table :is(textarea,select,input[type=time]) { display: block; width: 100%; max-width: none; font: inherit; color: #183d4d; line-height: 1.35; border: 1px solid transparent; border-radius: 0; background-color: transparent; }
 .jsheet-table textarea { padding: 8px; min-height: 47px; height: 100%; resize: vertical; }
 .jsheet-table td.jsheet-c-title textarea { font-weight: 650; }
+.jsheet-space-label { display: inline-block; margin: 5px 8px 0; padding: 1px 6px; border-radius: 3px; background: #f2eadb; color: #765221; font-size: .68rem; font-weight: 700; }
 .jsheet-table textarea::placeholder { color: #70838a; font-weight: 450; }
 .jsheet-bottom-add { display: flex; align-items: center; gap: 7px; min-height: 33px; margin: 6px; padding: 5px 10px; border: 1px dashed #a4c8bb; border-radius: 3px; color: #1c6556; background: #f7fcf9; font-size: .78rem; font-weight: 650; }
 .jsheet-bottom-add:hover { background: #e8f5ec; }

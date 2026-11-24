@@ -5,7 +5,7 @@
   const model=window.JModel;
   const store=window.JStore;
   const root=document.getElementById('root');
-  const titles={agenda:'Actividades',goals:'Objetivos',analysis:'Análisis',categories:'Categorías'};
+  const titles={agenda:'Actividades',notes:'Notas',goals:'Objetivos',analysis:'Análisis',categories:'Categorías'};
   let view='agenda', date=model.today(), calendarMonth=date.slice(0,7);
   let session=null, state=null, saving=false, clockHandle;
   const mark='<img src="./assets/icons/mark.svg" width="37" height="37" alt="">';
@@ -103,9 +103,26 @@
     });
   }
 
+  function openSearch() {
+    if(!state || document.querySelector('dialog[open]'))return;
+    window.JSearch.open(getContext());
+  }
+
+  function openSearchTask(id) {
+    if(!state.tasks.some(task=>task.id===id)){notify('El registro ya no está disponible.');return;}
+    view='agenda';
+    window.JAgenda.openTaskDetail(id,getContext());
+  }
+
+  function openSearchNote(id) {
+    if(!state.notes?.some(note=>note.id===id)){notify('La nota ya no está disponible.');return;}
+    navigate('notes');
+    window.JNotes.open(id,getContext());
+  }
+
   function getContext() {
     const day=date;
-    return {state,user:session?.user,date:day,setDate,mutate,toast:notify,render,icon,navigate,
+    return {state,user:session?.user,date:day,setDate,mutate,toast:notify,render,icon,navigate,openSearch,openSearchTask,openSearchNote,
       updateTaskField:(id,field,value)=>updateTaskField(day,id,field,value),
       updateTaskFieldForDate:updateTaskField,
       openTask:(id=null,defaults={})=>window.JEditor.open(id,defaults,getContext())};
@@ -126,7 +143,7 @@
 
   function updateDateTools() {
     const tools=root.querySelector('.jd-heading-tools');
-    tools.hidden=view==='analysis'||view==='categories';
+    tools.hidden=view!=='agenda' && view!=='goals';
     if(tools.hidden)return;
     const week=weeklyAgenda();
     const unit=week?'Semana':'Día';
@@ -217,7 +234,7 @@
 
   function updateContext(stage) {
     let detail='';
-    if(view==='agenda') detail=stage.querySelector('[data-jd-mode][aria-pressed="true"]')?.textContent.trim();
+    if(view==='agenda') detail=root.querySelector('#work-modes [data-jd-mode][aria-pressed="true"]')?.textContent.trim();
     if(view==='analysis') detail=stage.querySelector('[data-period][aria-pressed="true"]')?.textContent.trim();
     if(view==='goals') detail=stage.querySelector('.ji-detail-head h1')?.textContent;
     const name=titles[view];
@@ -237,7 +254,11 @@
       else btn.removeAttribute('aria-current');
     });
     el.onclick=null;el.onchange=null;
+    const modes=root.querySelector('#work-modes');
+    modes.hidden=view!=='agenda';
+    if(!modes.hidden) window.JAgenda.renderModes(modes,getContext());
     if(view==='agenda') window.JAgenda.render(el,getContext());
+    else if(view==='notes') window.JNotes.render(el,getContext());
     else if(view==='categories') window.JCategories.render(el,getContext());
     else window.JInsights.render(el,getContext(),view);
     updateContext(el); renderCalendar(); updateProfile(); updateStatus(); updateDateTools();
@@ -262,12 +283,17 @@
   function shell() {
     root.innerHTML='<div class="app-shell"><button type="button" class="backdrop" aria-label="Cerrar navegación"></button><aside id="side-menu" class="rail" aria-label="Menú de Work Hub">'+
       '<div class="brandbar">'+mark+'<span>Work Hub</span><button class="close-menu" aria-label="Cerrar menú">'+icon('x')+'</button></div>'+
-      '<nav class="rail-nav" aria-label="Vistas principales">'+[['agenda','calendar-days'],['goals','target'],['analysis','bar-chart'],['categories','layers']].map(([v,i])=>'<button data-view="'+v+'">'+icon(i,19)+titles[v]+'</button>').join('')+'</nav>'+
+      '<nav class="rail-nav" aria-label="Vistas principales">'+[['agenda','calendar-days'],['notes','notes-board'],['goals','target'],['analysis','bar-chart'],['categories','layers']].map(([v,i])=>'<button data-view="'+v+'">'+icon(i,19)+titles[v]+'</button>').join('')+'</nav>'+
       '<section class="cal-wrap" aria-label="Calendario de jornadas"></section>'+
       '<div class="rail-bottom"><div class="rail-user"><button class="profile-trigger" data-profile type="button" aria-label="Editar perfil" aria-haspopup="dialog"><span class="monogram" aria-hidden="true"></span><span class="usercopy"><b></b><span class="account-mode" role="status"></span></span>'+icon('pencil',13)+'</button>'+
       '<button data-logout aria-label="Cerrar sesión" title="Cerrar sesión">'+icon('logout',18)+'</button></div></div></aside>'+
       '<div class="shell-content"><header class="workbar"><div class="toolbar-left"><button class="hamburger icon-btn" aria-label="Abrir menú" aria-controls="side-menu" aria-expanded="false">'+icon('menu',20)+'</button><nav class="work-context" aria-label="Ubicación actual"></nav></div>'+
-      '<div class="bar-right"><span class="work-running" hidden></span>'+dateTools()+'</div></header><main id="main" tabindex="-1" class="stage"></main></div></div>';
+      '<div id="work-modes" data-agenda-modes></div><div class="bar-right"><span class="work-running" hidden></span>'+
+      '<button class="work-search" data-work-search type="button" aria-label="Buscar en Work Hub" aria-haspopup="dialog" aria-keyshortcuts="Control+k Meta+k">'+icon('search',16)+'<span>Buscar</span></button>'+
+      dateTools()+'</div></header><main id="main" tabindex="-1" class="stage"></main></div></div>';
+    const findButton=root.querySelector('[data-work-search]');
+    findButton.title='Buscar ('+(/Mac|iPad|iPhone/.test(navigator.platform||'')?'⌘':'Ctrl')+' + K)';
+    findButton.onclick=openSearch;
     const tools=root.querySelector('.jd-heading-tools');
     tools.querySelectorAll('[data-step]').forEach(button=>button.onclick=()=>showDay(model.shiftDate(date,Number(button.dataset.step)*(weeklyAgenda()?7:1))));
     tools.querySelector('[data-go-today]').onclick=()=>{showDay(model.today());tools.querySelector('input').focus();};
@@ -334,6 +360,10 @@
     }
   }
   document.addEventListener('keydown',e=>{
+    if(state && (e.ctrlKey||e.metaKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase()==='k' && !document.querySelector('dialog[open]')){
+      e.preventDefault();
+      openSearch();
+    }
     if(e.key==='Escape'&&!document.querySelector('dialog[open]')&&root.querySelector('.rail.is-open'))toggleMenu(false);
   });
   boot();

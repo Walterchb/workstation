@@ -1,0 +1,55 @@
+.jsearch-dialog {
+  width: min(610px, calc(100% - 24px)); max-height: min(78dvh, 720px); padding: 0; margin: auto;
+  border: 1px solid var(--line); border-radius: 5px; color: var(--ink); background: #fff;
+  box-shadow: 0 18px 65px #102c3b38; overflow: hidden;
+}
+.jsearch-dialog[open] { display: flex; flex-direction: column; }
+.jsearch-dialog header, .jsearch-tools, .jsearch-dialog footer { flex: none; }
+.jsearch-dialog header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 20px 9px; }
+.jsearch-dialog h2 { margin: 0; font-size: 1.22rem; letter-spacing: -.035em; }
+.jsearch-dialog header .icon-btn { width: 30px; height: 30px; }
+.jsearch-tools { padding: 4px 20px 12px; display: grid; gap: 12px; border-bottom: 1px solid var(--line); }
+.jsearch-input { display: flex; align-items: center; gap: 10px; padding: 0 12px; border: 1px solid #b6c9cf; border-radius: 5px; color: var(--teal-deep); }
+.jsearch-input:focus-within { border-color: var(--teal); box-shadow: 0 0 0 2px #007a701b; }
+.jsearch-input input { min-width: 0; flex: 1; min-height: 42px; padding: 8px 0; border: none; color: var(--ink); background: transparent; font-size: .94rem; }
+.jsearch-input input:focus { outline: 0; }
+.jsearch-input input::placeholder { color: #637780; }
+.jsearch-scope { display: flex; gap: 5px; }
+.jsearch-scope button {
+  background: #fff; color: #486070; border: 1px solid transparent; border-radius: 4px; padding: 5px 12px;
+  font-size: .79rem; font-weight: 700; min-height: 29px;
+}
+.jsearch-scope button:hover { background: #f0f5f5; }
+.jsearch-scope button[aria-pressed=true] { color: #075e54; border-color: #c0ded6; background: #e8f4f0; }
+.jsearch-list { min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 0 9px; }
+.jsearch-status { color: var(--muted); margin: 0; padding: 13px 11px; font-size: .79rem; }
+.jsearch-list ul { list-style: none; margin: 0; padding: 0; }
+.jsearch-list ul:not(:empty) { padding-bottom: 9px; }
+.jsearch-list li + li { border-top: 1px solid #e8eef0; }
+.jsearch-result {
+  width: 100%; display: grid; grid-template-columns: auto minmax(0,1fr) auto; align-items: start; gap: 11px;
+  border: 0; border-radius: 4px; padding: 10px 11px; text-align: left; background: #fff; color: var(--ink);
+}
+.jsearch-result:is(:hover,:focus-visible) { background: #f0f6f5; }
+.jsearch-result:focus-visible { outline-offset: -3px; }
+.jsearch-kind { display: grid; place-items: center; width: 31px; height: 31px; border-radius: 5px; background: #e6f0f3; color: #316781; }
+.jsearch-kind.notes { background: #f3ecdf; color: #795724; }
+.jsearch-copy { display: grid; gap: 2px; overflow-wrap: anywhere; }
+.jsearch-copy small { font-size: .71rem; color: var(--muted); }
+.jsearch-copy strong { font-size: .91rem; font-weight: 750; }
+.jsearch-excerpt { color: #465f6d; font-size: .8rem; line-height: 1.5; }
+.jsearch-excerpt b { color: #344d5c; font-weight: 700; }
+.jsearch-excerpt b::after { content: ' ·'; }
+.jsearch-result mark { color: #054f46; background: #cfede2; }
+.jsearch-arrow { color: #637e86; align-self: center; }
+.jsearch-dialog footer { display: flex; align-items: center; gap: 18px; padding: 9px 20px; border-top: 1px solid var(--line); font-size: .7rem; color: var(--muted); }
+.jsearch-dialog footer span { display: inline-flex; align-items: center; gap: 3px; }
+.jsearch-dialog kbd { font: inherit; padding: 1px 4px; border: 1px solid var(--line); border-radius: 3px; background: #f6f8fa; }
+@media (max-width: 480px) {
+  .jsearch-dialog { max-height: 86dvh; }
+  .jsearch-dialog header { padding: 12px 13px 6px; }
+  .jsearch-tools { padding-inline: 13px; }
+  .jsearch-result { padding-inline: 5px; gap: 8px; }
+  .jsearch-input input { font-size: 1rem; }
+}
+@media (pointer:coarse), (max-height:450px) { .jsearch-dialog footer { display: none; } }

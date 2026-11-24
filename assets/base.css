@@ -125,6 +125,16 @@ dialog::backdrop{background:#09263b65;backdrop-filter:blur(2px)}
 @media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important}}
 @media print{body,html{background:white}.rail,.workbar,.backdrop,.notices,.skip{display:none!important}.shell-content{margin:0}.stage{padding:0;max-width:none}}
 .bar-right{display:flex;align-items:center;gap:9px}
+#work-modes{flex:none}
+.work-search{display:inline-flex;align-items:center;justify-content:center;flex:none;gap:7px;height:36px;padding:0 10px;border:1px solid var(--line);border-radius:5px;background:white;color:#39515f;font-size:.82rem;font-weight:700}
+.work-search:hover{background:#eef6f4;border-color:#b2c9c5;color:var(--teal-deep)}
+@media(max-width:1180px){
+  .work-search{width:36px;padding:0}.work-search span{display:none}
+}
+@media(max-width:760px){
+  .workbar{flex-wrap:wrap}
+  #work-modes:not([hidden]){order:3;flex:0 0 100%}
+}
 .work-running{display:inline-flex;align-items:center;gap:5px;border:1px solid #b1ded4;border-radius:5px;background:#e5f5f0;color:#116c5c;padding:5px 9px;font-size:.76rem;font-weight:700}
 .boot-error{max-width:630px;margin:auto;padding:24px;text-align:center;gap:15px}.boot-error h1{font-size:1.7rem}.boot-error p{line-height:1.6;margin:0}
 .stage:focus{outline:none}

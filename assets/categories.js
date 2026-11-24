@@ -9,6 +9,7 @@
   function usageFor(state) {
     const result = new Map();
     for (const task of state.tasks) {
+      if (task.kind === 'space') continue;
       const total = result.get(task.category) || {count:0,minutes:0};
       total.count++;
       total.minutes += M.minutes(task);
@@ -22,7 +23,7 @@
     const archive = action === 'archive';
     const list = M.categoryList(ctx.state);
     const alternatives = list.filter(category => !category.archived && category.id !== item?.id);
-    const count = ctx.state.tasks.filter(row => row.category === item?.title).length;
+    const count = ctx.state.tasks.filter(row => row.kind !== 'space' && row.category === item?.title).length;
     const assigned = count === 1 ? '1 actividad asociada' : count + ' actividades asociadas';
     const title = editing ? (item ? 'Editar categoría' : 'Nueva categoría') : archive ? 'Archivar categoría' : 'Reactivar categoría';
     const dialog = document.createElement('dialog');

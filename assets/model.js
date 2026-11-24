@@ -13,6 +13,8 @@
   const categoryColors = ['#087F79', '#3067B6', '#8759A4', '#B16B32'];
   const categoryIds = ['gestion', 'mercados', 'coordinacion', 'otros'];
   const profileLimits = Object.freeze({name:80, side:256, bytes:65536});
+  const noteLanes = Object.freeze({inbox:'Entrada', followup:'Por revisar', waiting:'En espera', resolved:'Resueltas'});
+  const noteLimits = Object.freeze({title:160, body:5000, topic:80});
   const priorities = ['Alta', 'Media', 'Baja'];
   const origins = ['Planificada', 'Imprevista'];
   const statuses = ['Pendiente', 'En proceso', 'Culminado'];
@@ -153,7 +155,7 @@
 
   function task(defaults = {}, state) {
     return {
-      id: id(), date: today(), title: '', context: '', goalId: '',
+      id: id(), date: today(), title: '', context: '', goalId: '', kind: 'activity',
       category: state ? defaultCategory(state) : categories[0], priority: 'Media', origin: 'Planificada', status: 'Pendiente',
       done: false, comment: '', segments: [], ...defaults
     };
@@ -161,7 +163,7 @@
 
   function planKey(activity) {
     const normalize = value => value.normalize('NFC').trim().replace(/\s+/g, ' ').toLocaleLowerCase('es-PE');
-    return JSON.stringify([normalize(activity.title), normalize(activity.context), activity.goalId]);
+    return JSON.stringify([activity.kind || 'activity', normalize(activity.title), normalize(activity.context), activity.goalId]);
   }
 
   function reusableActivities(state, source, destination) {
@@ -182,7 +184,8 @@
     for (const {activity, reason} of rows) {
       if (reason || !selectedIds.has(activity.id)) continue;
       const {title, context, goalId, category, priority} = activity;
-      state.tasks.push(task({date:destination, title, context, goalId, category:categoryForNewTask(state,category), priority}));
+      state.tasks.push(task({date:destination, title, context, goalId, kind:activity.kind || 'activity',
+        category:categoryForNewTask(state,category), priority}));
       count++;
     }
     return count;
@@ -254,9 +257,24 @@
     state.profile = profile;
   }
 
+  function validateNotes(notes) {
+    requireValue(Array.isArray(notes), 'El formato del tablero de notas no es válido.');
+    const ids = new Set();
+    for (const note of notes) {
+      validateIdentity(note, ids, 'nota');
+      requireValue(hasText(note.title) && note.title.length <= noteLimits.title,
+        'Escribe un título de hasta ' + noteLimits.title + ' caracteres para la nota.');
+      requireValue(typeof note.body === 'string' && note.body.length <= noteLimits.body &&
+        typeof note.topic === 'string' && note.topic.length <= noteLimits.topic, 'Revisa el contenido y el tema de la nota.');
+      requireValue(Object.hasOwn(noteLanes, note.lane), 'Elige una columna del tablero.');
+      requireValue(note.reviewDate === '' || isDate(note.reviewDate), 'Selecciona una fecha de revisión válida.');
+    }
+  }
+
   function validate(state) {
     requireValue(isRecord(state) && state.version === 1 && Array.isArray(state.goals) && Array.isArray(state.tasks),
       'El formato de la agenda no es válido.');
+    if (state.notes !== undefined) validateNotes(state.notes);
     if (state.profile !== undefined) validateProfile(state.profile);
     const catalog = categoryList(state);
     validateCategories(catalog);
@@ -282,6 +300,8 @@
     let openSession = null;
     for (const activity of state.tasks) {
       validateIdentity(activity, taskIds, 'actividad');
+      requireValue(activity.kind === undefined || ['activity','space'].includes(activity.kind), 'Selecciona un tipo de fila válido.');
+      requireValue(activity.kind !== 'space' || activity.goalId === '', 'Un espacio de tiempo debe quedar sin objetivo.');
       requireValue(hasText(activity.title), 'Escribe el nombre de la actividad.');
       requireValue(isDate(activity.date), 'Selecciona una fecha válida para la actividad.');
       requireValue(typeof activity.context === 'string' && typeof activity.comment === 'string',
@@ -321,7 +341,7 @@
 
   globalThis.JModel = {
     id, today, timeNow, shiftDate, formatDate, minutes, duration, empty, task, validate, reusableActivities, reuseActivities,
-    profileLimits, validProfilePhoto, saveProfile,
+    profileLimits, validProfilePhoto, saveProfile, noteLanes, noteLimits,
     categoryList, categoryOptions, defaultCategory, categoryForNewTask, saveCategory, setCategoryArchived,
     categories: Object.freeze(categories), priorities: Object.freeze(priorities),
     origins: Object.freeze(origins), statuses: Object.freeze(statuses)

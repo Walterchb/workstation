@@ -6,6 +6,8 @@
   const {esc} = window.JUI;
   const dayStart = 8 * 60;
   const noGoalColor = "#778a9a";
+  const spaceGroup = {title:"Espacio sin objetivo",color:"#94642C"};
+  const groupFor = (task,goals) => task.kind === "space" ? spaceGroup : goals.get(task.goalId);
 
   function minuteOfDay(value) {
     const [hour, minute] = value.split(":").map(Number);
@@ -25,15 +27,17 @@
   }
 
   function stats(tasks, ctx) {
-    const planned = tasks.filter(task => task.origin === "Planificada");
+    const activities = tasks.filter(task => task.kind !== "space");
+    const spaces = tasks.filter(task => task.kind === "space");
+    const planned = activities.filter(task => task.origin === "Planificada");
     const complete = planned.filter(task => task.done).length;
-    const unexpected = tasks.filter(task => task.origin === "Imprevista");
+    const unexpected = activities.filter(task => task.origin === "Imprevista");
     const closed = tasks.reduce((n,task) => n + task.segments.filter(segment => segment.end).length,0);
     const sumMinutes = rows => rows.reduce((n,task) => n + model.minutes(task),0);
     const cards = [
-      ["time","clock","Tiempo registrado",model.duration(sumMinutes(tasks)),plural(closed,"tramo cerrado","tramos cerrados")],
+      ["time","clock","Tiempo registrado",model.duration(sumMinutes(tasks)),spaces.length ? model.duration(sumMinutes(spaces)) + " en espacios sin objetivo" : plural(closed,"tramo cerrado","tramos cerrados")],
       ["plan","check-circle","Cumplimiento del plan",planned.length ? Math.round(100 * complete / planned.length) + "%" : "—",complete + " de " + planned.length + (planned.length === 1 ? " planificada" : " planificadas")],
-      ["pending","list","Pendientes",tasks.filter(task => task.status === "Pendiente").length,plural(tasks.length,"actividad en la jornada","actividades en la jornada")],
+      ["pending","list","Pendientes",activities.filter(task => task.status === "Pendiente").length,plural(activities.length,"actividad en la jornada","actividades en la jornada")],
       ["unexpected","zap","Imprevistas",unexpected.length,model.duration(sumMinutes(unexpected)) + " de trabajo"]
     ];
     return `<section class="jd-metrics" aria-label="Indicadores del día">${cards.map(([kind,icon,label,value,detail]) =>
@@ -50,7 +54,7 @@
         const start = minuteOfDay(segment.start);
         const live = !segment.end && date === today && start <= now;
         const end = segment.end ? minuteOfDay(segment.end) : live ? now : start;
-        return {task,goal:goals.get(task.goalId),segment,start,end,live,index:index + 1,count:ordered.length};
+        return {task,goal:groupFor(task,goals),segment,start,end,live,index:index + 1,count:ordered.length};
       });
       entries.push(...taskEntries);
     }
@@ -71,7 +75,7 @@
     for (let t = low + step; t < high - step / 3; t += step) ticks.push(t);
     ticks.push(high);
     const legend = new Map();
-    for (const entry of entries) legend.set(entry.task.goalId, entry.goal);
+    for (const entry of entries) legend.set(entry.goal, entry.goal);
     const track = window.JTimeline.track(entries,low,high,accent,hourLabel);
     return `<section class="jd-timeline" aria-labelledby="jd-line-title"><div class="jd-line-heading"><h2 id="jd-line-title">${ctx.icon("clock",17)} Línea de tiempo</h2><span>Inicio de jornada <b>08:00</b></span></div>
       <div class="jd-scale">${track}<div class="jd-ticks" aria-hidden="true">${ticks.map((t,i) =>
@@ -86,6 +90,7 @@
   let density = "detailed";
   let mode = "calendar";
   const noGoalFilter = "__none__";
+  const spaceFilter = "__space__";
   let statusFilter = "";
   let goalFilter = "";
   const scrollPositions = new Map();
@@ -98,14 +103,14 @@
   let pending = false;
 
   function goalValue(id) {
-    return id === noGoalFilter || id.startsWith("~") ? "~" + id : id;
+    return id === noGoalFilter || id === spaceFilter || id.startsWith("~") ? "~" + id : id;
   }
 
   function filterBar(goals,icon,open) {
     const option = (value,label,selected) =>
       `<option value="${esc(value)}"${value===selected ? " selected" : ""}>${esc(label)}</option>`;
     const statusOptions = [option("","Todos los estados",statusFilter),...model.statuses.map(status=>option(status,status,statusFilter))];
-    const goalOptions = [option("","Todos los objetivos",goalFilter),option(noGoalFilter,"Sin objetivo",goalFilter),
+    const goalOptions = [option("","Todos los objetivos",goalFilter),option(noGoalFilter,"Actividades sin objetivo",goalFilter),option(spaceFilter,"Espacios sin objetivo",goalFilter),
       ...[...goals.values()].sort((a,b)=>a.title.localeCompare(b.title,"es")).map(g=>option(goalValue(g.id),g.title,goalFilter))];
     const active = Number(Boolean(statusFilter)) + Number(Boolean(goalFilter));
     const caption = active ? "Filtros, " + plural(active,"activo","activos") : "Filtros";
@@ -176,115 +181,48 @@
 
   function eventHead(task,entry,place) {
     const name = entry ? task.title + ", " + entryRange(entry) : task.title;
-    return `<div class="jd-event-head"><button type="button" class="jd-event-title" data-jd-detail ${identity(task,entry,place)} aria-label="Ver detalle de ${esc(name)}" title="${esc(task.title)}">${esc(task.title)}</button>
+    return `<div class="jd-event-head"><button type="button" class="jd-event-title" data-jd-detail ${identity(task,entry,place)} aria-label="Ver detalle de ${esc(name)}" title="${esc(task.title)}">${task.kind === "space" ? '<span class="jd-space-label">Espacio</span>' : ""}${esc(task.title)}</button>
       ${task.context ? `<p class="jd-event-context" title="${esc(task.context)}"><span>${esc(task.context)}</span></p>` : ""}</div>`;
   }
 
-  function lineBudget(height,content,entry) {
-    const goal = !!entry.goal && height >= content.height+22;
-    const budget = Math.max(0,height-content.band-(goal ? 19 : 0)-2);
-    const lines = Math.max(0,Math.floor((budget-4+.01)/content.line));
-    let context = Math.min(lines,content.contextLines);
-    let comment = Math.min(lines,content.commentLines);
-    if (content.stacked && context && comment) {
-      // Dos párrafos en móvil comparten la altura del cuerpo.
-      const both = Math.max(0,Math.floor((budget-8+.01)/content.line));
-      if (both < 2) comment = 0;
-      else {
-        context = Math.min(context,both-1);
-        comment = Math.min(comment,both-context);
-      }
-    }
-    const title = Math.max(1,Math.floor((height-4+.01)/content.line));
-    return {context,comment,title,goal};
-  }
-
-  function scheduledSlot(entry,scale,content,ctx) {
-    const from = scale.at(entry.start), height = scale.at(entry.end)-from;
-    const fit = lineBudget(height,content,entry);
-    const goal = entry.goal ? `<div class="jd-event-goal">${ctx.icon("target",11)}<span>Objetivo · ${esc(entry.goal.title)}</span></div>` : "";
-    return `<li class="jd-slot-track${height === 0 ? " jd-instant" : ""}" data-start-minute="${entry.start}" data-end-minute="${entry.end}" data-room-for-goal="${fit.goal}" data-context-lines="${fit.context}" data-comment-lines="${fit.comment}" style="top:${from}px;height:${height}px;--jd-measured-band:${content.band}px;--jd-title-lines:${fit.title};--jd-context-lines:${fit.context};--jd-comment-lines:${fit.comment};${paint(entry.goal)}">
+  function scheduledSlot(entry,scale,ctx) {
+    const from = scale.at(entry.start), height = scale.at(Math.max(entry.start+1,entry.end))-from;
+    const goal = entry.goal && entry.task.kind !== "space" ? `<div class="jd-event-goal">${ctx.icon("target",11)}<span>Objetivo · ${esc(entry.goal.title)}</span></div>` : "";
+    const mobileTime = `<span class="jd-mobile-time">${esc(entryRange(entry))}${entry.segment.end || entry.live ? " · " + esc(model.duration(entry.end-entry.start)) : ""}</span>`;
+    return `<li class="jd-slot-track" data-start-minute="${entry.start}" data-end-minute="${entry.end}" style="top:${from}px;height:${height}px;${paint(entry.goal)}">
       <article data-has-comment="${!!entry.task.comment}" class="jd-event${entry.segment.end ? "" : " jd-event-open"}" aria-label="${esc(entry.task.title)}, ${esc(entryRange(entry))}">
-        ${eventHead(entry.task,entry,"grid")}${taskFields(entry.task,entry,"grid")}${goal}</article></li>`;
+        <div class="jd-event-body">${eventHead(entry.task,entry,"grid")}${taskFields(entry.task,entry,"grid")}${mobileTime}${goal}</div></article></li>`;
   }
 
-  function estimatedContent(entry) {
-    const lines = (text,columns) => text ? String(text).split(/\r?\n/).reduce((n,line) => n+Math.max(1,Math.ceil(line.length/columns)),0) : 0;
-    const band = Math.max(18,lines(entry.task.title,72)*14+3);
-    const line = 13.75, contextLines = lines(entry.task.context,43), commentLines = lines(entry.task.comment,32);
-    return {band,line,contextLines,commentLines,stacked:false,height:band+line*Math.max(contextLines,commentLines)+6};
-  }
-
-  // Cada hora mantiene una escala lineal propia. Se distribuye el espacio faltante
-  // sólo en las horas del tramo, dando mayor peso a su fracción de solapamiento.
+  // El eje crece sólo dentro de los tramos que necesitan espacio para el texto.
+  // Los intervalos de un mismo día conservan sus bordes y los días semanales comparten escala.
   function makeScale(low,high,entries,content,options={}) {
     const base = options.baseHeight ?? hourScales[density];
-    const limit = options.maxHourHeight ?? Infinity;
-    const compact = options.compact ?? density === "compact";
-    const heights = Array((high-low)/60).fill(base);
-    const byLength = entries.map((entry,index) => ({entry,need:content[index].height})).sort((a,b) =>
-      (a.entry.end-a.entry.start)-(b.entry.end-b.entry.start));
-    for (const {entry,need} of byLength) {
-      const duration = entry.end-entry.start;
-      if (duration < 5) continue;
-      const parts = [];
-      let room = 0, weights = 0;
-      for (let i = Math.floor((entry.start-low)/60); i < Math.ceil((entry.end-low)/60); i++) {
-        const start = low+i*60;
-        const fraction = (Math.min(start+60,entry.end)-Math.max(start,entry.start))/60;
-        parts.push({i,fraction});
-        room += heights[i]*fraction;
-        weights += fraction*fraction;
-      }
-      // Un tramo breve tiene acceso completo desde Lista y desde su título.
-      const maxRate = duration < 10 ? 1.35 : duration < 20 ? 1.8 : duration < 60 ? 2.6 : Infinity;
-      const target = Math.min(need, duration*maxRate)*(compact ? hourScales.compact/hourScales.detailed : 1);
-      if (target <= room) continue;
-      for (const {i,fraction} of parts) heights[i] = Math.min(limit,heights[i]+(target-room)*fraction/weights);
+    const minuteHeights = Array(high-low).fill(base/60);
+    const demands = entries.map((entry,i) => ({
+      start:entry.start-low,end:Math.max(entry.start+1,entry.end)-low,height:content[i].height
+    })).sort((a,b)=>(a.end-a.start)-(b.end-b.start));
+    for (const {start,end,height} of demands) {
+      let room = 0;
+      for (let i=start;i<end;i++) room += minuteHeights[i];
+      if (room >= height) continue;
+      const extra = (height-room)/(end-start);
+      for (let i=start;i<end;i++) minuteHeights[i] += extra;
     }
     const offsets = [0];
-    heights.forEach((height,i) => {
-      heights[i] = Math.ceil(height);
-      offsets.push(offsets[i]+heights[i]);
-    });
-    const total = offsets[offsets.length-1];
+    for (const height of minuteHeights) offsets.push(offsets.at(-1) + height);
+    const total = offsets.at(-1);
     function at(minute) {
+      const index = Math.max(0,minute-low);
       if (minute >= high) return total;
-      const i = Math.max(0,Math.floor((minute-low)/60));
-      return offsets[i]+(minute-low-i*60)*heights[i]/60;
+      return offsets[Math.floor(index)] + (index%1)*minuteHeights[Math.floor(index)];
     }
     function minuteAt(y) {
-      const i = heights.findIndex((_,i) => y < offsets[i+1]);
-      return i < 0 ? high : low+i*60+Math.max(0,y-offsets[i])*60/heights[i];
+      const i = offsets.findIndex(value=>value>y)-1;
+      return i < 0 ? (y <= 0 ? low : high) : low+i+(y-offsets[i])/minuteHeights[i];
     }
+    const heights = Array.from({length:(high-low)/60},(_,i)=>+(offsets[(i+1)*60]-offsets[i*60]).toFixed(2));
     return {low,high,heights,total,at,minuteAt};
-  }
-
-  function measureContent(grid,entries) {
-    const fallback = entries.map(estimatedContent);
-    if (!entries.length || !grid.clientWidth) return fallback;
-    const probe = document.createElement("div");
-    probe.className = "jd-measure";
-    probe.setAttribute("aria-hidden","true");
-    probe.innerHTML = entries.map(({task}) => `<div class="jd-probe-card"><div class="jd-probe-title">${esc(task.title)}</div><i class="jd-probe-control"></i>
-      ${task.context ? `<div class="jd-probe-context">${esc(task.context)}</div>` : ""}
-      ${task.comment ? `<div class="jd-probe-comment">${esc(task.comment)}</div>` : ""}</div>`).join("");
-    grid.append(probe);
-    try {
-      return [...probe.children].map((card,i) => {
-        const height = card.getBoundingClientRect().height;
-        const band = Math.max(card.firstElementChild.getBoundingClientRect().height,card.children[1].getBoundingClientRect().height);
-        if (!height) return fallback[i];
-        const line = parseFloat(getComputedStyle(card.firstElementChild).lineHeight) || 13.75;
-        const count = selector => {
-          const child = card.querySelector(selector);
-          return child ? Math.max(1,Math.round((child.getBoundingClientRect().height-4)/line)) : 0;
-        };
-        return {band:Math.ceil(band),height:Math.ceil(height)+2,line,
-          contextLines:count(".jd-probe-context"),commentLines:count(".jd-probe-comment"),
-          stacked:getComputedStyle(card.children[1]).gridColumnStart === "2"};
-      });
-    } finally { probe.remove(); }
   }
 
   function updateGeometry(view,entries,keepPlace=true) {
@@ -296,26 +234,25 @@
       : 0;
     const anchor = previousTop > 0 ? liveScale.minuteAt(previousTop) : null;
     const belowGrid = previousTop > 0 ? Math.max(0,previousTop-liveScale.total) : 0;
-    const content = measureContent(grid,entries);
+    const tracks = [...grid.querySelectorAll(".jd-slot-track")];
+    const content = tracks.map(track => {
+      const body = track.querySelector(".jd-event-body");
+      const title = body.querySelector(".jd-event-title");
+      const status = body.querySelector(".jd-field-status");
+      return {height:Math.ceil(body.getBoundingClientRect().height || 34)+2,
+        band:Math.ceil(Math.max(title.offsetHeight || 18,status.offsetHeight || 0))};
+    });
     const scale = makeScale(Number(grid.dataset.startMinute),Number(grid.dataset.endMinute),entries,content);
     grid.dataset.hourHeights = scale.heights.join(",");
     grid.dataset.pixelsPerHour = hourScales[density];
     grid.style.setProperty("--grid-height",scale.total+"px");
     for (const line of grid.querySelectorAll("[data-minute]")) line.style.top = scale.at(Number(line.dataset.minute))+"px";
-    const tracks = [...grid.querySelectorAll(".jd-slot-track")];
     entries.forEach((entry,i) => {
       const y = scale.at(entry.start);
-      const height = scale.at(entry.end)-y;
+      const height = scale.at(Math.max(entry.start+1,entry.end))-y;
       tracks[i].style.top = y+"px";
       tracks[i].style.height = height+"px";
       tracks[i].style.setProperty("--jd-measured-band",content[i].band+"px");
-      const fit = lineBudget(height,content[i],entry);
-      tracks[i].dataset.roomForGoal = String(fit.goal);
-      tracks[i].dataset.contextLines = String(fit.context);
-      tracks[i].dataset.commentLines = String(fit.comment);
-      tracks[i].style.setProperty("--jd-title-lines",fit.title);
-      tracks[i].style.setProperty("--jd-context-lines",fit.context);
-      tracks[i].style.setProperty("--jd-comment-lines",fit.comment);
     });
     if (anchor !== null) {
       const targetTop = scale.at(anchor)+belowGrid;
@@ -326,7 +263,7 @@
   }
 
   function scalePicker(icon) {
-    return `<label class="jd-density jd-scale-picker" title="Escala del horario. Cada hora se ajusta al texto de sus tramos. Los minutos conservan su posición dentro de esa hora."><span class="jd-scale-label">Escala</span><span class="jd-scale-icon" aria-hidden="true">${icon("layers",16)}</span><select data-jd-scale aria-label="Escala del horario"><option value="detailed" ${density === "detailed" ? "selected" : ""}>Detallada</option><option value="compact" ${density === "compact" ? "selected" : ""}>Compacta</option></select></label>`;
+    return `<label class="jd-density jd-scale-picker" title="Escala del horario. Los tramos se ajustan al contenido. La escala modifica el espacio entre registros."><span class="jd-scale-label">Escala</span><span class="jd-scale-icon" aria-hidden="true">${icon("layers",16)}</span><select data-jd-scale aria-label="Escala del horario"><option value="detailed" ${density === "detailed" ? "selected" : ""}>Detallada</option><option value="compact" ${density === "compact" ? "selected" : ""}>Compacta</option></select></label>`;
   }
 
   function columnTitles() {
@@ -353,7 +290,7 @@
   function calendar(entries,planRows,ctx,filtered) {
     const low = Math.min(dayStart,...entries.map(entry => Math.floor(entry.start/60)*60));
     const high = Math.max(dayStart + 60,...entries.map(entry => Math.ceil(Math.max(entry.start+1,entry.end)/60)*60));
-    const content = entries.map(estimatedContent);
+    const content = entries.map(() => ({height:34}));
     const scale = makeScale(low,high,entries,content);
     const rules = [];
     for (let hour=low; hour<=high; hour+=60) {
@@ -363,7 +300,7 @@
       <div class="jd-cal-scroll" tabindex="0" role="region" aria-label="Horario por hora, actividad y registro"><div class="jd-cal-canvas">
         <div class="jd-cal-head" aria-hidden="true">${columnTitles()}</div>
         <div class="jd-grid" data-start-minute="${low}" data-end-minute="${high}" data-pixels-per-hour="${hourScales[density]}" data-hour-heights="${scale.heights.join(",")}" style="--grid-height:${scale.total}px;height:var(--grid-height)">${rules.join("")}
-          ${entries.length ? `<ol class="jd-events" aria-label="Tramos por hora">${entries.map((entry,i)=>scheduledSlot(entry,scale,content[i],ctx)).join("")}</ol>` :
+          ${entries.length ? `<ol class="jd-events" aria-label="Tramos por hora">${entries.map(entry=>scheduledSlot(entry,scale,ctx)).join("")}</ol>` :
           '<p class="jd-calendar-empty">' + (filtered ? (planRows ? "Solo hay coincidencias sin horario." : "Ninguna actividad coincide con los filtros de este día.") : "Aún no hay tramos registrados.") + '</p>'}</div>
         ${planRows ? '<ol class="jd-plan-list" aria-label="Actividades sin horario en orden del plan">'+planRows+'</ol>' : ''}
       </div></div></section>`;
@@ -390,16 +327,16 @@
     const entry = index ? entries.find(item => item.task.id === detail.key.id && item.index === index) : null;
     if (ctx.date !== detail.anchorDate || !task || (index && !entry)) { closeDetail(); return; }
     const goal = goals.get(task.goalId);
-    const meta = [mode === "week" || task.date !== ctx.date ? model.formatDate(task.date,{weekday:"short",day:"numeric",month:"short"}) : "",entry ? entryRange(entry) : "Sin horario",entry?.count > 1 ? "Tramo " + entry.index + " de " + entry.count : "",goal?.title,task.origin].filter(Boolean);
+    const meta = [mode === "week" || task.date !== ctx.date ? model.formatDate(task.date,{weekday:"short",day:"numeric",month:"short"}) : "",entry ? entryRange(entry) : "Sin horario",entry?.count > 1 ? "Tramo " + entry.index + " de " + entry.count : "",task.kind === "space" ? spaceGroup.title : goal?.title,task.kind === "space" ? "" : task.origin].filter(Boolean);
     const dialog = detail.dialog;
     const focused = dialog.contains(document.activeElement) ? document.activeElement : null;
     const key = focused?.dataset.jdField ? {...focused.dataset,field:focused.dataset.jdField} : null;
-    dialog.setAttribute("style",paint(goal));
+    dialog.setAttribute("style",paint(groupFor(task,goals)));
     dialog.innerHTML = `<header class="jd-detail-heading"><h2 id="jd-detail-title">${esc(task.title)}</h2><button type="button" class="jd-detail-close icon-btn" aria-label="Cerrar detalle">${ctx.icon("x",17)}</button></header>
       <div class="jd-detail-sub">${meta.map(value=>"<span>"+esc(value)+"</span>").join(" · ")}</div>
       <p class="jd-detail-context">${esc(task.context || "Sin contexto registrado.")}</p>${taskFields(task,entry,"detail")}
       <div class="jd-detail-actions">${mode === "week" ? '<button type="button" class="btn" data-from-week>Abrir jornada</button>' : ""}
-      <button type="button" class="btn" data-edit-this>${ctx.icon("pencil",15)} Editar actividad</button></div>`;
+      <button type="button" class="btn" data-edit-this>${ctx.icon("pencil",15)} Editar ${task.kind === "space" ? "espacio" : "actividad"}</button></div>`;
     dialog.querySelector(".jd-detail-close").onclick = closeDetail;
     dialog.querySelector("[data-edit-this]").onclick = () => {
       detail.editTask = {id:task.id,date:task.date};
@@ -484,11 +421,11 @@
     }
   }
 
-  function pinHeadings(view,entries) {
+  function pinHeadings(view,entries,weekLayout) {
     const panel = view.querySelector(".jd-activities");
     const toolbar = panel.querySelector(".jd-activities-head");
     const headings = panel.querySelector(".jd-cal-head,.jd-list-head,.jw-day-heads");
-    const canvas = panel.querySelector(".jd-cal-canvas");
+    const canvas = panel.querySelector(".jd-cal-canvas,.jw-sheet");
     let width = canvas?.clientWidth;
     function measure() {
       if (!view.isConnected) return;
@@ -496,7 +433,8 @@
       panel.style.setProperty("--jd-column-height",headings.getBoundingClientRect().height+"px");
       if (canvas && width !== canvas.clientWidth) {
         width = canvas.clientWidth;
-        updateGeometry(view,entries);
+        if (weekLayout) weekLayout();
+        else updateGeometry(view,entries);
       }
     }
     measure();
@@ -528,24 +466,24 @@
     const focusKey = active?.dataset.jdField ? {...active.dataset,field:active.dataset.jdField} : null;
     const detailKey = active?.matches("[data-jd-detail],[data-week-detail]") ? {...active.dataset} : null;
     const weekDate = active?.dataset.weekDay;
-    const stableFocus = [".jw-plan-more summary",".jw-short-index summary",".jw-scroller",".jd-cal-scroll",".jd-list-scroll",
+    const stableFocus = [".jw-scroller",".jd-cal-scroll",".jd-list-scroll",
       "[data-jd-scale]","[data-jd-filter-toggle]","[data-jd-jump-plan]","[data-jd-status-filter]","[data-jd-goal-filter]","[data-jd-clear-filters]","[data-edit-day]:not(:disabled)"].find(selector=>active?.matches(selector));
     const week = mode === "week";
     const period = week ? window.JWeek.range(ctx.date) : {start:ctx.date,end:ctx.date};
     const periodTasks = ctx.state.tasks.filter(task=>task.date >= period.start && task.date <= period.end);
     const goals = new Map(ctx.state.goals.map(goal=>[goal.id,goal]));
-    if (goalFilter && goalFilter !== noGoalFilter && !ctx.state.goals.some(g=>goalValue(g.id)===goalFilter)) goalFilter = "";
+    if (goalFilter && ![noGoalFilter,spaceFilter].includes(goalFilter) && !ctx.state.goals.some(g=>goalValue(g.id)===goalFilter)) goalFilter = "";
     const filtered = Boolean(statusFilter || goalFilter);
     const visibleTasks = filtered ? periodTasks.filter(task=>
       (!statusFilter || task.status===statusFilter) &&
-      (!goalFilter || (goals.has(task.goalId) ? goalValue(task.goalId) : noGoalFilter)===goalFilter)
+      (!goalFilter || (task.kind === "space" ? spaceFilter : goals.has(task.goalId) ? goalValue(task.goalId) : noGoalFilter)===goalFilter)
     ) : periodTasks;
     const dayEntries = week ? [] : entriesFor(periodTasks,goals,ctx.date);
     const visibleTasksSet = filtered && !week ? new Set(visibleTasks) : null;
     const entries = visibleTasksSet ? dayEntries.filter(entry=>visibleTasksSet.has(entry.task)) : dayEntries;
     current = {el,ctx,goals};
     const unplaced = week ? [] : visibleTasks.filter(task=>!task.segments.length);
-    const planRows = week ? "" : unplaced.map(task=>activityRow(task,null,goals.get(task.goalId))).join("");
+    const planRows = week ? "" : unplaced.map(task=>activityRow(task,null,groupFor(task,goals))).join("");
     const schedule = week ? '<div class="jd-week-host"></div>' : mode === "calendar" ? calendar(entries,planRows,ctx,filtered) : listOfEntries(entries,planRows,filtered);
     const last = entries[entries.length-1];
     const end = last && (last.segment.end || (last.live ? "ahora" : "sin cierre"));
@@ -553,26 +491,24 @@
     const planCount = unplaced.length + " sin horario";
     const jump = unplaced.length ? `<span aria-hidden="true"> · </span><button type="button" data-jd-jump-plan title="Ir a la primera actividad sin horario">${planCount}</button>` : "";
     const meta = entries.length ? `<p class="jd-schedule-meta">${esc(entries[0].segment.start)} – ${esc(end)}<span aria-hidden="true"> · </span>${plural(entries.length,"tramo","tramos")}${jump} ${hatchKey}</p>` :
-      unplaced.length ? `<p class="jd-schedule-meta">${plural(unplaced.length,"actividad sin horario","actividades sin horario")}</p>` : "";
-    const modeButtons = [["calendar","Horario","calendar-days"],["list","Lista","list"],["week","Semana","calendar-days"]].map(([key,title,icon]) =>
-      `<button type="button" data-jd-mode="${key}" aria-pressed="${mode===key}">${ctx.icon(icon,15)} ${title}</button>`).join("");
+      unplaced.length ? `<p class="jd-schedule-meta">${plural(unplaced.length,"registro sin horario","registros sin horario")}</p>` : "";
     el.innerHTML = `<div class="jd-view" data-date="${esc(ctx.date)}" data-mode="${mode}"><h1 class="jd-sr">${week ? "Agenda semanal" : "Actividades"}, ${esc(model.formatDate(ctx.date))}</h1>${week ? "" : `<div class="jd-overview">${stats(periodTasks,ctx)}${timeline(dayEntries,ctx)}</div>`}
       <section class="jd-activities" aria-labelledby="jd-schedule-title"${filtered ? " data-filtered" : ""}><header class="jd-activities-head"><div class="jd-activities-intro">
         <h2 id="jd-schedule-title">${week ? "Agenda semanal" : "Actividades del día"}</h2>
-        <span class="jd-filter-count" id="jd-filter-count" role="status">${filtered ? visibleTasks.length + " de " : ""}${periodTasks.length}<span class="jd-sr"> ${periodTasks.length === 1 ? "actividad" : "actividades"}</span></span></div>
+        <span class="jd-filter-count" id="jd-filter-count" role="status">${filtered ? visibleTasks.length + " de " : ""}${periodTasks.length}<span${periodTasks.some(t=>t.kind==="space") ? "" : ' class="jd-sr"'}> ${periodTasks.length === 1 ? "registro" : "registros"}</span></span></div>
         <div class="jd-actions">
           ${mode === "calendar" ? scalePicker(ctx.icon) : ""}
-          <div class="jd-view-switch" role="group" aria-label="Vista de actividades">${modeButtons}</div>
           ${filterBar(goals,ctx.icon,filtersOpen)}
           ${week ? "" : `<button type="button" class="btn primary jd-edit-day" data-edit-day aria-label="Editar actividades" title="Editar actividades" ${pending ? "disabled" : ""}>${ctx.icon("pencil",17)}</button>`}
         </div>${week ? "" : meta}</header>
         ${schedule}</section></div>`;
     const view = el.querySelector(".jd-view");
     if (!week) window.JTimeline.bind(view.querySelector(".jd-timeline"),dayEntries,ctx,hourLabel);
+    let weekLayout;
     if (week) {
-      window.JWeek.render(view.querySelector(".jd-week-host"),{
+      weekLayout = window.JWeek.render(view.querySelector(".jd-week-host"),{
         ...ctx,visibleWeekTasks:visibleTasks,filtered,weekEntries:entriesFor,eventPaint:paint,openDay:date=>openDay(date,ctx),
-        weekScale:(low,high,rows,content,options={}) => makeScale(low,high,rows,content,{baseHeight:42,maxHourHeight:96,...options,compact:false}),
+        weekScale:makeScale,groupFor,
         openEntry:(id,ordinal,trigger)=>openDetail(trigger,{id,segment:String(ordinal ?? 1),place:trigger?.dataset.place || "week"})
       });
     } else if (mode === "calendar") {
@@ -581,7 +517,7 @@
         if (view.isConnected) updateGeometry(view,entries);
       });
     }
-    pinHeadings(view,entries);
+    pinHeadings(view,entries,weekLayout);
     const filterSlot = view.querySelector(".jd-filter-slot");
     filterSlot.addEventListener("focusout",event => {
       if (event.relatedTarget && !filterSlot.contains(event.relatedTarget)) closeFilterPanel();
@@ -638,11 +574,6 @@
         }
         return;
       }
-      if (btn.matches("[data-jd-mode]") && btn.dataset.jdMode !== mode) {
-        mode = btn.dataset.jdMode;
-        current.ctx.render();
-        el.querySelector('[data-jd-mode="' + mode + '"]')?.focus({preventScroll:true});
-      }
     });
     if (panelTop < 0) {
       const saved = scrollPositions.get(mode);
@@ -654,9 +585,36 @@
     else if (detailKey) locate(el,"[data-jd-detail],[data-week-detail]",detailKey)?.focus({preventScroll:true});
     else if (weekDate) el.querySelector('[data-week-day="'+weekDate+'"]')?.focus({preventScroll:true});
     else if (stableFocus) el.querySelector(stableFocus)?.focus({preventScroll:true});
-    else if (active?.matches("[data-jd-mode]")) el.querySelector('[data-jd-mode="' + active.dataset.jdMode + '"]')?.focus({preventScroll:true});
     if (detail) refreshDetail();
   }
 
-  window.JAgenda = {render,getMode:()=>mode,openDay};
+  function renderModes(host,ctx) {
+    if (!host.querySelector(".jd-view-switch")) {
+      const modes = [["calendar","Horario","clock"],["list","Lista","list"],["week","Semana","calendar-days"]];
+      host.innerHTML = '<div class="jd-view-switch" role="group" aria-label="Vista de actividades">' +
+        modes.map(([key,title,icon])=>`<button type="button" data-jd-mode="${key}">${ctx.icon(icon,15)}${title}</button>`).join("") + '</div>';
+    }
+    for (const button of host.querySelectorAll("[data-jd-mode]")) button.setAttribute("aria-pressed",String(button.dataset.jdMode===mode));
+    host.onclick = event => {
+      const button = event.target.closest("[data-jd-mode]");
+      if (!button || button.dataset.jdMode === mode) return;
+      mode = button.dataset.jdMode;
+      ctx.render();
+      button.focus({preventScroll:true});
+    };
+  }
+
+  function openTaskDetail(id,ctx) {
+    const task = ctx.state.tasks.find(row => row.id === id);
+    if (!task) return;
+    statusFilter = goalFilter = "";
+    openDay(task.date,ctx);
+    const trigger = [...current.el.querySelectorAll("[data-jd-detail]")].find(button=>button.dataset.id===id);
+    if (trigger) {
+      trigger.scrollIntoView({block:"center"});
+      openDetail(trigger);
+    }
+  }
+
+  window.JAgenda = {render,renderModes,getMode:()=>mode,openDay,openTaskDetail};
 })();

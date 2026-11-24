@@ -59,7 +59,7 @@
       return '<input type="time" step="60" data-seg="' + seg + '" ' + attrs + ' value="' + esc(value) + '">';
     }
     if (col === 6) return '<output data-duration tabindex="-1" ' + attrs + '>' + hourCount(durationValue(row.segments)) + '</output>';
-    const hint = col === 1 ? 'Escribe una actividad' : col === 2 ? 'Añade contexto' : '';
+    const hint = col === 1 ? (row.kind === 'space' ? 'Ej. Almuerzo' : 'Escribe una actividad') : col === 2 ? 'Añade contexto' : '';
     return '<textarea rows="2" spellcheck="true" ' + attrs + (hint ? ' placeholder="' + hint + '"' : '') + '></textarea>';
   }
 
@@ -68,7 +68,8 @@
     const cells = columns.map((label,col) => {
       const markup = (col === 4 || col === 5) ?
         Array.from({length:segCount},(_,seg) => cellControl(row,index,col,seg)).join('') : cellControl(row,index,col);
-      return '<td class="jsheet-c-' + fields[col] + '">' + markup + '</td>';
+      const badge = col === 1 && row.kind === 'space' ? '<span class="jsheet-space-label">Espacio sin objetivo</span>' : '';
+      return '<td class="jsheet-c-' + fields[col] + '">' + badge + markup + '</td>';
     }).join('');
     return '<tr data-index="' + index + '"' + (index === selected ? ' class="jsheet-current"' : '') +
       '><th scope="row"><button type="button" data-act="row" tabindex="-1" title="Seleccionar fila ' +
@@ -121,6 +122,7 @@
           <button class="jsheet-paste-plan" type="button" data-act="import">${icon('list',15)}Pegar plan</button></div>
         <div class="jsheet-tools" role="group" aria-label="Herramientas de la hoja">
           <div class="jsheet-tool-group"><button class="jsheet-add" type="button" data-act="append">${icon('plus')}Añadir fila</button>
+            <button type="button" data-act="add-space" title="Registrar el tiempo de almuerzo, pausas u otros espacios sin objetivo">${icon('clock')}Añadir espacio</button>
             <details class="jsheet-menu"><summary>Opciones de fila ${icon('chevron-down',13)}</summary>
               <div>${action('insert-before','Insertar encima')}${action('insert-after','Insertar debajo')}${action('up','Mover arriba')}${action('down','Mover abajo')}${action('remove','Eliminar fila')}${action('copy-sheet','Copiar hoja')}</div>
             </details></div>
@@ -307,9 +309,13 @@
     }
 
     function refreshSummary() {
-      const count = draft.rows.filter(row=>row.title.trim()).length;
+      const named = draft.rows.filter(row=>row.title.trim());
+      const spaces = named.filter(row=>row.kind === 'space').length;
+      const count = named.length - spaces;
       const total = draft.rows.reduce((sum,row)=>sum+durationValue(row.segments),0);
-      const text = count + (count === 1 ? ' actividad' : ' actividades') + ' · ' + model.duration(total);
+      const counts = count + (count === 1 ? ' actividad' : ' actividades') +
+        (spaces ? ' · ' + spaces + (spaces === 1 ? ' espacio' : ' espacios') : '');
+      const text = counts + ' · ' + model.duration(total);
       $('.jsheet-summary').innerHTML = '<b>' + esc(text) + '</b><span>' + (dirty() ? 'Cambios sin guardar' : 'Sin cambios') + '</span>';
     }
 
@@ -366,8 +372,9 @@
 
     function detailSelect(name,label,items) {
       const row = selectedRow();
+      const value = name === 'kind' ? (row.kind || 'activity') : row[name];
       return '<label>' + label + '<select data-detail="' + name + '">' + items.map(entry=>
-        Array.isArray(entry) ? option(entry[0],row[name],entry[1]) : option(entry,row[name])
+        Array.isArray(entry) ? option(entry[0],value,entry[1]) : option(entry,value)
       ).join('') + '</select></label>';
     }
 
@@ -396,10 +403,9 @@
         }
         const count = planRows.length===1 ? '1 actividad' : planRows.length+' actividades';
         const comments=planRows.some(row=>row.comment);
-        const preview = planRows.slice(0,3).map((row,i)=>'<li><span>'+ (index+i+1) + '</span><strong>' +
+        const preview = planRows.map((row,i)=>'<li><span>'+ (index+i+1) + '</span><strong>' +
           esc(row.title) + '</strong><span>' + esc(row.context) + '</span>'+(comments?'<span>'+esc(row.comment||'')+'</span>':'')+'</li>').join('');
-        holder.innerHTML = '<p>' + count + ' desde la fila ' + (index+1) + '</p><ol'+(comments?' class="jsheet-plan-comments"':'')+'>' + preview + '</ol>' +
-          (planRows.length>3 ? '<small>+' + (planRows.length-3) + ' más</small>' : '');
+        holder.innerHTML = '<p>' + count + ' desde la fila ' + (index+1) + '</p><ol'+(comments?' class="jsheet-plan-comments"':'')+'>' + preview + '</ol>';
       } catch (err) {
         planRows=[]; submit.disabled=true; holder.textContent=err.message;
       }
@@ -422,12 +428,14 @@
         const row = selectedRow();
         if (!row) { panel = ''; drawPanel(); return; }
         const goals = [['','Sin objetivo'],...ctx.state.goals.map(g=>[g.id,g.title])];
-        const title = row.title.trim() || 'Nueva actividad';
+        const space = row.kind === 'space';
+        const title = row.title.trim() || (space ? 'Nuevo espacio' : 'Nueva actividad');
         const segmentOptions = Array.from({length:Math.max(1,row.segments.length)},(_,i)=>option(String(i),String(selectedSegment),'Tramo ' + (i+1)));
         extra.innerHTML = '<div class="jsheet-extra-head"><strong>Fila ' + (selected+1) + ' · ' + esc(title) +
           '</strong>' + action('hide-extra','Cerrar') + '</div><div class="jsheet-details">' +
-          detailSelect('goalId','Objetivo general',goals) + detailSelect('priority','Prioridad',model.priorities) +
-          detailSelect('origin','Origen',model.origins) + detailSelect('category','Categoría',model.categoryOptions(ctx.state,row.category).map(category => [category.title, category.title + (category.archived ? ' (archivada)' : '')])) +
+          detailSelect('kind','Tipo de fila',[['activity','Actividad'],['space','Espacio sin objetivo']]) +
+          (space ? '' : detailSelect('goalId','Objetivo general',goals) + detailSelect('priority','Prioridad',model.priorities) +
+          detailSelect('origin','Origen',model.origins) + detailSelect('category','Categoría',model.categoryOptions(ctx.state,row.category).map(category => [category.title, category.title + (category.archived ? ' (archivada)' : '')]))) +
           '</div><div class="jsheet-segments"><label>Tramo seleccionado <select data-segment-pick>' + segmentOptions +
           '</select></label>' + action('remove-segment','Quitar tramo') + '</div>';
         extra.querySelector('[data-act="remove-segment"]').disabled = !row.segments.length;
@@ -448,6 +456,7 @@
         '</select></label>' + action('hide-extra','Cerrar') + '</div><div class="jsheet-reuse-rows">' +
         candidates.map(({activity,reason})=>'<label><input type="checkbox" data-reuse-id="' + esc(activity.id) + '"' +
           (reason ? ' disabled' : '') + (reuseIds.has(activity.id) ? ' checked' : '') + '><span>' + esc(activity.title) +
+          (activity.kind === 'space' ? '<small>Espacio sin objetivo</small>' : '') +
           (reason ? '<small>' + esc(reason) + '</small>' : '') + '</span></label>').join('') +
         '</div><div class="jsheet-reuse-foot">' + action('copy-rows','Añadir seleccionadas') + '</div>';
       btn('copy-rows').disabled = !reuseIds.size;
@@ -467,7 +476,7 @@
       if (col === 0) control.dataset.status = control.value;
       if (col === 1 && panel === 'details') {
         const head = extra.querySelector('.jsheet-extra-head strong');
-        if (head) head.textContent = 'Fila ' + (index+1) + ' · ' + (row.title.trim() || 'Nueva actividad');
+        if (head) head.textContent = 'Fila ' + (index+1) + ' · ' + (row.title.trim() || (row.kind === 'space' ? 'Nuevo espacio' : 'Nueva actividad'));
       }
       refreshControls(); refreshSummary(); feedback();
     }
@@ -477,6 +486,11 @@
       if (el.matches('[data-col]')) readCell(el);
       if (el.matches('[data-detail]')) {
         selectedRow()[el.dataset.detail] = el.value;
+        if (el.dataset.detail === 'kind') {
+          if (el.value === 'space') selectedRow().goalId = '';
+          drawTable();
+          extra.querySelector('[data-detail="kind"]').focus();
+        }
         refreshSummary(); feedback();
       } else if (el.matches('[data-segment-pick]')) selectedSegment = Number(el.value);
       else if (el.matches('[data-plan-position]')) { planPosition=el.value; updatePlanPreview(); }
@@ -495,8 +509,23 @@
 
     function appendActivity() {
       const last = draft.rows.length-1;
-      if (sheet.isUnused(draft,draft.rows[last])) { focusCell(last,1); return; }
+      if (draft.rows[last].kind !== 'space' && sheet.isUnused(draft,draft.rows[last])) { focusCell(last,1); return; }
       newAt(draft.rows.length);
+    }
+
+    function addSpace() {
+      finishEdit();
+      if (sheet.isUnused(draft,selectedRow())) selectedRow().kind = 'space';
+      else {
+        selected++;
+        sheet.insertRow(draft,selected,{kind:'space'});
+      }
+      selectedSegment = 0;
+      mode = 'full';
+      panel = '';
+      drawPanel();
+      drawTable({col:1});
+      feedback('Escribe el nombre del espacio y registra sus horas de inicio y cierre.');
     }
 
     function insertPlan(rows,position,fromPreview=false) {
@@ -515,14 +544,14 @@
       removal=remove ? selectedBounds() : null;
       const several=remove && removal.bottom>removal.top;
       confirm.dataset.kind=kind;
-      const actionName=remove ? several ? 'Eliminar '+(removal.bottom-removal.top+1)+' filas' : 'Eliminar actividad' : segment ? 'Quitar tramo' : 'Descartar cambios';
+      const actionName=remove ? several ? 'Eliminar '+(removal.bottom-removal.top+1)+' filas' : 'Eliminar fila' : segment ? 'Quitar tramo' : 'Descartar cambios';
       confirm.querySelector('h3').textContent = kind==='discard' ? 'Descartar la edición' : actionName;
-      const title=selectedRow()?.title.trim() || 'Actividad sin nombre';
+      const title=selectedRow()?.title.trim() || 'Fila sin nombre';
       confirm.querySelector('p').textContent = several ? '¿Quitar todas las filas de la '+(removal.top+1)+' a la '+(removal.bottom+1)+', incluidos sus tramos? El cambio se aplicará al guardar la jornada.' :
         remove ? '¿Quitar «'+title+'» (fila ' + (selected+1) + ') y sus tramos? El cambio se aplicará al guardar la jornada.' :
         segment ? '¿Quitar el tramo ' + (selectedSegment+1) + ' de la fila ' + (selected+1) + '?' : 'Tienes cambios sin guardar. ¿Descartar la edición de esta jornada?';
       btn('discard').textContent = actionName;
-      btn('keep').textContent = several ? 'Conservar filas' : remove ? 'Conservar actividad' : 'Seguir editando';
+      btn('keep').textContent = several ? 'Conservar filas' : remove ? 'Conservar fila' : 'Seguir editando';
       for (const node of [$('.jsheet-head'),$('.jsheet-command'),$('.jsheet-tools'),$('.jsheet-guide'),extra,scroll]) node.inert = true;
       btn('keep').focus();
     }
@@ -593,7 +622,7 @@
       btn('save').textContent='Guardando…';
       try {
         if (!await ctx.mutate(state=>sheet.applyDay(state,draft))) {
-          feedback('No se pudo confirmar el guardado. Tus cambios siguen en la hoja. Recargar la página descartará este borrador. Puedes usar «Opciones de fila → Copiar hoja» para conservar las ocho columnas en Excel.',true);
+          feedback('No se pudo confirmar el guardado. Tus cambios siguen en la hoja. Recargar la página descartará este borrador. Puedes usar «Opciones de fila → Copiar hoja» para conservar las filas en Excel.',true);
           return;
         }
         dialog.close();
@@ -607,10 +636,13 @@
     }
 
     function sheetTSV() {
-      const lines = [columns];
+      const includeKind = draft.rows.some(row => row.kind === 'space' && !sheet.isUnused(draft,row));
+      const lines = [includeKind ? [...columns,'Tipo de fila'] : columns];
       for (const row of draft.rows) {
         if (!row.title && !row.context && !row.comment && !row.segments.some(s=>s.start || s.end)) continue;
-        lines.push(columns.map((_,col)=>exportValue(row,col)));
+        const values = columns.map((_,col)=>exportValue(row,col));
+        if (includeKind) values.push(row.kind === 'space' ? 'Espacio sin objetivo' : 'Actividad');
+        lines.push(values);
       }
       return asTSV(lines);
     }
@@ -629,6 +661,10 @@
         lines.push(line);
       }
       event.clipboardData.setData('text/plain',asTSV(lines));
+      if (left === 0 && right === fields.length-1) {
+        const rowKinds = draft.rows.slice(top,bottom+1).map(row => row.kind === 'space' ? 'Espacio sin objetivo' : 'Actividad');
+        event.clipboardData.setData('application/x-workhub-row-kinds',JSON.stringify(rowKinds));
+      }
       const cells=lines.map(row=>'<tr>'+row.map(s=>'<td style="border:1px solid #c8d4d8;padding:3px 6px;vertical-align:top">'+
         esc(s).replace(/\r\n?|\n/g,'<br style="mso-data-placement:same-cell">')+'</td>').join('')+'</tr>').join('');
       event.clipboardData.setData('text/html','<table style="border-collapse:collapse"><tbody>'+cells+'</tbody></table>');
@@ -660,12 +696,21 @@
             [...tr.children].filter(node=>node.matches('td,th')).map(node=>node.textContent));
         }
         if (!matrix.length) return;
+        const rowKinds = data.getData('application/x-workhub-row-kinds');
+        if (rowKinds && matrix.every(row => row.length === fields.length)) {
+          let kinds;
+          try { kinds = JSON.parse(rowKinds); } catch { /* Se puede pegar el texto sin metadatos. */ }
+          if (Array.isArray(kinds) && kinds.length === matrix.length &&
+              kinds.every(kind => ['Actividad','Espacio sin objetivo'].includes(kind))) {
+            matrix = [[...columns,'Tipo de fila'],...matrix.map((row,i) => [...row,kinds[i]])];
+          }
+        }
         event.preventDefault();
         if (col===6) { feedback('La duración se calcula con las horas de los tramos.'); return; }
         const first=matrix[0];
         const planHeader=/^actividad(?:es)?$/i.test(first[0].trim());
         const hasPlanHeader=planHeader && /^contexto$/i.test(first[1]?.trim()||'');
-        const fullHeader=first.length===8 && /^estado$/i.test(first[0].trim());
+        const fullHeader=[8,9].includes(first.length) && /^estado$/i.test(first[0].trim());
         const isPlan=hasPlanHeader || (col===1 && (matrix.length>1 || first.length>1) &&
           matrix.every(line=>line.length<=(mode==='plan'?3:2)));
         if (isPlan) {
@@ -717,6 +762,7 @@
         drawTable({col:lastColumn}); feedback(); return;
       }
       if (key === 'append' || key === 'append-bottom') { appendActivity(); return; }
+      if (key === 'add-space') { addSpace(); return; }
       if (key === 'between') { newAt(Number(button.closest('[data-index]').dataset.index)+1); return; }
       if (key === 'insert-before' || key === 'insert-after') { newAt(selected+(key==='insert-after'?1:0)); return; }
       if (key === 'remove' || key === 'remove-segment') { showConfirm(key); return; }
@@ -776,7 +822,7 @@
           draft.rows.push(...copies); selectedSegment=0;
         }
         reuseIds.clear(); panel=''; drawPanel(); drawTable({col:1});
-        feedback(copies.length + (copies.length===1?' actividad añadida.':' actividades añadidas.'));
+        feedback(copies.length + (copies.length===1?' fila añadida.':' filas añadidas.'));
       }
     }
 
