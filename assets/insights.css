@@ -88,57 +88,18 @@
 .ji-paper-section h3{font-size:1.1rem;letter-spacing:-.025em;font-weight:750}
 .ji-paper-section>p{margin:4px 0 8px;color:#50656f;font-size:.82rem;line-height:1.5}
 .ji-bottom>.ji-panel:only-child{grid-column:1 / -1}
-.ji-paper h3.ji-paper-group-title{margin:25px 0 0;padding:13px 0 0;border-top:2px solid var(--paper-teal);font-size:1.18rem;font-weight:760;break-after:avoid}
-.ji-paper-activity-group{margin-top:16px}
-.ji-paper-activity-group h4{margin:0;color:#255a65;line-height:1.38;font-size:1rem;overflow-wrap:anywhere}
-.ji-paper-stage{display:flex;align-items:baseline;gap:9px;margin:8px 0;color:#465c69;break-after:avoid;font-size:.79rem}
-.ji-paper-stage strong{padding:3px 8px;border-radius:4px;font-weight:730}
-.ji-paper-stage span{font-weight:550}
-.ji-stage-completed strong{background:#e5f3ed;color:#206048}
-.ji-stage-started strong{background:#e8eff7;color:#354f77}
-.ji-stage-pending strong{background:#f9f1e1;color:#805925}
-.ji-paper .ji-paper-activity-group td{white-space:pre-wrap}
-.ji-paper .ji-paper-activity-group td[data-label="Actividad"]{font-weight:650}
 .ji-paper-scroll{max-width:100%;overflow-x:auto}
 .ji-paper table{border-collapse:collapse;width:100%;table-layout:fixed;font-size:.83rem;line-height:1.46;text-align:left}
 .ji-paper th{background:#e7f0f2;color:#24555e;font-weight:700}
 .ji-paper th,.ji-paper td{border-bottom:1px solid #d8e3e6;padding:7px 9px;vertical-align:top;overflow-wrap:anywhere;white-space:pre-line}
-.ji-paper td:is(.ji-run-start,.ji-run-mid,.ji-run-end){position:relative}
-.ji-paper td:is(.ji-run-start,.ji-run-mid){border-bottom-color:transparent}
-.ji-paper td:is(.ji-run-start,.ji-run-mid,.ji-run-end)::after{content:"";position:absolute;left:calc(.25rem + 9px);top:-1px;bottom:0;border-left:1.5px dotted #708e9b}
-.ji-paper td.ji-run-start::after{top:9px}
-.ji-paper td.ji-run-end::after{bottom:7px}
-.ji-run-start>span{position:relative;z-index:1;display:table;background:#fff;box-shadow:0 4px #fff}
-.ji-paper :is(.ji-run-mid,.ji-run-end)>span{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
 .ji-paper-note{margin-top:22px;padding-top:11px;border-top:1px solid var(--paper-rule);font-size:.76rem;line-height:1.55;color:#50656f}
-.ji-paper-print-groups{display:none}
+.ji-paper-head + .ji-paper-metrics{margin-top:16px}
+.ji-paper-section h3 + .ji-paper-scroll{margin-top:7px}
 @media(max-width:650px){.ji-report-dialog{width:calc(100% - 12px);max-height:96dvh}.ji-report-tools{gap:5px;padding:8px}.ji-report-tools>span{display:none}.ji-report-tools>div{width:100%;justify-content:flex-end}.ji-paper-wrap{padding:8px}.ji-paper{padding:16px 12px}.ji-paper-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.ji-paper-metrics>div{padding:10px}.ji-paper-metrics>div:nth-child(3):last-child{grid-column:1 / -1}.ji-paper-masthead{gap:9px;margin-bottom:16px}.ji-paper-author{padding-left:9px}.ji-paper th,.ji-paper td{padding:5px;font-size:.77rem}.ji-paper table{min-width:390px}.ji-hour-bars{min-width:calc(var(--ji-cols)*42px)}}
-@media screen and (max-width:560px){
- .ji-paper-activity-group .ji-paper-scroll{overflow:visible}
- .ji-paper .ji-paper-activity-group table{display:block;min-width:0}
- .ji-paper-activity-group thead{position:absolute;width:1px;height:1px;clip-path:inset(50%);overflow:hidden}
- .ji-paper-activity-group tbody{display:grid;gap:8px}
- .ji-paper-activity-group tbody tr{display:grid;gap:8px;border:1px solid #dce0e3;border-radius:4px;padding:10px}
- .ji-paper .ji-paper-activity-group td{display:block;border:0;padding:0;font-size:.85rem}
- .ji-paper-activity-group td::before{content:attr(data-label);display:block;font-weight:650;margin-bottom:2px;color:#555d66;font-size:.74rem}
- .ji-paper-activity-group tr:has(.ji-run-start,.ji-run-mid,.ji-run-end){position:relative;padding-left:20px}
- .ji-paper-activity-group tr:has(.ji-run-start,.ji-run-mid,.ji-run-end)::after{content:"";position:absolute;left:8px;top:-9px;bottom:0;border-left:1.5px dotted #708e9b}
- .ji-paper-activity-group tr:has(.ji-run-start)::after{top:18px}
- .ji-paper-activity-group tr:has(.ji-run-end)::after{bottom:11px}
- .ji-paper td:is(.ji-run-start,.ji-run-mid,.ji-run-end)::after,.ji-paper td:is(.ji-run-mid,.ji-run-end)::before{display:none}
- .ji-paper td:is(.ji-run-mid,.ji-run-end){position:absolute}
-}
 @media print{
- .ji-printing .ji-paper-activity-group .ji-paper-scroll>table{display:none}
- .ji-printing .ji-paper-print-groups{display:block}
- .ji-paper-print-groups table+table{margin-top:2.5mm}
- .ji-paper-print-groups th{vertical-align:bottom}
- .ji-paper-print-groups th small{display:block;color:#425c64;font-size:7pt;font-weight:500}
- .ji-paper-print-groups .ji-print-guide{position:relative}
- .ji-paper-print-groups .ji-print-guide::after{content:"";position:absolute;top:0;bottom:0;left:3mm;border-left:1pt dotted #708e9b}
  @page{size:A4 portrait;margin:14mm}
  body.ji-printing{background:#fff!important;display:block!important;width:auto!important;height:auto!important;overflow:visible!important;margin:0!important;padding:0!important}
  body.ji-printing>*:not(.ji-report-dialog){display:none!important}
  body.ji-printing .ji-report-dialog[open]{display:block!important;position:static!important;inset:auto!important;width:100%!important;max-width:none!important;max-height:none!important;margin:0!important;padding:0!important;overflow:visible!important;border:0;box-shadow:none;background:#fff;print-color-adjust:exact;-webkit-print-color-adjust:exact}
- .ji-printing .ji-report-dialog::backdrop{background:transparent}.ji-printing .ji-report-tools,.ji-printing .ji-report-message{display:none!important}.ji-printing .ji-paper-wrap{padding:0}.ji-printing .ji-paper{border:0;border-top:3pt solid var(--paper-navy);padding:5mm 0 0;box-shadow:none}.ji-printing .ji-paper h2{font-size:24pt}.ji-printing .ji-paper-head{padding-bottom:3mm;break-inside:avoid}.ji-printing .ji-paper-masthead{margin-bottom:4mm}.ji-printing .ji-paper-lead{font-size:12pt;margin:4mm 0}.ji-printing .ji-paper-metrics{grid-template-columns:repeat(var(--ji-metric-count),minmax(0,1fr));break-inside:avoid}.ji-printing .ji-paper-metrics>div{border-bottom:0;padding:3mm}.ji-printing .ji-paper-metrics dd{font-size:15pt}.ji-printing .ji-paper-section{margin-top:4mm}.ji-printing .ji-paper-section h3{font-size:12pt;break-after:avoid}.ji-printing .ji-paper-section>p{font-size:9pt;break-after:avoid}.ji-printing .ji-paper h3.ji-paper-group-title{margin-top:5mm;padding-top:3mm;font-size:13pt}.ji-printing .ji-paper-activity-group h4{font-size:10pt;break-after:avoid}.ji-printing .ji-paper-metrics>div{grid-column:auto!important}.ji-printing .ji-paper-scroll{overflow:visible}.ji-printing .ji-paper th,.ji-printing .ji-paper td{font-size:9pt;padding:1.5mm}.ji-printing .ji-paper table{min-width:0}.ji-printing .ji-paper thead{display:table-header-group}.ji-printing .ji-paper tr{break-inside:avoid}.ji-printing .ji-paper-note{font-size:8pt}
+ .ji-printing .ji-report-dialog::backdrop{background:transparent}.ji-printing .ji-report-tools,.ji-printing .ji-report-message{display:none!important}.ji-printing .ji-paper-wrap{padding:0}.ji-printing .ji-paper{border:0;border-top:3pt solid var(--paper-navy);padding:5mm 0 0;box-shadow:none}.ji-printing .ji-paper h2{font-size:24pt}.ji-printing .ji-paper-head{padding-bottom:3mm;break-inside:avoid}.ji-printing .ji-paper-masthead{margin-bottom:4mm}.ji-printing .ji-paper-lead{font-size:12pt;margin:4mm 0}.ji-printing .ji-paper-metrics{grid-template-columns:repeat(var(--ji-metric-count),minmax(0,1fr));break-inside:avoid}.ji-printing .ji-paper-metrics>div{border-bottom:0;padding:3mm}.ji-printing .ji-paper-metrics dd{font-size:15pt}.ji-printing .ji-paper-section{margin-top:4mm}.ji-printing .ji-paper-section h3{font-size:12pt;break-after:avoid}.ji-printing .ji-paper-section>p{font-size:9pt;break-after:avoid}.ji-printing .ji-paper-metrics>div{grid-column:auto!important}.ji-printing .ji-paper-scroll{overflow:visible}.ji-printing .ji-paper th,.ji-printing .ji-paper td{font-size:9pt;padding:1.5mm}.ji-printing .ji-paper table{min-width:0}.ji-printing .ji-paper thead{display:table-header-group}.ji-printing .ji-paper tr{break-inside:avoid}.ji-printing .ji-paper-note{font-size:8pt}.ji-printing .ji-paper-head + .ji-paper-metrics{margin-top:3mm}
 }

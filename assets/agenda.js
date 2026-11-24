@@ -185,44 +185,111 @@
       ${task.context ? `<p class="jd-event-context" title="${esc(task.context)}"><span>${esc(task.context)}</span></p>` : ""}</div>`;
   }
 
-  function scheduledSlot(entry,scale,ctx) {
-    const from = scale.at(entry.start), height = scale.at(Math.max(entry.start+1,entry.end))-from;
-    const goal = entry.goal && entry.task.kind !== "space" ? `<div class="jd-event-goal">${ctx.icon("target",11)}<span>Objetivo · ${esc(entry.goal.title)}</span></div>` : "";
-    const mobileTime = `<span class="jd-mobile-time">${esc(entryRange(entry))}${entry.segment.end || entry.live ? " · " + esc(model.duration(entry.end-entry.start)) : ""}</span>`;
-    return `<li class="jd-slot-track" data-start-minute="${entry.start}" data-end-minute="${entry.end}" style="top:${from}px;height:${height}px;${paint(entry.goal)}">
-      <article data-has-comment="${!!entry.task.comment}" class="jd-event${entry.segment.end ? "" : " jd-event-open"}" aria-label="${esc(entry.task.title)}, ${esc(entryRange(entry))}">
-        <div class="jd-event-body">${eventHead(entry.task,entry,"grid")}${taskFields(entry.task,entry,"grid")}${mobileTime}${goal}</div></article></li>`;
+  function lineBudget(height,content,entry) {
+    const goal = !!entry.goal && entry.task.kind !== "space" && height >= content.height+22;
+    const budget = Math.max(0,height-content.band-(goal ? 19 : 0)-2);
+    const lines = Math.max(0,Math.floor((budget-4+.01)/content.line));
+    let context = Math.min(lines,content.contextLines);
+    let comment = Math.min(lines,content.commentLines);
+    if (content.stacked && context && comment) {
+      // Dos párrafos en móvil comparten la altura del cuerpo.
+      const both = Math.max(0,Math.floor((budget-8+.01)/content.line));
+      if (both < 2) comment = 0;
+      else {
+        context = Math.min(context,both-1);
+        comment = Math.min(comment,both-context);
+      }
+    }
+    const title = Math.max(1,Math.floor((height-4+.01)/content.line));
+    return {context,comment,title,goal};
   }
 
-  // El eje crece sólo dentro de los tramos que necesitan espacio para el texto.
-  // Los intervalos de un mismo día conservan sus bordes y los días semanales comparten escala.
+  function scheduledSlot(entry,scale,content,ctx) {
+    const from = scale.at(entry.start), height = scale.at(entry.end)-from;
+    const fit = lineBudget(height,content,entry);
+    const goal = entry.goal && entry.task.kind !== "space" ? `<div class="jd-event-goal">${ctx.icon("target",11)}<span>Objetivo · ${esc(entry.goal.title)}</span></div>` : "";
+    return `<li class="jd-slot-track${height === 0 ? " jd-instant" : ""}" data-start-minute="${entry.start}" data-end-minute="${entry.end}" data-room-for-goal="${fit.goal}" data-context-lines="${fit.context}" data-comment-lines="${fit.comment}" style="top:${from}px;height:${height}px;--jd-measured-band:${content.band}px;--jd-title-lines:${fit.title};--jd-context-lines:${fit.context};--jd-comment-lines:${fit.comment};${paint(entry.goal)}">
+      <article data-has-comment="${!!entry.task.comment}" class="jd-event${entry.segment.end ? "" : " jd-event-open"}" aria-label="${esc(entry.task.title)}, ${esc(entryRange(entry))}">
+        ${eventHead(entry.task,entry,"grid")}${taskFields(entry.task,entry,"grid")}${goal}</article></li>`;
+  }
+
+  function estimatedContent(entry) {
+    const lines = (text,columns) => text ? String(text).split(/\r?\n/).reduce((n,line) => n+Math.max(1,Math.ceil(line.length/columns)),0) : 0;
+    const band = Math.max(18,lines(entry.task.title,72)*14+3);
+    const line = 13.75, contextLines = lines(entry.task.context,43), commentLines = lines(entry.task.comment,32);
+    return {band,line,contextLines,commentLines,stacked:false,height:band+line*Math.max(contextLines,commentLines)+6};
+  }
+
+  // Cada hora mantiene una escala lineal propia. Se distribuye el espacio faltante
+  // sólo en las horas del tramo, dando mayor peso a su fracción de solapamiento.
   function makeScale(low,high,entries,content,options={}) {
     const base = options.baseHeight ?? hourScales[density];
-    const minuteHeights = Array(high-low).fill(base/60);
-    const demands = entries.map((entry,i) => ({
-      start:entry.start-low,end:Math.max(entry.start+1,entry.end)-low,height:content[i].height
-    })).sort((a,b)=>(a.end-a.start)-(b.end-b.start));
-    for (const {start,end,height} of demands) {
-      let room = 0;
-      for (let i=start;i<end;i++) room += minuteHeights[i];
-      if (room >= height) continue;
-      const extra = (height-room)/(end-start);
-      for (let i=start;i<end;i++) minuteHeights[i] += extra;
+    const limit = options.maxHourHeight ?? Infinity;
+    const compact = options.compact ?? density === "compact";
+    const heights = Array((high-low)/60).fill(base);
+    const byLength = entries.map((entry,index) => ({entry,need:content[index].height})).sort((a,b) =>
+      (a.entry.end-a.entry.start)-(b.entry.end-b.entry.start));
+    for (const {entry,need} of byLength) {
+      const duration = entry.end-entry.start;
+      if (duration < 5) continue;
+      const parts = [];
+      let room = 0, weights = 0;
+      for (let i = Math.floor((entry.start-low)/60); i < Math.ceil((entry.end-low)/60); i++) {
+        const start = low+i*60;
+        const fraction = (Math.min(start+60,entry.end)-Math.max(start,entry.start))/60;
+        parts.push({i,fraction});
+        room += heights[i]*fraction;
+        weights += fraction*fraction;
+      }
+      // Un tramo breve tiene acceso completo desde Lista y desde su título.
+      const maxRate = duration < 10 ? 1.35 : duration < 20 ? 1.8 : duration < 60 ? 2.6 : Infinity;
+      const target = Math.min(need, duration*maxRate)*(compact ? hourScales.compact/hourScales.detailed : 1);
+      if (target <= room) continue;
+      for (const {i,fraction} of parts) heights[i] = Math.min(limit,heights[i]+(target-room)*fraction/weights);
     }
     const offsets = [0];
-    for (const height of minuteHeights) offsets.push(offsets.at(-1) + height);
-    const total = offsets.at(-1);
+    heights.forEach((height,i) => {
+      heights[i] = Math.ceil(height);
+      offsets.push(offsets[i]+heights[i]);
+    });
+    const total = offsets[offsets.length-1];
     function at(minute) {
-      const index = Math.max(0,minute-low);
       if (minute >= high) return total;
-      return offsets[Math.floor(index)] + (index%1)*minuteHeights[Math.floor(index)];
+      const i = Math.max(0,Math.floor((minute-low)/60));
+      return offsets[i]+(minute-low-i*60)*heights[i]/60;
     }
     function minuteAt(y) {
-      const i = offsets.findIndex(value=>value>y)-1;
-      return i < 0 ? (y <= 0 ? low : high) : low+i+(y-offsets[i])/minuteHeights[i];
+      const i = heights.findIndex((_,i) => y < offsets[i+1]);
+      return i < 0 ? high : low+i*60+Math.max(0,y-offsets[i])*60/heights[i];
     }
-    const heights = Array.from({length:(high-low)/60},(_,i)=>+(offsets[(i+1)*60]-offsets[i*60]).toFixed(2));
     return {low,high,heights,total,at,minuteAt};
+  }
+
+  function measureContent(grid,entries) {
+    const fallback = entries.map(estimatedContent);
+    if (!entries.length || !grid.clientWidth) return fallback;
+    const probe = document.createElement("div");
+    probe.className = "jd-measure";
+    probe.setAttribute("aria-hidden","true");
+    probe.innerHTML = entries.map(({task}) => `<div class="jd-probe-card"><div class="jd-probe-title">${esc(task.title)}</div><i class="jd-probe-control"></i>
+      ${task.context ? `<div class="jd-probe-context">${esc(task.context)}</div>` : ""}
+      ${task.comment ? `<div class="jd-probe-comment">${esc(task.comment)}</div>` : ""}</div>`).join("");
+    grid.append(probe);
+    try {
+      return [...probe.children].map((card,i) => {
+        const height = card.getBoundingClientRect().height;
+        const band = Math.max(card.firstElementChild.getBoundingClientRect().height,card.children[1].getBoundingClientRect().height);
+        if (!height) return fallback[i];
+        const line = parseFloat(getComputedStyle(card.firstElementChild).lineHeight) || 13.75;
+        const count = selector => {
+          const child = card.querySelector(selector);
+          return child ? Math.max(1,Math.round((child.getBoundingClientRect().height-4)/line)) : 0;
+        };
+        return {band:Math.ceil(band),height:Math.ceil(height)+2,line,
+          contextLines:count(".jd-probe-context"),commentLines:count(".jd-probe-comment"),
+          stacked:getComputedStyle(card.children[1]).gridColumnStart === "2"};
+      });
+    } finally { probe.remove(); }
   }
 
   function updateGeometry(view,entries,keepPlace=true) {
@@ -234,25 +301,26 @@
       : 0;
     const anchor = previousTop > 0 ? liveScale.minuteAt(previousTop) : null;
     const belowGrid = previousTop > 0 ? Math.max(0,previousTop-liveScale.total) : 0;
-    const tracks = [...grid.querySelectorAll(".jd-slot-track")];
-    const content = tracks.map(track => {
-      const body = track.querySelector(".jd-event-body");
-      const title = body.querySelector(".jd-event-title");
-      const status = body.querySelector(".jd-field-status");
-      return {height:Math.ceil(body.getBoundingClientRect().height || 34)+2,
-        band:Math.ceil(Math.max(title.offsetHeight || 18,status.offsetHeight || 0))};
-    });
+    const content = measureContent(grid,entries);
     const scale = makeScale(Number(grid.dataset.startMinute),Number(grid.dataset.endMinute),entries,content);
     grid.dataset.hourHeights = scale.heights.join(",");
     grid.dataset.pixelsPerHour = hourScales[density];
     grid.style.setProperty("--grid-height",scale.total+"px");
     for (const line of grid.querySelectorAll("[data-minute]")) line.style.top = scale.at(Number(line.dataset.minute))+"px";
+    const tracks = [...grid.querySelectorAll(".jd-slot-track")];
     entries.forEach((entry,i) => {
       const y = scale.at(entry.start);
-      const height = scale.at(Math.max(entry.start+1,entry.end))-y;
+      const height = scale.at(entry.end)-y;
       tracks[i].style.top = y+"px";
       tracks[i].style.height = height+"px";
       tracks[i].style.setProperty("--jd-measured-band",content[i].band+"px");
+      const fit = lineBudget(height,content[i],entry);
+      tracks[i].dataset.roomForGoal = String(fit.goal);
+      tracks[i].dataset.contextLines = String(fit.context);
+      tracks[i].dataset.commentLines = String(fit.comment);
+      tracks[i].style.setProperty("--jd-title-lines",fit.title);
+      tracks[i].style.setProperty("--jd-context-lines",fit.context);
+      tracks[i].style.setProperty("--jd-comment-lines",fit.comment);
     });
     if (anchor !== null) {
       const targetTop = scale.at(anchor)+belowGrid;
@@ -263,7 +331,7 @@
   }
 
   function scalePicker(icon) {
-    return `<label class="jd-density jd-scale-picker" title="Escala del horario. Los tramos se ajustan al contenido. La escala modifica el espacio entre registros."><span class="jd-scale-label">Escala</span><span class="jd-scale-icon" aria-hidden="true">${icon("layers",16)}</span><select data-jd-scale aria-label="Escala del horario"><option value="detailed" ${density === "detailed" ? "selected" : ""}>Detallada</option><option value="compact" ${density === "compact" ? "selected" : ""}>Compacta</option></select></label>`;
+    return `<label class="jd-density jd-scale-picker" title="Escala del horario. Cada hora se ajusta al texto de sus tramos. Los minutos conservan su posición dentro de esa hora."><span class="jd-scale-label">Escala</span><span class="jd-scale-icon" aria-hidden="true">${icon("layers",16)}</span><select data-jd-scale aria-label="Escala del horario"><option value="detailed" ${density === "detailed" ? "selected" : ""}>Detallada</option><option value="compact" ${density === "compact" ? "selected" : ""}>Compacta</option></select></label>`;
   }
 
   function columnTitles() {
@@ -290,7 +358,7 @@
   function calendar(entries,planRows,ctx,filtered) {
     const low = Math.min(dayStart,...entries.map(entry => Math.floor(entry.start/60)*60));
     const high = Math.max(dayStart + 60,...entries.map(entry => Math.ceil(Math.max(entry.start+1,entry.end)/60)*60));
-    const content = entries.map(() => ({height:34}));
+    const content = entries.map(estimatedContent);
     const scale = makeScale(low,high,entries,content);
     const rules = [];
     for (let hour=low; hour<=high; hour+=60) {
@@ -300,7 +368,7 @@
       <div class="jd-cal-scroll" tabindex="0" role="region" aria-label="Horario por hora, actividad y registro"><div class="jd-cal-canvas">
         <div class="jd-cal-head" aria-hidden="true">${columnTitles()}</div>
         <div class="jd-grid" data-start-minute="${low}" data-end-minute="${high}" data-pixels-per-hour="${hourScales[density]}" data-hour-heights="${scale.heights.join(",")}" style="--grid-height:${scale.total}px;height:var(--grid-height)">${rules.join("")}
-          ${entries.length ? `<ol class="jd-events" aria-label="Tramos por hora">${entries.map(entry=>scheduledSlot(entry,scale,ctx)).join("")}</ol>` :
+          ${entries.length ? `<ol class="jd-events" aria-label="Tramos por hora">${entries.map((entry,i)=>scheduledSlot(entry,scale,content[i],ctx)).join("")}</ol>` :
           '<p class="jd-calendar-empty">' + (filtered ? (planRows ? "Solo hay coincidencias sin horario." : "Ninguna actividad coincide con los filtros de este día.") : "Aún no hay tramos registrados.") + '</p>'}</div>
         ${planRows ? '<ol class="jd-plan-list" aria-label="Actividades sin horario en orden del plan">'+planRows+'</ol>' : ''}
       </div></div></section>`;
@@ -421,11 +489,11 @@
     }
   }
 
-  function pinHeadings(view,entries,weekLayout) {
+  function pinHeadings(view,entries) {
     const panel = view.querySelector(".jd-activities");
     const toolbar = panel.querySelector(".jd-activities-head");
     const headings = panel.querySelector(".jd-cal-head,.jd-list-head,.jw-day-heads");
-    const canvas = panel.querySelector(".jd-cal-canvas,.jw-sheet");
+    const canvas = panel.querySelector(".jd-cal-canvas");
     let width = canvas?.clientWidth;
     function measure() {
       if (!view.isConnected) return;
@@ -433,8 +501,7 @@
       panel.style.setProperty("--jd-column-height",headings.getBoundingClientRect().height+"px");
       if (canvas && width !== canvas.clientWidth) {
         width = canvas.clientWidth;
-        if (weekLayout) weekLayout();
-        else updateGeometry(view,entries);
+        updateGeometry(view,entries);
       }
     }
     measure();
@@ -504,11 +571,11 @@
         ${schedule}</section></div>`;
     const view = el.querySelector(".jd-view");
     if (!week) window.JTimeline.bind(view.querySelector(".jd-timeline"),dayEntries,ctx,hourLabel);
-    let weekLayout;
     if (week) {
-      weekLayout = window.JWeek.render(view.querySelector(".jd-week-host"),{
+      window.JWeek.render(view.querySelector(".jd-week-host"),{
         ...ctx,visibleWeekTasks:visibleTasks,filtered,weekEntries:entriesFor,eventPaint:paint,openDay:date=>openDay(date,ctx),
-        weekScale:makeScale,groupFor,
+        groupFor,
+        weekScale:(low,high,rows,content,options) => makeScale(low,high,rows,content,{...options,compact:false}),
         openEntry:(id,ordinal,trigger)=>openDetail(trigger,{id,segment:String(ordinal ?? 1),place:trigger?.dataset.place || "week"})
       });
     } else if (mode === "calendar") {
@@ -517,7 +584,7 @@
         if (view.isConnected) updateGeometry(view,entries);
       });
     }
-    pinHeadings(view,entries,weekLayout);
+    pinHeadings(view,entries);
     const filterSlot = view.querySelector(".jd-filter-slot");
     filterSlot.addEventListener("focusout",event => {
       if (event.relatedTarget && !filterSlot.contains(event.relatedTarget)) closeFilterPanel();

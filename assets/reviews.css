@@ -1,0 +1,23 @@
+.wr-trigger{position:relative;display:inline-grid;place-items:center;flex:none;width:36px;height:36px;color:#39515f;background:#fff;border:1px solid var(--line);border-radius:5px}
+.wr-trigger:hover{background:#eef6f4;border-color:#b2c9c5;color:var(--teal-deep)}
+.wr-trigger span{position:absolute;right:-4px;top:-5px;min-width:15px;padding:1px 3px;line-height:12px;border:1px solid white;border-radius:5px;font-size:10px;font-weight:750;font-variant-numeric:tabular-nums;background:#a84435;color:white}
+.wr-panel{width:min(420px,calc(100vw - 24px));max-height:min(76dvh,640px);padding:0;border:1px solid #cbd9de;border-radius:5px;background:white;color:var(--ink);box-shadow:0 16px 54px #122c3e30}
+.wr-panel[open]{display:flex;flex-direction:column}
+.wr-panel header{display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid var(--line)}
+.wr-heading-icon{color:var(--teal-deep);display:grid;place-items:center}
+.wr-panel h2{margin:0;font-size:1.02rem;flex:1}
+.wr-panel header button{width:29px;height:29px}
+.wr-content{overflow-y:auto;padding:3px 16px 14px}
+.wr-empty{color:var(--muted);line-height:1.6;font-size:.85rem;margin:16px 0 2px}
+.wr-group h3{display:flex;align-items:center;gap:7px;margin:14px 0 4px;font-size:.78rem;font-weight:750}
+.wr-group h3 span{font-size:.68rem;color:#596a73;background:#f1f4f5;border-radius:4px;padding:1px 5px}
+.wr-overdue h3{color:#994333}.wr-today h3{color:#136c5e}
+.wr-group ul{margin:0;padding:0;list-style:none}
+.wr-group li+li{border-top:1px solid #edf1f3}
+.wr-group button{display:flex;align-items:center;gap:7px;width:100%;background:transparent;border:0;border-radius:4px;padding:8px 4px;text-align:left}
+.wr-group button:hover{background:#f1f7f5}
+.wr-group button>span{flex:1;min-width:0;overflow-wrap:anywhere}
+.wr-group button b,.wr-group button small{display:block}
+.wr-group button b{font-size:.84rem;line-height:1.4}
+.wr-group button small,.wr-group time{font-size:.71rem;color:#576a74;line-height:1.6}
+.wr-group time{white-space:nowrap}

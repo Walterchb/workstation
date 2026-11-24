@@ -282,148 +282,111 @@
   }
 
   const reportTitles = { day: 'Informe diario de gestión', week: 'Informe semanal de gestión', month: 'Informe mensual de gestión', custom: 'Informe de gestión del período' };
-  const periodWords = { day: 'la jornada', week: 'la semana', month: 'el mes', custom: 'el período' };
   const longDate = value => model().formatDate(value, {day:'numeric',month:'long',year:'numeric'});
   const pctTime = (minutes, sum) => sum ? `${Math.round(100 * minutes / sum)}%` : '—';
+
+  // Sólo se abrevia el texto libre del informe. La agenda y el CSV conservan el registro completo.
+  function reportExcerpt(text, limit) {
+    const line = text.trim().replace(/\s+/g, ' ');
+    if (line.length <= limit) return line;
+    const chars = Array.from(line);
+    if (chars.length <= limit) return line;
+    let excerpt = chars.slice(0, limit - 1).join('');
+    const lastSpace = excerpt.lastIndexOf(' ');
+    if (lastSpace >= excerpt.length - 20) excerpt = excerpt.slice(0,lastSpace);
+    return excerpt + '…';
+  }
+
+  function objectiveSummary(goals) {
+    const assigned = goals.filter(g => g.id);
+    const unassigned = goals.find(g => !g.id);
+    const visible = assigned.length > 5 ? assigned.slice(0,4) : assigned.slice();
+    const rest = assigned.slice(visible.length);
+    if (rest.length) {
+      const other = {title:`Otros objetivos (${rest.length})`, minutes:0, completed:0, started:0, pending:0};
+      for (const g of rest) {
+        other.minutes += g.minutes;
+        other.completed += g.completed;
+        other.started += g.started;
+        other.pending += g.pending;
+      }
+      visible.push(other);
+    }
+    if (unassigned) visible.push(unassigned);
+    return {title:'Ejecución por objetivo general',
+      subtitle:rest.length ? 'Objetivos ordenados por horas. La fila agrupada incluye los demás objetivos del período.' : '',
+      columns:['Objetivo general','Tiempo','Culminadas','Iniciadas','Sin iniciar'], widths:[.41,.17,.14,.14,.14],
+      rows:visible.map(g=>[reportExcerpt(g.title,100), formatTime(g.minutes), String(g.completed), String(g.started), String(g.pending)])};
+  }
 
   function managementReport(s, period, author = null) {
     const daily = period === 'day';
     const dateText = daily ? longDate(s.range.from) : `${shortDate(s.range.from,true)} al ${shortDate(s.range.to,true)}`;
     const milestones = [...s.achieved].sort((a,b) => b.achievedOn.localeCompare(a.achievedOn) || a.title.localeCompare(b.title,'es'));
-    const rankedGoals = s.goals.filter(g => g.id);
-    const unassigned = s.goals.find(g => !g.id);
-    if (unassigned) rankedGoals.push(unassigned);
-    const goalName = g => g.id ? g.title : unassignedGoal;
-    const leadingGoal = s.goals[0];
-    const word = periodWords[period];
-    const quotedTitle = title => `«${title.trim().replace(/\s+/g, ' ')}»`;
-    let takeaway;
-    if (milestones.length) {
-      takeaway = milestones.length === 1
-        ? `El ${shortDate(milestones[0].achievedOn)} se confirmó el resultado de ${quotedTitle(milestones[0].title)}.`
-        : `Durante ${word} se confirmaron resultados en ${milestones.length} objetivos generales.`;
-      if (s.activityMinutes) takeaway += ` Se registraron ${formatTime(s.activityMinutes)} en actividades.`;
-    } else if (s.activityMinutes) {
-      takeaway = leadingGoal.id
-        ? `Se dedicaron ${formatTime(leadingGoal.minutes)} a ${quotedTitle(leadingGoal.title)}, el ${pctTime(leadingGoal.minutes,s.activityMinutes)} del tiempo registrado en actividades durante ${word}.`
-        : `Las actividades sin objetivo general asignado sumaron ${formatTime(leadingGoal.minutes)} (${pctTime(leadingGoal.minutes,s.activityMinutes)} del tiempo registrado en actividades).`;
-    } else if (s.tasks.length) {
-      takeaway = `La agenda de ${word} reúne ${label(s.tasks.length,'actividad','actividades')}. Aún no hay tramos de actividad con hora de cierre.`;
-    } else {
-      takeaway = `No hay actividades registradas durante ${word}.`;
-    }
-    if (s.spaceMinutes) takeaway += ` Los espacios sin objetivo sumaron ${formatTime(s.spaceMinutes)}.`;
-
     const metrics = [
       {label:'Tiempo registrado',value:formatTime(s.total),note:s.spaces.length ? `${formatTime(s.activityMinutes)} de actividades · ${formatTime(s.spaceMinutes)} de espacios` : label(s.tasks.length,'actividad en la agenda','actividades en la agenda')},
       {label:'Cumplimiento del plan',value:s.planned ? pctTime(s.fulfilled,s.planned) : '—',note:s.planned ? `${s.fulfilled} de ${s.planned} planificadas cumplidas` : 'Sin actividades planificadas'},
       {label:'Trabajo imprevisto',value:formatTime(s.unplannedMinutes),note:label(s.unplanned,'actividad imprevista','actividades imprevistas')}
     ];
-    const withDate = (t,cells) => daily ? cells : [shortDate(t.date,true),...cells];
     const sections = [];
-    const add = (title,subtitle,columns,widths,rows) => sections.push({title,subtitle,columns,widths,rows});
+    const priorityOrder = {Alta:0, Media:1, Baja:2};
+    const ranked = [...s.tasks].sort((a,b) => priorityOrder[a.priority] - priorityOrder[b.priority] ||
+      b.date.localeCompare(a.date) || a.title.localeCompare(b.title,'es'));
+    // Una misma tarea periódica puede tener filas en varios días. Seleccionar un solo ejemplo
+    // por objetivo y título evita que los cierres habituales ocupen todo el seguimiento.
+    function examples(candidates, limit) {
+      const selected = [], seen = new Set();
+      for (const task of candidates) {
+        const key = JSON.stringify([task.goalId,task.title.trim().replace(/\s+/g,' ').normalize('NFC').toLocaleLowerCase('es-PE')]);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        selected.push(task);
+        if (selected.length === limit) break;
+      }
+      return selected;
+    }
     if (milestones.length) {
-      metrics.push({label:'Objetivos alcanzados',value:String(milestones.length),note:'Con resultado fechado en el período'});
-      add('Resultados confirmados','Objetivos generales con resultado y fecha de cumplimiento registrados.',
-        ['Fecha','Objetivo general','Resultado'],[.14,.31,.55],milestones.map(g => [shortDate(g.achievedOn,true),g.title,g.result]));
-    }
-    if (rankedGoals.length) add('Dedicación por objetivo general','Tiempo de las actividades y estado de ejecución en el período.',
-      ['Objetivo general','Tiempo','% de horas de actividad','Culminadas','Iniciadas','Sin iniciar'],[.31,.14,.16,.13,.13,.13],
-      rankedGoals.map(g => [goalName(g),formatTime(g.minutes),pctTime(g.minutes,s.activityMinutes),String(g.completed),String(g.started),String(g.pending)]));
-
-    const priorityOrder = {Alta:0,Media:1,Baja:2};
-    const open = s.tasks.filter(t => executionStage(t) !== 'completed').sort((a,b) => priorityOrder[a.priority] - priorityOrder[b.priority] || b.date.localeCompare(a.date));
-    if (open.length) add('Prioridades de seguimiento','Actividades abiertas, ordenadas por prioridad y fecha más reciente.',
-      daily ? ['Prioridad','Actividad','Ejecución'] : ['Fecha','Prioridad','Actividad','Ejecución'],
-      daily ? [.17,.6,.23] : [.14,.13,.53,.2], open.map(t => withDate(t,[t.priority,t.title,stages[executionStage(t)].single])));
-
-    if (!daily && s.entries.length) {
-      const days = new Map();
-      for (const t of s.entries) {
-        if (!days.has(t.date)) days.set(t.date,{time:0,planned:0,fulfilled:0,unplanned:0,spaceMinutes:0});
-        const d = days.get(t.date), minutes = model().minutes(t);
-        d.time += minutes;
-        if (t.kind === 'space') d.spaceMinutes += minutes;
-        else if (t.origin === 'Planificada') { d.planned++; if (t.done) d.fulfilled++; }
-        else d.unplanned += minutes;
-      }
-      const hasSpaces = s.spaces.length > 0;
-      add('Balance por jornada','Tiempo total y cumplimiento de las actividades planificadas.',
-        hasSpaces ? ['Jornada','Tiempo total','Plan cumplido','Imprevistos','Espacios'] : ['Jornada','Tiempo','Plan cumplido','Imprevistos'],
-        hasSpaces ? [.24,.17,.25,.17,.17] : [.33,.21,.25,.21],
-        [...days].map(([date,d]) => [shortDate(date,true),formatTime(d.time),d.planned ? `${d.fulfilled} de ${d.planned}` : 'Sin planificadas',formatTime(d.unplanned),...(hasSpaces ? [formatTime(d.spaceMinutes)] : [])]));
-    }
-    const usedCategories = s.categories.filter(c => c.count);
-    if (usedCategories.length) add('Dedicación por categoría','Participación sobre el tiempo registrado en actividades.',
-      ['Categoría','Tiempo','% de horas de actividad'],[.50,.25,.25], usedCategories.map(c => [c.title,formatTime(c.minutes),pctTime(c.minutes,s.activityMinutes)]));
-
-    const byGoal = new Map(rankedGoals.map(g => [g.id,new Map()]));
-    const recorded = value => value && value.trim() ? value : '—';
-    let previousGroup;
-    for (const t of s.entries) {
-      if (t.kind === 'space') { previousGroup = null; continue; }
-      const id = s.goalsById.has(t.goalId) ? t.goalId : '';
-      const stage = executionStage(t), buckets = byGoal.get(id);
-      if (!buckets.has(stage)) buckets.set(stage,{rows:[],joins:[]});
-      const group = buckets.get(stage);
-      const row = withDate(t,[recorded(t.title),recorded(t.context),recorded(t.comment)]);
-      const previous = group.rows.at(-1);
-      // En el diario, otra actividad o un espacio interrumpe la línea de continuidad.
-      group.joins.push(!!previous && (!daily || previousGroup === group) &&
-        previous[0].trim().normalize('NFC') === row[0].trim().normalize('NFC'));
-      group.rows.push(row);
-      previousGroup = group;
-    }
-    for (const g of rankedGoals) {
-      for (const [stage, {label:stageLabel}] of Object.entries(stages)) {
-        const group = byGoal.get(g.id).get(stage);
-        if (!group) continue;
-        const noteColumn = stage === 'pending' ? 'Comentarios de planificación' : 'Evidencia registrada';
-        sections.push({
-          group:'activities', groupTitle:'Actividades por objetivo general', goalId:g.id, stage, stageLabel,
-          title:goalName(g), subtitle:label(group.rows.length,'actividad','actividades'),
-          columns:daily ? ['Actividad','Objetivo específico',noteColumn] : ['Fecha','Actividad','Objetivo específico',noteColumn],
-          widths:daily ? [.25,.33,.42] : [.13,.21,.30,.36],
-          rows:group.rows, joins:group.joins
-        });
+      const shown = milestones.slice(0, 3);
+      sections.push({title:'Resultados confirmados',
+        subtitle:milestones.length > shown.length ? `Los ${shown.length} más recientes de ${milestones.length} objetivos alcanzados en el período.` : '',
+        columns:daily ? ['Objetivo general','Resultado registrado'] : ['Fecha','Objetivo general','Resultado registrado'],
+        widths:daily ? [.36,.64] : [.16,.30,.54],
+        rows:shown.map(g => [...(daily ? [] : [shortDate(g.achievedOn,true)]),reportExcerpt(g.title,100),reportExcerpt(g.result,210)])});
+    } else {
+      const documented = ranked.filter(t => executionStage(t) === 'completed' && t.comment.trim());
+      if (documented.length) {
+        const shown = examples(documented, 2);
+        sections.push({title:'Cierres documentados',
+          subtitle:shown.length < documented.length ? `${shown.length} de ${documented.length} actividades culminadas con comentario, seleccionadas por prioridad y fecha.` : '',
+          columns:['Actividad culminada','Comentario registrado'], widths:[.36,.64],
+          rows:shown.map(t => [reportExcerpt(t.title,100),reportExcerpt(t.comment,210)])});
       }
     }
-    if (s.spaces.length) {
-      const spans = t => t.segments.length ? t.segments.map(segment => `${segment.start}–${segment.end || 'en curso'}`).join('\n') : 'Sin horario registrado';
-      add('Espacios sin objetivo',`${label(s.spaces.length,'espacio','espacios')} · ${formatTime(s.spaceMinutes)} en tramos cerrados.`,
-        daily ? ['Espacio','Horario','Tiempo','Contexto','Comentarios'] : ['Fecha','Espacio','Horario','Tiempo','Contexto','Comentarios'],
-        daily ? [.20,.20,.13,.23,.24] : [.14,.17,.16,.12,.20,.21],
-        s.spaces.map(t => withDate(t,[t.title,spans(t),formatTime(model().minutes(t)),recorded(t.context),recorded(t.comment)])));
+    if (s.goals.length) sections.push(objectiveSummary(s.goals));
+
+    const open = ranked.filter(t => executionStage(t) !== 'completed');
+    if (open.length) {
+      const shown = examples(open, 3);
+      const selection = shown.length < open.length ? `${shown.length} de ${open.length} registros abiertos. ` : '';
+      sections.push({title:'Prioridades de seguimiento', subtitle:selection + 'Por prioridad y fecha de actividad más reciente.',
+        columns:['Actividad','Objetivo general','Ejecución','Prioridad'], widths:[.40,.30,.18,.12],
+        rows:shown.map(t => [reportExcerpt(t.title,100),reportExcerpt(s.goalsById.get(t.goalId)?.title || unassignedGoal,80),
+          stages[executionStage(t)].single,t.priority])});
     }
 
-    const footnote = 'El tiempo registrado suma los tramos con hora de cierre. El cumplimiento del plan cuenta las actividades planificadas marcadas en «¿Se hizo?».'
-      + (s.tasks.length ? ' En el registro de actividades, una raya indica un campo sin completar.' : '');
+    let takeaway = '';
+    if (!s.tasks.length && !milestones.length) takeaway = s.spaces.length
+      ? 'En este período se registraron únicamente espacios sin objetivo.' : 'No se registraron actividades ni resultados en el período.';
+    const footnote = 'Las horas corresponden a tramos cerrados. El cumplimiento del plan se calcula con la casilla «¿Se hizo?».';
     return {period,from:s.range.from,to:s.range.to,title:reportTitles[period],periodLabel:dateText,author,takeaway,metrics,sections,footnote,
       filename:`Informe_${({day:'diario',week:'semanal',month:'mensual',custom:'de_gestion'})[period]}_${s.range.from}${s.range.from===s.range.to?'':'_'+s.range.to}.pdf`};
   }
 
-  function reportSection(section, index, sections) {
-    const grouped = section.group === 'activities';
-    const groupHeading = grouped && sections[index - 1]?.group !== section.group
-      ? `<h3 class="ji-paper-group-title">${esc(section.groupTitle)}</h3>` : '';
-    const previousSection = sections[index - 1];
-    const showTitle = !grouped || previousSection?.group !== 'activities' || previousSection.goalId !== section.goalId;
-    const heading = grouped ? 'h4' : 'h3';
-    const subtitle = section.stage ? `<h5 class="ji-paper-stage ji-stage-${section.stage}"><strong>${esc(section.stageLabel)}</strong><span>${esc(section.subtitle)}</span></h5>` : `<p>${esc(section.subtitle)}</p>`;
-    function bodyRow(row, index) {
-      const before = section.joins?.[index], after = section.joins?.[index + 1];
-      const phase = before ? (after ? 'mid' : 'end') : after ? 'start' : '';
-      const cells = row.map((cell,i) => {
-        const label = grouped ? ` data-label="${esc(section.columns[i])}"` : '';
-        if (i === 0 && phase) return `<td${label} class="ji-run-${phase}"><span>${esc(cell)}</span></td>`;
-        return `<td${label}>${esc(cell)}</td>`;
-      });
-      return '<tr>'+cells.join('')+'</tr>';
-    }
-    return `${groupHeading}<section class="ji-paper-section${grouped ? ' ji-paper-activity-group' : ''}">${showTitle ? `<${heading}>${esc(section.title)}</${heading}>` : ''}${subtitle}
+  function reportSection(section) {
+    return `<section class="ji-paper-section"><h3>${esc(section.title)}</h3>${section.subtitle ? `<p>${esc(section.subtitle)}</p>` : ''}
       <div class="ji-paper-scroll"><table><colgroup>${section.widths.map(w => `<col style="width:${Math.round(w*100)}%">`).join('')}</colgroup>
       <thead><tr>${section.columns.map(c => `<th scope="col">${esc(c)}</th>`).join('')}</tr></thead>
-      <tbody>${section.rows.map(bodyRow).join('')}</tbody></table></div></section>`;
+      <tbody>${section.rows.map(row=>'<tr>'+row.map(cell=>`<td>${esc(cell)}</td>`).join('')+'</tr>').join('')}</tbody></table></div></section>`;
   }
 
   function reportHTML(report) {
@@ -432,33 +395,10 @@
     return `<article class="ji-paper"><header class="ji-paper-head">
       <div class="ji-paper-masthead"><span class="ji-paper-brand"><img src="./assets/icons/mark.svg" alt="" width="26" height="26">Work Hub</span>${byline}</div>
       <h2 id="ji-report-title">${esc(report.title)}</h2><p>${esc(report.periodLabel)}</p></header>
-      <p class="ji-paper-lead">${esc(report.takeaway)}</p>
+      ${report.takeaway ? `<p class="ji-paper-lead">${esc(report.takeaway)}</p>` : ''}
       <dl class="ji-paper-metrics" style="--ji-metric-count:${report.metrics.length}">${report.metrics.map(m=>`<div><dt>${esc(m.label)}</dt><dd>${esc(m.value)}</dd><small>${esc(m.note)}</small></div>`).join('')}</dl>
       ${report.sections.map(reportSection).join('')}
       <footer class="ji-paper-note">${esc(report.footnote)}</footer></article>`;
-  }
-
-  // En impresión nativa, el navegador repite el thead de cada grupo en una hoja nueva.
-  function printActivityTable(section) {
-    const tables = [];
-    for (let start=0;start<section.rows.length;) {
-      let end=start+1;
-      while (end<section.rows.length && section.joins[end]) end++;
-      const joined=end-start>1;
-      // Las filas sueltas comparten una tabla convencional, como en pantalla.
-      if (!joined) while (end<section.rows.length && !section.joins[end+1]) end++;
-      const headings=section.columns.map((title,i)=>{
-        if (joined && i===0) return `<th><small>${esc(title)}</small>${esc(section.rows[start][0])}</th>`;
-        const stage = i===section.columns.length-1 && section.stageLabel ? `<small>${esc(section.stageLabel)}</small>` : '';
-        return `<th scope="col">${esc(title)}${stage}</th>`;
-      });
-      const body=section.rows.slice(start,end).map(row=>'<tr>'+row.map((cell,i)=>joined && i===0
-        ? '<td class="ji-print-guide"></td>' : '<td>'+esc(cell)+'</td>').join('')+'</tr>');
-      tables.push('<table><colgroup>'+section.widths.map(w=>`<col style="width:${Math.round(w*100)}%">`).join('')+
-        '</colgroup><thead><tr>'+headings.join('')+'</tr></thead><tbody>'+body.join('')+'</tbody></table>');
-      start=end;
-    }
-    return tables.join('');
   }
 
   function showReport(report, ctx) {
@@ -477,21 +417,8 @@
       catch { message.textContent='No se pudo generar el PDF. Vuelve a intentarlo.'; message.hidden=false; }
       finally { download.disabled=false; download.removeAttribute('aria-busy'); }
     });
-    function preparePaper(){
-      if (document.body.classList.contains('ji-printing')) return;
-      const groups=report.sections.filter(section=>section.group==='activities');
-      dialog.querySelectorAll('.ji-paper-activity-group .ji-paper-scroll').forEach((holder,index)=>{
-        const content=document.createElement('div');
-        content.className='ji-paper-print-groups';
-        content.innerHTML=printActivityTable(groups[index]);
-        holder.append(content);
-      });
-      document.body.classList.add('ji-printing');
-    }
-    function restorePaper(){
-      document.body.classList.remove('ji-printing');
-      dialog.querySelectorAll('.ji-paper-print-groups').forEach(el=>el.remove());
-    }
+    const preparePaper = () => document.body.classList.add('ji-printing');
+    const restorePaper = () => document.body.classList.remove('ji-printing');
     const printWindow=dialog.ownerDocument.defaultView;
     printWindow.addEventListener('beforeprint',preparePaper);
     printWindow.addEventListener('afterprint',restorePaper);

@@ -1,6 +1,7 @@
 (() => {
   'use strict';
   const shapes = {
+    bell:'<path d="M18 8a6 6 0 0 0-12 0c0 6-2.5 7.5-3 9h18c-.5-1.5-3-3-3-9zM10 20a2.25 2.25 0 0 0 4 0"/>',
     'notes-board':'<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M7 7v7m5-7v4m5-4v9"/>',
     activity:'<path d="M2 12h5l3-8 4 16 3-8h5"/>',
     calendar:'<rect x="3" y="5" width="18" height="16" rx="3"/><path d="M16 3v4M8 3v4M3 10h18M8 14h2m4 0h2"/>',

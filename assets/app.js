@@ -5,7 +5,7 @@
   const model=window.JModel;
   const store=window.JStore;
   const root=document.getElementById('root');
-  const titles={agenda:'Actividades',notes:'Notas',goals:'Objetivos',analysis:'Análisis',categories:'Categorías'};
+  const titles={agenda:'Actividades',calendar:'Calendario',notes:'Notas',goals:'Objetivos',analysis:'Análisis',categories:'Categorías'};
   let view='agenda', date=model.today(), calendarMonth=date.slice(0,7);
   let session=null, state=null, saving=false, clockHandle;
   const mark='<img src="./assets/icons/mark.svg" width="37" height="37" alt="">';
@@ -195,20 +195,28 @@
     const firstDay=new Date(first+'T12:00:00Z');
     const blanks=(firstDay.getUTCDay()+6)%7;
     const daysInMonth=new Date(Date.UTC(firstDay.getUTCFullYear(),firstDay.getUTCMonth()+1,0)).getUTCDate();
-    const marked=new Set(state.tasks.map(x=>x.date));
+    const inCalendar=view==='calendar';
+    const events=inCalendar?window.JWorkCalendar.visibleEvents(state).filter(event=>event.startDate.slice(0,7)<=calendarMonth && event.endDate.slice(0,7)>=calendarMonth):[];
+    const marked=new Set(inCalendar?[]:state.tasks.map(x=>x.date));
     let body=['L','M','M','J','V','S','D'].map(x=>'<span class="cal-weekday" aria-hidden="true">'+x+'</span>').join('')+'<span></span>'.repeat(blanks);
     const today=model.today();
     for(let d=1;d<=daysInMonth;d++) {
       const day=calendarMonth+'-'+String(d).padStart(2,'0');
-      const cls='cal-day'+(day===today?' today':'')+(marked.has(day)?' has-data':'');
-      const label=model.formatDate(day)+(marked.has(day)?', con actividades':'');
+      const hasData=inCalendar?events.some(event=>window.JCalendarModel.occursOn(event,day)):marked.has(day);
+      const cls='cal-day'+(day===today?' today':'')+(hasData?' has-data':'');
+      const label=model.formatDate(day)+(hasData?(inCalendar?', con eventos':', con actividades'):'');
       body+='<button class="'+cls+'" data-day="'+day+'" aria-pressed="'+(date===day)+'" title="'+esc(label)+'" aria-label="'+esc(label)+'">'+d+'</button>';
     }
     const monthLabel=model.formatDate(first,{month:'long',year:'numeric'});
     section.innerHTML='<div class="cal-top"><h2>'+esc(monthLabel)+'</h2><div class="cal-controls"><button data-month="-1" aria-label="Mes anterior">'+icon('chevron-left',15)+'</button><button data-month="1" aria-label="Mes siguiente">'+icon('chevron-right',15)+'</button></div></div><div class="cal-grid">'+body+'</div>';
     section.onclick=event=>{
       const day=event.target.closest('[data-day]');
-      if(day){view='agenda';if(root.querySelector('.rail.is-open'))toggleMenu(false);window.JAgenda.openDay(day.dataset.day,getContext());window.scrollTo(0,0);return;}
+      if(day){
+        if(root.querySelector('.rail.is-open'))toggleMenu(false);
+        if(view==='calendar') setDate(day.dataset.day);
+        else {view='agenda';window.JAgenda.openDay(day.dataset.day,getContext());}
+        window.scrollTo(0,0);return;
+      }
       const month=event.target.closest('[data-month]');
       if(month){
         firstDay.setUTCMonth(firstDay.getUTCMonth()+Number(month.dataset.month));
@@ -259,9 +267,11 @@
     if(!modes.hidden) window.JAgenda.renderModes(modes,getContext());
     if(view==='agenda') window.JAgenda.render(el,getContext());
     else if(view==='notes') window.JNotes.render(el,getContext());
+    else if(view==='calendar') window.JWorkCalendar.render(el,getContext());
     else if(view==='categories') window.JCategories.render(el,getContext());
     else window.JInsights.render(el,getContext(),view);
     updateContext(el); renderCalendar(); updateProfile(); updateStatus(); updateDateTools();
+    window.JReviews.update(root.querySelector('[data-reviews]'),state);
   }
 
   function updateProfile() {
@@ -283,17 +293,20 @@
   function shell() {
     root.innerHTML='<div class="app-shell"><button type="button" class="backdrop" aria-label="Cerrar navegación"></button><aside id="side-menu" class="rail" aria-label="Menú de Work Hub">'+
       '<div class="brandbar">'+mark+'<span>Work Hub</span><button class="close-menu" aria-label="Cerrar menú">'+icon('x')+'</button></div>'+
-      '<nav class="rail-nav" aria-label="Vistas principales">'+[['agenda','calendar-days'],['notes','notes-board'],['goals','target'],['analysis','bar-chart'],['categories','layers']].map(([v,i])=>'<button data-view="'+v+'">'+icon(i,19)+titles[v]+'</button>').join('')+'</nav>'+
+      '<nav class="rail-nav" aria-label="Vistas principales">'+[['agenda','calendar-days'],['calendar','calendar'],['notes','notes-board'],['goals','target'],['analysis','bar-chart'],['categories','layers']].map(([v,i])=>'<button data-view="'+v+'">'+icon(i,19)+titles[v]+'</button>').join('')+'</nav>'+
       '<section class="cal-wrap" aria-label="Calendario de jornadas"></section>'+
       '<div class="rail-bottom"><div class="rail-user"><button class="profile-trigger" data-profile type="button" aria-label="Editar perfil" aria-haspopup="dialog"><span class="monogram" aria-hidden="true"></span><span class="usercopy"><b></b><span class="account-mode" role="status"></span></span>'+icon('pencil',13)+'</button>'+
       '<button data-logout aria-label="Cerrar sesión" title="Cerrar sesión">'+icon('logout',18)+'</button></div></div></aside>'+
       '<div class="shell-content"><header class="workbar"><div class="toolbar-left"><button class="hamburger icon-btn" aria-label="Abrir menú" aria-controls="side-menu" aria-expanded="false">'+icon('menu',20)+'</button><nav class="work-context" aria-label="Ubicación actual"></nav></div>'+
       '<div id="work-modes" data-agenda-modes></div><div class="bar-right"><span class="work-running" hidden></span>'+
       '<button class="work-search" data-work-search type="button" aria-label="Buscar en Work Hub" aria-haspopup="dialog" aria-keyshortcuts="Control+k Meta+k">'+icon('search',16)+'<span>Buscar</span></button>'+
+      '<button class="wr-trigger" data-reviews type="button" aria-label="Notificaciones de revisión" aria-haspopup="dialog">'+icon('bell',17)+'<span aria-hidden="true" hidden></span></button>'+
       dateTools()+'</div></header><main id="main" tabindex="-1" class="stage"></main></div></div>';
     const findButton=root.querySelector('[data-work-search]');
     findButton.title='Buscar ('+(/Mac|iPad|iPhone/.test(navigator.platform||'')?'⌘':'Ctrl')+' + K)';
     findButton.onclick=openSearch;
+    const reviews=root.querySelector('[data-reviews]');
+    reviews.onclick=()=>window.JReviews.open(reviews,getContext());
     const tools=root.querySelector('.jd-heading-tools');
     tools.querySelectorAll('[data-step]').forEach(button=>button.onclick=()=>showDay(model.shiftDate(date,Number(button.dataset.step)*(weeklyAgenda()?7:1))));
     tools.querySelector('[data-go-today]').onclick=()=>{showDay(model.today());tools.querySelector('input').focus();};
@@ -312,6 +325,7 @@
     render();
     clearInterval(clockHandle);
     clockHandle=setInterval(()=>{
+      window.JReviews.update(reviews,state);
       if(saving||view!=='agenda'||document.querySelector('dialog[open]'))return;
       const today=model.today();
       const visible=weeklyAgenda()?window.JWeek.days(state,date).includes(today):date===today;
@@ -365,6 +379,10 @@
       openSearch();
     }
     if(e.key==='Escape'&&!document.querySelector('dialog[open]')&&root.querySelector('.rail.is-open'))toggleMenu(false);
+  });
+  document.addEventListener('visibilitychange',()=>{
+    const button=root.querySelector('[data-reviews]');
+    if(!document.hidden && button && state) window.JReviews.update(button,state);
   });
   boot();
 })();

@@ -11,8 +11,8 @@
   justify-content:space-between;
   gap:10px;
 }
-.jn-head h1 { margin:0; font-size:clamp(1.8rem,3vw,2.4rem); }
-.jn-head p { margin:6px 0 0; color:var(--muted); font-size:.9rem; line-height:1.55; }
+.jn-head h1 { margin:0; font-size:clamp(1.65rem,2.6vw,2.05rem); }
+.jn-head p { margin:6px 0 0; color:var(--muted); font-size:.84rem; line-height:1.5; }
 .jn-head .btn { flex-shrink:0; }
 
 .jn-board { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); align-items:stretch; gap:12px; min-width:0; }
@@ -32,10 +32,10 @@
 .jn-lane[data-jn-lane=waiting] { --jn-accent:#a16b28; --jn-wash:#f8f4ed; }
 .jn-lane[data-jn-lane=resolved] { --jn-accent:#337968; --jn-wash:#edf5f1; }
 .jn-lane-head { padding:11px 2px 12px; }
-.jn-lane-head h2 { display:flex; align-items:center; flex-wrap:wrap; gap:7px; font-size:.97rem; letter-spacing:-.02em; margin:0; }
+.jn-lane-head h2 { display:flex; align-items:center; flex-wrap:wrap; gap:7px; font-size:.88rem; letter-spacing:-.02em; margin:0; }
 .jn-lane-head h2 i { width:8px; height:8px; flex:none; background:var(--jn-accent); border-radius:2px; }
 .jn-count { color:#51616d; font-size:.75rem; font-variant-numeric:tabular-nums; font-weight:650; }
-.jn-lane-head p { margin:3px 0 0; color:#536672; font-size:.77rem; line-height:1.5; }
+.jn-lane-head p { margin:3px 0 0; color:#536672; font-size:.74rem; line-height:1.5; }
 .jn-lane-head button,.jn-grip {
   display:grid;
   place-items:center;
@@ -52,12 +52,15 @@
 .jn-card {
   position:relative;
   min-width:0;
-  padding:11px 12px;
+  padding:9px 10px;
   background:white;
   border:1px solid #d6e1e4;
   border-radius:5px;
   box-shadow:0 1px 3px #16313b09;
   overflow-wrap:anywhere;
+  cursor:grab;
+  user-select:none;
+  -webkit-user-select:none;
 }
 .jn-card:focus-within,.jn-card:hover { border-color:#9caeb5; }
 .jn-card-head { align-items:flex-start; gap:4px; }
@@ -65,7 +68,7 @@
 .jn-card-head h3 button {
   padding:1px 0;
   text-align:left;
-  font-size:.92rem;
+  font-size:.83rem;
   font-weight:750;
   letter-spacing:-.015em;
   line-height:1.45;
@@ -74,11 +77,11 @@
   border:0;
 }
 .jn-card-head h3 button:hover { color:var(--teal-deep); text-decoration:underline; text-underline-offset:3px; }
-.jn-grip { width:27px; height:27px; margin:-2px -4px 0 0; cursor:grab; touch-action:none; }
+.jn-grip { display:inline-flex; align-items:center; justify-content:center; gap:2px; height:26px; padding:0 3px; margin:-3px -4px 0 0; color:#536976; font-size:.69rem; font-weight:650; cursor:grab; touch-action:none; }
 .jn-grip:active { cursor:grabbing; }
-.jn-grip svg { display:block; pointer-events:none; }
-.jn-card-body { margin:6px 0 0; line-height:1.55; white-space:pre-wrap; color:#3f5360; font-size:.84rem; }
-.jn-card-foot { margin-top:11px; display:flex; flex-wrap:wrap; align-items:center; gap:6px 9px; }
+.jn-grip svg { display:block; width:11px; height:15px; pointer-events:none; }
+.jn-card-body { margin:5px 0 0; line-height:1.48; white-space:pre-wrap; color:#3f5360; font-size:.78rem; }
+.jn-card-foot { margin-top:8px; display:flex; flex-wrap:wrap; align-items:center; gap:6px 9px; }
 .jn-topic,.jn-date { display:inline-flex; align-items:center; gap:5px; max-width:100%; font-weight:650; font-size:.72rem; line-height:1.45; }
 .jn-topic { color:#405965; background:#edf2f4; border-radius:4px; padding:3px 6px; }
 .jn-date { color:#546773; }
@@ -95,19 +98,30 @@
   border-radius:4px;
   color:#465e6b;
   background:#ffffff68;
-  font-size:.82rem;
+  font-size:.77rem;
   font-weight:650;
 }
 .jn-empty:hover { color:var(--teal-deep); background:white; border-color:var(--teal); }
-.jn-dragging { opacity:.5; }
+.jn-dragging { opacity:.43; }
 .jn-target { outline:2px solid var(--teal); outline-offset:-2px; }
-.jn-target .jn-stack:not(:has(.jn-before))::after,.jn-before::before {
+.jn-target .jn-empty { border-color:var(--teal); background:white; }
+.jn-before::before,.jn-after::after {
   content:"";
+  position:absolute;
+  inset-inline:0;
   height:3px;
   border-radius:2px;
   background:var(--teal);
+  pointer-events:none;
 }
-.jn-before::before { position:absolute; inset:-7px 0 auto; }
+.jn-before::before { top:-6px; }
+.jn-after::after { bottom:-6px; }
+.jn-drag-preview {
+  position:fixed; top:0; left:0; z-index:60; pointer-events:none;
+  max-width:min(16rem,80vw); padding:7px 11px; overflow:hidden; white-space:nowrap; text-overflow:ellipsis;
+  background:var(--navy); color:white; border-radius:4px; box-shadow:0 4px 14px #142c3c35;
+  font-size:.77rem; font-weight:700;
+}
 
 .jn-dialog {
   width:min(505px,calc(100% - 26px));
@@ -121,15 +135,15 @@
 }
 .jn-dialog header,.jn-dialog footer { padding:14px 20px; }
 .jn-dialog header { border-bottom:1px solid var(--line); }
-.jn-dialog h2 { margin:0; font-size:1.22rem; }
+.jn-dialog h2 { margin:0; font-size:1.13rem; }
 .jn-fields { display:grid; gap:15px; padding:19px 20px; }
-.jn-fields label { display:block; min-width:0; color:var(--navy); font-size:.85rem; font-weight:700; }
+.jn-fields label { display:block; min-width:0; color:var(--navy); font-size:.81rem; font-weight:700; }
 .jn-fields label small { color:var(--muted); font-weight:500; font-size:.76rem; }
-.jn-fields :is(input,select,textarea) { display:block; width:100%; margin-top:5px; padding:8px 10px; min-height:38px; border:1px solid #c3d1d7; border-radius:4px; background-color:white; color:var(--ink); font-size:.9rem; font-weight:500; }
+.jn-fields :is(input,select,textarea) { display:block; width:100%; margin-top:5px; padding:8px 10px; min-height:38px; border:1px solid #c3d1d7; border-radius:4px; background-color:white; color:var(--ink); font-size:.86rem; font-weight:500; }
 .jn-fields select { padding-right:29px; }
 .jn-fields textarea { resize:vertical; }
 .jn-field-row { display:grid; grid-template-columns:1fr 1.18fr; gap:12px; }
-.jn-move-title { margin:0; overflow-wrap:anywhere; font-size:.95rem; font-weight:700; }
+.jn-move-title { margin:0; overflow-wrap:anywhere; font-size:.88rem; font-weight:700; }
 .jn-dialog footer { flex-wrap:wrap; justify-content:flex-end; border-top:1px solid var(--line); }
 .jn-delete { display:inline-flex; align-items:center; gap:5px; margin-right:auto; padding:7px 0; color:#9a403b; background:none; border:0; font-size:.84rem; font-weight:650; }
 .jn-remove-prompt { padding:12px; border:1px solid #e3c5c1; background:#fcf2f0; border-radius:5px; }
@@ -142,7 +156,9 @@
   .jn-lane { min-height:0; padding-bottom:10px; }
 }
 @media (pointer:coarse) {
-  .jn-grip,.jn-lane-head button { width:38px; height:38px; }
+  .jn-grip { min-width:48px; min-height:40px; }
+  .jn-lane-head button { width:38px; height:38px; }
+  .jn-fields :is(input,select,textarea) { font-size:1rem; }
   .jn-card-head h3 button { padding-block:5px; }
 }
 @media (max-width:410px) { .jn-field-row { grid-template-columns:1fr; } .jn-fields,.jn-dialog :is(header,footer) { padding:14px; } }

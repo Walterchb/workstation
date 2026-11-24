@@ -162,99 +162,139 @@
 
   function card(note, today) {
     const title = esc(note.title), id = esc(note.id);
-    return '<li class="jn-card" draggable="true" data-jn-id="' + id + '"><div class="jn-card-head">' +
+    return '<li class="jn-card" data-jn-id="' + id + '"><div class="jn-card-head">' +
       '<h3><button type="button" data-jn-open="' + id + '" title="Editar nota">' + title + '</button></h3>' +
-      '<button class="jn-grip" type="button" data-jn-move="' + id + '" aria-label="Mover ' + title + '" title="Arrastrar o elegir una posición">' + gripIcon + '</button></div>' +
+      '<button class="jn-grip" type="button" data-jn-move="' + id + '" aria-label="Mover ' + title + '" title="Arrastrar o elegir columna y posición">' + gripIcon + '<span>Mover</span></button></div>' +
       (note.body ? '<p class="jn-card-body">' + esc(note.body) + '</p>' : '') +
       (note.topic || note.reviewDate ? '<div class="jn-card-foot">' +
         (note.topic ? '<span class="jn-topic">' + icon('folder',13) + esc(note.topic) + '</span>' : '') + reviewDate(note,today) + '</div>' : '') + '</li>';
   }
 
   function bindMove(board, ctx) {
-    let moving = null, target = null, marker = null, touch = null;
+    let gesture = null, lane = null, before = null, after = null, frame = 0;
+    let suppressClick = false;
+
     function clearTarget() {
-      if (marker) marker.classList.remove('jn-before');
-      if (target) target.classList.remove('jn-target');
-      marker = null; target = null;
+      lane?.classList.remove('jn-target');
+      before?.classList.remove('jn-before');
+      after?.classList.remove('jn-after');
+      lane = before = after = null;
     }
-    function clearDrag() {
-      clearTarget();
-      moving?.classList.remove('jn-dragging'); moving = null;
-    }
-    function locate(element, y) {
-      const lane = element?.closest('[data-jn-lane]');
-      if (!lane || !board.contains(lane)) { clearTarget(); return; }
-      const cards = Array.from(lane.querySelectorAll('[data-jn-id]')).filter(item => item !== moving);
-      const next = cards.find(item => {
-        const rect = item.getBoundingClientRect();
+
+    function locate(x, y) {
+      const destination = document.elementFromPoint(x,y)?.closest('[data-jn-lane]');
+      if (!destination || !board.contains(destination)) { clearTarget(); return; }
+      const others = [...destination.querySelectorAll('[data-jn-id]')].filter(card => card !== gesture.card);
+      const next = others.find(card => {
+        const rect = card.getBoundingClientRect();
         return y < rect.top + rect.height / 2;
-      });
-      if (lane === target && (next || null) === marker) return;
-      clearTarget(); target = lane; marker = next || null;
-      target.classList.add('jn-target');
-      marker?.classList.add('jn-before');
+      }) || null;
+      const last = next ? null : others.at(-1) || null;
+      if (lane === destination && before === next && after === last) return;
+      clearTarget();
+      lane = destination; before = next; after = last;
+      lane.classList.add('jn-target');
+      before?.classList.add('jn-before');
+      after?.classList.add('jn-after');
     }
-    async function drop() {
-      const id = moving?.dataset.jnId, lane = target?.dataset.jnLane, beforeId = marker?.dataset.jnId || '';
-      clearDrag();
-      if (!id || !lane) return;
-      const note = requireNote(ctx.state, id);
-      const sameLane = ctx.state.notes.filter(item => item.lane === lane);
-      const next = sameLane[sameLane.findIndex(item => item.id === id) + 1];
-      if (note.lane === lane && (next?.id || '') === beforeId) return;
-      if (await ctx.mutate(state => placeNote(state,id,lane,beforeId))) focusNote(id);
+
+    function clearGesture() {
+      if (!gesture) return;
+      const {card, preview, capture, pointerId} = gesture;
+      gesture = null;
+      document.removeEventListener('pointermove', move);
+      document.removeEventListener('pointerup', release);
+      document.removeEventListener('pointercancel', cancelPointer);
+      document.removeEventListener('keydown', escape);
+      window.removeEventListener('blur', clearGesture);
+      if (capture.hasPointerCapture?.(pointerId)) capture.releasePointerCapture(pointerId);
+      if (frame) cancelAnimationFrame(frame);
+      frame = 0;
+      clearTarget();
+      preview?.remove();
+      card.classList.remove('jn-dragging');
     }
-    board.ondragstart = event => {
-      if (touch) { event.preventDefault(); return; }
-      const item = event.target.closest('[data-jn-id]');
-      if (!item) return;
-      moving = item;
-      event.dataTransfer.effectAllowed = 'move';
-      event.dataTransfer.setData('text/plain', item.dataset.jnId);
-      item.classList.add('jn-dragging');
-    };
-    board.ondragover = event => {
-      if (!moving) return;
-      event.preventDefault();
-      event.dataTransfer.dropEffect = 'move';
-      locate(event.target, event.clientY);
-    };
-    board.ondragleave = event => { if (!board.contains(event.relatedTarget)) clearTarget(); };
-    board.ondrop = event => {
-      if (!moving) return;
-      event.preventDefault(); locate(event.target, event.clientY); drop();
-    };
-    board.ondragend = clearDrag;
-    // En pantallas táctiles el asa arrastra; el resto de la tarjeta permite desplazar la página.
-    let ignoreGripClick = false;
-    board.onpointerdown = event => {
-      const grip = event.target.closest('[data-jn-move]');
-      if (event.pointerType === 'mouse' || !event.isPrimary || !grip) return;
-      touch = {id:event.pointerId, x:event.clientX, y:event.clientY, grip};
-      grip.setPointerCapture(event.pointerId);
-    };
-    board.onpointermove = event => {
-      if (!touch || touch.id !== event.pointerId) return;
-      if (!moving && Math.hypot(event.clientX-touch.x,event.clientY-touch.y) < 7) return;
-      moving = touch.grip.closest('[data-jn-id]');
-      moving.classList.add('jn-dragging');
-      if (event.clientY < 70) window.scrollBy({top:-20, behavior:'instant'});
-      else if (event.clientY > window.innerHeight - 70) window.scrollBy({top:20, behavior:'instant'});
-      locate(document.elementFromPoint(event.clientX,event.clientY),event.clientY);
-    };
-    board.onpointerup = event => {
-      if (!touch || touch.id !== event.pointerId) return;
-      touch = null;
-      if (moving) {
-        ignoreGripClick = true; setTimeout(() => { ignoreGripClick = false; }, 0);
-        locate(document.elementFromPoint(event.clientX,event.clientY),event.clientY); drop();
+
+    function scrollAtEdge() {
+      frame = 0;
+      if (!gesture?.preview || !board.isConnected) { clearGesture(); return; }
+      const y = gesture.y;
+      const edge = 48, bottom = window.innerHeight - y;
+      const speed = y < edge ? -Math.ceil((edge-y)/3) : bottom < edge ? Math.ceil((edge-bottom)/3) : 0;
+      if (speed && y >= 0 && y <= window.innerHeight) {
+        const original = window.scrollY;
+        window.scrollBy({top:speed, behavior:'instant'});
+        locate(gesture.x, y);
+        if (original !== window.scrollY) frame = requestAnimationFrame(scrollAtEdge);
       }
-    };
-    board.onpointercancel = () => { touch = null; clearDrag(); };
-    board.onclick = event => {
+    }
+
+    function move(event) {
+      if (!gesture || event.pointerId !== gesture.pointerId) return;
+      const {clientX:x, clientY:y} = event;
+      if (!gesture.preview) {
+        if (Math.hypot(x-gesture.x, y-gesture.y) < 5) return;
+        const preview = document.createElement('div');
+        preview.className = 'jn-drag-preview';
+        preview.setAttribute('aria-hidden','true');
+        preview.textContent = gesture.card.querySelector('[data-jn-open]').textContent;
+        document.body.append(preview);
+        gesture.preview = preview;
+        gesture.card.classList.add('jn-dragging');
+        gesture.capture.setPointerCapture?.(event.pointerId);
+        suppressClick = true;
+      }
+      event.preventDefault();
+      gesture.x = x; gesture.y = y;
+      const left = Math.max(4, Math.min(x + 14, window.innerWidth - gesture.preview.offsetWidth - 4));
+      const top = Math.max(4, Math.min(y + 14, window.innerHeight - gesture.preview.offsetHeight - 4));
+      gesture.preview.style.transform = 'translate(' + left + 'px,' + top + 'px)';
+      locate(x,y);
+      if (!frame) frame = requestAnimationFrame(scrollAtEdge);
+    }
+
+    async function release(event) {
+      if (!gesture || event.pointerId !== gesture.pointerId) return;
+      if (!gesture.preview) { clearGesture(); return; }
+      locate(event.clientX,event.clientY);
+      const id = gesture.card.dataset.jnId, destination = lane?.dataset.jnLane, beforeId = before?.dataset.jnId || '';
+      clearGesture();
+      if (!destination) return;
+      const siblings = ctx.state.notes.filter(note => note.lane === destination);
+      const current = siblings.findIndex(note => note.id === id);
+      if (current >= 0 && (siblings[current+1]?.id || '') === beforeId) return;
+      if (await ctx.mutate(state => placeNote(state,id,destination,beforeId))) focusNote(id);
+    }
+
+    function cancelPointer(event) {
+      if (gesture?.pointerId === event.pointerId) clearGesture();
+    }
+    function escape(event) {
+      if (event.key === 'Escape') clearGesture();
+    }
+
+    board.addEventListener('pointerdown', event => {
+      if (gesture || !event.isPrimary || event.button !== 0) return;
+      suppressClick = false;
+      const card = event.target.closest('[data-jn-id]');
+      if (!card) return;
       const grip = event.target.closest('[data-jn-move]');
-      if (grip && !ignoreGripClick) openMove(requireNote(ctx.state,grip.dataset.jnMove),ctx);
-    };
+      // En teléfonos el cuerpo conserva el desplazamiento vertical. El botón Mover admite arrastre y toque.
+      if (event.pointerType === 'touch' && !grip) return;
+      gesture = {card, capture:grip || event.target, pointerId:event.pointerId, x:event.clientX, y:event.clientY};
+      document.addEventListener('pointermove', move, {passive:false});
+      document.addEventListener('pointerup', release);
+      document.addEventListener('pointercancel', cancelPointer);
+      document.addEventListener('keydown', escape);
+      window.addEventListener('blur', clearGesture);
+    });
+    board.addEventListener('click', event => {
+      if (suppressClick && event.detail !== 0) {
+        event.preventDefault(); event.stopImmediatePropagation(); return;
+      }
+      const grip = event.target.closest('[data-jn-move]');
+      if (grip) openMove(requireNote(ctx.state,grip.dataset.jnMove),ctx);
+    },true);
   }
 
   function render(stage, ctx) {

@@ -1,0 +1,17 @@
+.japple-dialog { width:min(460px,calc(100vw - 28px)); max-height:90dvh; padding:0; border:1px solid var(--line); border-radius:5px; color:var(--ink); background:white; box-shadow:0 16px 58px #102d4438; }
+.japple-dialog header,.japple-export { display:flex; gap:16px; align-items:center; justify-content:space-between; }
+.japple-dialog header { padding:18px 20px; border-bottom:1px solid var(--line); }
+.japple-calendar { font-size:.77rem; color:var(--teal-deep); font-weight:700; overflow-wrap:anywhere; }
+.japple-dialog h2 { font-size:1.19rem; margin:3px 0 0; }
+.japple-dialog h3 { font-size:.92rem; margin:0 0 6px; }
+.japple-live,.japple-export { padding:17px 20px; }
+.japple-export,.japple-dialog footer { border-top:1px solid var(--line); }
+.japple-dialog p { color:var(--muted); font-size:.82rem; line-height:1.6; margin:4px 0 12px; }
+.japple-export p { margin:0; }
+.japple-actions { display:flex; gap:8px; flex-wrap:wrap; }
+.japple-address { display:grid; gap:5px; font-size:.8rem; margin-top:10px; }
+.japple-address input { width:100%; font-size:.78rem; border:1px solid var(--line); padding:7px; border-radius:4px; }
+.japple-revoke { display:block; margin-top:10px; padding:4px 0; border:0; background:transparent; color:#86403a; font-size:.78rem; text-decoration:underline; text-underline-offset:3px; }
+.japple-dialog .japple-status { margin:10px 0 0; color:var(--navy); }
+.japple-dialog footer { padding:12px 20px; font-size:.78rem; }
+.japple-dialog .btn { min-height:34px; padding:7px 10px; font-size:.79rem; }
