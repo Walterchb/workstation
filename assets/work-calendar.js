@@ -1,4 +1,4 @@
-/* Vista mensual y agenda de eventos. Los horarios se registran en la hora de Lima. */
+/* Calendario mensual, horario del día y edición de eventos. Los horarios se registran en la hora de Lima. */
 (() => {
   'use strict';
 
@@ -11,7 +11,7 @@
   const longDay = new Intl.DateTimeFormat('es-PE',{timeZone:'UTC',weekday:'long',day:'numeric',month:'long'});
   const monthName = new Intl.DateTimeFormat('es-PE',{timeZone:'UTC',month:'long',year:'numeric'});
   const shortDate = new Intl.DateTimeFormat('es-PE',{timeZone:'UTC',month:'short',day:'numeric',year:'numeric'});
-  let currentUser, hidden = new Set();
+  let currentUser, hidden = new Set(), activeView = 'month', dialogNumber = 0;
 
   function visibleEvents(state) {
     return C.events(state).filter(event=>!hidden.has(event.calendarId));
@@ -63,8 +63,9 @@
   function mountDialog(title, html, origin) {
     const dialog = document.createElement('dialog');
     dialog.className = 'wc-dialog';
-    dialog.setAttribute('aria-labelledby','wc-dialog-title');
-    dialog.innerHTML = '<form><header><h2 id="wc-dialog-title">'+title+'</h2><button type="button" data-wc-close class="icon-btn" aria-label="Cerrar">'+icon('x',16)+'</button></header>'+html+'</form>';
+    const titleId='wc-dialog-title-'+(++dialogNumber);
+    dialog.setAttribute('aria-labelledby',titleId);
+    dialog.innerHTML = '<form><header><h2 id="'+titleId+'">'+title+'</h2><button type="button" data-wc-close class="icon-btn" aria-label="Cerrar">'+icon('x',16)+'</button></header>'+html+'</form>';
     const form = dialog.querySelector('form');
     let busy = false;
     dialog.oncancel = event => { if(busy) event.preventDefault(); };
@@ -73,9 +74,9 @@
     });
     dialog.addEventListener('close',() => {
       dialog.remove();
-      if(document.querySelector('dialog[open]')) return;
-      if(origin?.isConnected) origin.focus({preventScroll:true});
-      else document.querySelector('[data-wc-number][aria-pressed="true"]')?.focus({preventScroll:true});
+      if(origin?.isConnected && (!document.querySelector('dialog[open]') || origin.closest('dialog[open]'))) origin.focus({preventScroll:true});
+      else if(document.querySelector('dialog[open]')) return;
+      else document.querySelector('[data-wc-number][aria-pressed="true"], [data-wc-date]')?.focus({preventScroll:true});
     },{once:true});
     document.body.append(dialog);
     dialog.showModal();
@@ -124,18 +125,22 @@
     form.querySelector('[data-wc-confirm]').onclick=submitDelete;
   }
 
-  function calendarEditor(ctx,calendar,origin) {
-    const existing = C.calendars(ctx.state);
-    const assigned = calendar && C.events(ctx.state).some(e=>e.calendarId===calendar.id);
-    const blocked = calendar && (assigned || existing.length===1);
-    const color = calendar?.color || palette[existing.length%palette.length];
-    const id = calendar?.id || M.id();
-    const {form,commit} = mountDialog(calendar?'Editar calendario':'Nuevo calendario',
-      '<div class="wc-form-body"><label>Nombre del calendario<input name="name" maxlength="80" required autocomplete="off" value="'+esc(calendar?.name)+'" placeholder="Ej. Estudios"></label>'+
+  function collectionEditor(ctx,item,origin,isCategory=false,onSave) {
+    const list = isCategory ? C.categories(ctx.state) : C.calendars(ctx.state);
+    const assigned = item && C.events(ctx.state).some(event=>(isCategory?event.categoryId:event.calendarId)===item.id);
+    const blocked = item && (assigned || (!isCategory && list.length===1));
+    const nameLabel = isCategory?'Nombre de la categoría':'Nombre del calendario';
+    const type = isCategory?'categoría':'calendario';
+    const title = item ? 'Editar '+type : (isCategory?'Nueva categoría':'Nuevo calendario');
+    const id = item?.id || M.id();
+    const color = item?.color || palette[list.length%palette.length];
+    const help = assigned ? (isCategory?'Cambia la categoría de sus eventos antes de eliminarla.':'Para eliminar este calendario, mueve o elimina primero sus eventos.') : 'Debe haber al menos un calendario.';
+    const {form,commit} = mountDialog(title,
+      '<div class="wc-form-body"><label>'+nameLabel+'<input name="name" maxlength="80" required autocomplete="off" value="'+esc(item?.name)+'" placeholder="'+(isCategory?'Ej. Seguimiento':'Ej. Estudios')+'"></label>'+
       '<fieldset class="wc-colors"><legend>Color</legend><div>'+palette.map(c=>'<button type="button" data-wc-color="'+c+'" aria-label="Elegir color '+c+'" style="--wc-color:'+c+'"></button>').join('')+
       '<label class="wc-custom-color">Personalizar<input aria-label="Color personalizado" type="color" name="color" value="'+esc(color)+'"></label></div></fieldset>'+
-      (blocked?'<small class="wc-help">'+(assigned?'Para eliminar este calendario, mueve o elimina primero sus eventos.':'Debe haber al menos un calendario.')+'</small>':'')+
-      (calendar&&!blocked?deletionPrompt('¿Eliminar el calendario «'+calendar.name+'»?'):'')+'</div>'+editorFooter('Guardar calendario',!!calendar,blocked),origin);
+      (blocked?'<small class="wc-help">'+help+'</small>':'')+
+      (item&&!blocked?deletionPrompt('¿Eliminar «'+item.name+'»?'):'')+'</div>'+editorFooter('Guardar '+type,!!item,blocked),origin);
     const name = form.elements.name, input = form.elements.color;
     function setColor(c) {
       input.value=c;
@@ -149,28 +154,102 @@
       name.value=name.value.trim();
       if(!form.reportValidity()) return;
       const values = {id,name:name.value,color:input.value};
-      commit(ctx,state=>C.saveCalendar(state,values));
+      const save = isCategory ? C.saveCategory : C.saveCalendar;
+      commit(ctx,state=>save(state,values),()=>onSave?.(values));
     };
-    bindDelete(form,()=>commit(ctx,state=>C.removeCalendar(state,id)));
+    const remove = isCategory ? C.removeCategory : C.removeCalendar;
+    bindDelete(form,()=>commit(ctx,state=>remove(state,id)));
     name.focus();
   }
 
-  function eventEditor(ctx,record,origin) {
+  function daySpan(event) {
+    return Math.round((civilDate(event.endDate)-civilDate(event.startDate))/86400000);
+  }
+
+  function moveToDate(source,date,time) {
+    const span=daySpan(source);
+    if(source.allDay || !time) {
+      const endDate=shiftDay(date,span);
+      return endDate ? {...source,reminderMinutes:source.reminderMinutes??null,startDate:date,endDate} : null;
+    }
+    const minute=hhmm=>Number(hhmm.slice(0,2))*60+Number(hhmm.slice(3));
+    const duration=span*1440+minute(source.endTime)-minute(source.startTime);
+    const end=minute(time)+duration;
+    const endDate=shiftDay(date,Math.floor(end/1440));
+    const endTime=String(Math.floor(end/60)%24).padStart(2,'0')+':'+String(end%60).padStart(2,'0');
+    return endDate ? {...source,reminderMinutes:source.reminderMinutes??null,startDate:date,startTime:time,endDate,endTime} : null;
+  }
+
+  function reminderLabel(minutes) {
+    if(minutes==null)return 'Sin aviso';
+    if(minutes===0)return 'Al comenzar';
+    if(minutes===60)return '1 hora antes';
+    if(minutes===1440)return '1 día antes';
+    return minutes+' minutos antes';
+  }
+
+  function reuseChooser(ctx,origin,onChoose) {
+    const calendars=new Map(C.calendars(ctx.state).map(c=>[c.id,c.name]));
+    const sorted=C.events(ctx.state).slice().sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt)||b.startDate.localeCompare(a.startDate));
+    const seen=new Set();
+    const records=sorted.filter(e=>{
+      const signature=JSON.stringify([e.title,e.calendarId,e.categoryId||'',e.kind,e.allDay,e.startTime,e.endTime,daySpan(e),e.location,e.description,e.reminderMinutes??null]);
+      if(seen.has(signature)) return false;
+      seen.add(signature);return true;
+    });
+    const {dialog,form}=mountDialog('Reutilizar evento','<div class="wc-form-body wc-reuse-picker"><label>Buscar evento<input type="search" name="search" placeholder="Título, calendario o categoría" autocomplete="off"></label><div data-wc-matches></div></div>',origin);
+    const results=form.querySelector('[data-wc-matches]');
+    const normalize=value=>value.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLocaleLowerCase('es');
+    function filter() {
+      const query=normalize(form.elements.search.value.trim());
+      const choices=records.filter(e=>normalize([e.title,calendars.get(e.calendarId),C.eventCategory(ctx.state,e)?.name,e.location].join(' ')).includes(query));
+      results.innerHTML=choices.length?'<ul>'+choices.map(e=>{
+        const cat=C.eventCategory(ctx.state,e);
+        const span=daySpan(e);
+        const hours=e.allDay?'Todo el día':e.startTime+' – '+e.endTime;
+        const range=span?' · '+(span+1)+' días':'';
+        const meta=[shortDate.format(civilDate(e.startDate)),calendars.get(e.calendarId),cat?.name,hours+range].filter(Boolean).join(' · ');
+        return '<li><button type="button" data-wc-reuse-id="'+esc(e.id)+'" style="--wc-color:'+esc(C.eventColor(ctx.state,e))+'"><span><strong>'+esc(e.title)+'</strong><small>'+esc(meta)+'</small></span>'+icon('chevron-right',15)+'</button></li>';
+      }).join('')+'</ul>':'<p class="wc-empty">'+(records.length?'Ningún evento coincide con tu búsqueda.':'Los eventos que guardes aparecerán aquí para volver a usarlos.')+'</p>';
+    }
+    form.onsubmit=e=>e.preventDefault();
+    form.elements.search.oninput=filter;
+    results.onclick=e=>{
+      const option=e.target.closest('[data-wc-reuse-id]');
+      const item=option&&records.find(record=>record.id===option.dataset.wcReuseId);
+      if(item){dialog.close();onChoose(item);}
+    };
+    filter();form.elements.search.focus();
+  }
+
+  function eventEditor(ctx,record,origin,defaults={}) {
+    const initial=record||defaults;
+    const categories=C.categories(ctx.state).slice();
     const calendars=C.calendars(ctx.state);
     const primary = calendars.find(cal=>!hidden.has(cal.id)) || calendars[0];
-    const choices = calendars.map(cal=>'<option value="'+esc(cal.id)+'"'+(cal.id===(record?.calendarId||primary.id)?' selected':'')+'>'+esc(cal.name)+'</option>').join('');
-    const start=record?.startDate||ctx.date;
-    const end=record?.endDate||start;
+    const choices = calendars.map(cal=>'<option value="'+esc(cal.id)+'"'+(cal.id===(initial.calendarId||primary.id)?' selected':'')+'>'+esc(cal.name)+'</option>').join('');
+    const start=initial.startDate||ctx.date;
+    const end=initial.endDate||start;
     const id=record?.id||M.id();
+    const isExistingOrReused=!!record || Object.hasOwn(defaults,'reminderMinutes');
+    const categoryId=initial.categoryId||'';
+    const reminder=isExistingOrReused ? initial.reminderMinutes??null : 5;
+    function categoryChoices(id) {
+      return '<option value=""'+(!id?' selected':'')+'>Sin categoría</option>'+categories.map(c=>'<option value="'+esc(c.id)+'"'+(c.id===id?' selected':'')+'>'+esc(c.name)+'</option>').join('');
+    }
+    const reminderChoices=[null,...C.reminderOptions].map(value=>'<option value="'+(value??'')+'"'+(value===reminder?' selected':'')+'>'+reminderLabel(value)+'</option>').join('');
     const {form,commit}=mountDialog(record?'Editar evento':'Nuevo evento','<div class="wc-form-body">'+
-      '<label>Título<input name="title" maxlength="180" autocomplete="off" required placeholder="Ej. Reunión de coordinación" value="'+esc(record?.title)+'"></label>'+
-      '<div class="wc-field-pair"><label>Calendario<select name="calendarId">'+choices+'</select></label><label>Tipo<select name="kind"><option value="event">Evento</option><option value="meeting"'+(record?.kind==='meeting'?' selected':'')+'>Reunión</option></select></label></div>'+
-      '<label class="wc-check"><input type="checkbox" name="allDay"'+(record?.allDay?' checked':'')+'>Todo el día</label>'+
-      '<div class="wc-field-pair"><label>Fecha de inicio<input required name="startDate" type="date" min="0001-01-01" max="9999-12-31" value="'+esc(start)+'"></label><label data-wc-time>Hora de inicio<input required name="startTime" type="time" value="'+esc(record?.startTime||'09:00')+'"></label></div>'+
-      '<div class="wc-field-pair"><label>Fecha de fin<input required name="endDate" type="date" min="0001-01-01" max="9999-12-31" value="'+esc(end)+'"></label><label data-wc-time>Hora de fin<input required name="endTime" type="time" value="'+esc(record?.endTime||'10:00')+'"></label></div>'+
+      (!record && C.events(ctx.state).length ? '<button class="wc-import" type="button" data-wc-reuse-here>'+icon('clipboard',15)+'Usar un evento anterior</button>' : '')+
+      '<label>Título<input name="title" maxlength="180" autocomplete="off" required placeholder="Ej. Reunión de coordinación" value="'+esc(initial.title)+'"></label>'+
+      '<div class="wc-field-pair"><label>Calendario<select name="calendarId">'+choices+'</select></label><label>Tipo<select name="kind"><option value="event">Evento</option><option value="meeting"'+(initial.kind==='meeting'?' selected':'')+'>Reunión</option></select></label></div>'+
+      '<div class="wc-field-pair"><div class="wc-category-field"><label>Categoría<select name="categoryId">'+categoryChoices(categoryId)+'</select></label><button type="button" data-wc-add-category class="wc-icon" aria-label="Nueva categoría" title="Nueva categoría">'+icon('plus',15)+'</button></div>'+
+      '<label>Aviso<select name="reminderMinutes">'+reminderChoices+'</select></label></div>'+
+      '<label class="wc-check"><input type="checkbox" name="allDay"'+(initial.allDay?' checked':'')+'>Todo el día</label>'+
+      '<div class="wc-field-pair"><label>Fecha de inicio<input required name="startDate" type="date" min="0001-01-01" max="9999-12-31" value="'+esc(start)+'"></label><label data-wc-time>Hora de inicio<input required name="startTime" type="time" value="'+esc(initial.startTime||'09:00')+'"></label></div>'+
+      '<div class="wc-field-pair"><label>Fecha de fin<input required name="endDate" type="date" min="0001-01-01" max="9999-12-31" value="'+esc(end)+'"></label><label data-wc-time>Hora de fin<input required name="endTime" type="time" value="'+esc(initial.endTime||'10:00')+'"></label></div>'+
       '<small class="wc-help" data-wc-time>Zona horaria de Lima</small>'+
-      '<label>Lugar o enlace <small>(opcional)</small><input name="location" maxlength="240" value="'+esc(record?.location)+'"></label>'+
-      '<label>Descripción <small>(opcional)</small><textarea name="description" rows="2" maxlength="6000">'+esc(record?.description)+'</textarea></label>'+
+      '<label>Lugar o enlace <small>(opcional)</small><input name="location" maxlength="240" value="'+esc(initial.location)+'"></label>'+
+      '<label>Descripción <small>(opcional)</small><textarea name="description" rows="2" maxlength="6000">'+esc(initial.description)+'</textarea></label>'+
       (record?deletionPrompt('¿Eliminar «'+record.title+'»?'):'')+'</div>'+editorFooter('Guardar evento',!!record),origin);
     const f=form.elements;
     let previousStart=start, pendingKey='', stamp='';
@@ -185,8 +264,29 @@
       f.startTime.disabled=f.endTime.disabled=f.allDay.checked;
       checkDates();
     }
+    const addCategory=form.querySelector('[data-wc-add-category]');
+    addCategory.onclick=()=>collectionEditor(ctx,null,addCategory,true,value=>{
+      categories.push(value);
+      f.categoryId.innerHTML=categoryChoices(value.id);
+      f.categoryId.focus();
+    });
+    const useExisting=form.querySelector('[data-wc-reuse-here]');
+    if(useExisting) useExisting.onclick=()=>reuseChooser(ctx,useExisting,source=>{
+      const copy=moveToDate(source,f.startDate.value||ctx.date,defaults.startTime && !f.allDay.checked ? f.startTime.value : '');
+      if(!copy){ctx.toast('El evento excede el rango de fechas.');return;}
+      for(const field of ['title','kind','calendarId','location','description','startDate','endDate']) f[field].value=copy[field];
+      f.categoryId.value=copy.categoryId||'';
+      f.reminderMinutes.value=String(copy.reminderMinutes??'');
+      f.startTime.value=copy.startTime||'09:00'; f.endTime.value=copy.endTime||'10:00';
+      f.allDay.checked=copy.allDay;
+      previousStart=copy.startDate;
+      setAllDay();f.title.focus();
+    });
     f.startDate.oninput=()=>{
-      if(f.startDate.value && (f.endDate.value===previousStart || f.endDate.value < f.startDate.value)) f.endDate.value=f.startDate.value;
+      if(f.startDate.value && previousStart && f.endDate.value && f.endDate.value>=previousStart) {
+        const span=daySpan({startDate:previousStart,endDate:f.endDate.value});
+        f.endDate.value=shiftDay(f.startDate.value,span) || f.startDate.value;
+      } else if(f.startDate.value && f.endDate.value < f.startDate.value) f.endDate.value=f.startDate.value;
       previousStart=f.startDate.value;checkDates();
     };
     f.endDate.oninput=f.startTime.oninput=f.endTime.oninput=checkDates;
@@ -198,7 +298,8 @@
       checkDates();
       if(!form.reportValidity()) return;
       const allDay=f.allDay.checked;
-      const values={id,title:f.title.value,calendarId:f.calendarId.value,kind:f.kind.value,allDay,startDate:f.startDate.value,endDate:f.endDate.value,
+      const values={id,title:f.title.value,calendarId:f.calendarId.value,categoryId:f.categoryId.value,reminderMinutes:f.reminderMinutes.value===''?null:Number(f.reminderMinutes.value),
+        kind:f.kind.value,allDay,startDate:f.startDate.value,endDate:f.endDate.value,
         startTime:allDay?'':f.startTime.value,endTime:allDay?'':f.endTime.value,location:f.location.value.trim(),description:f.description.value.trim()};
       const signature=JSON.stringify(values);
       if(signature!==pendingKey) {pendingKey=signature; stamp=new Date().toISOString();}
@@ -241,15 +342,18 @@
   }
 
   function render(stage,ctx) {
-    if(currentUser!==ctx.user?.id){currentUser=ctx.user?.id;hidden=new Set();}
+    if(currentUser!==ctx.user?.id){currentUser=ctx.user?.id;hidden=new Set();activeView='month';}
+    const dayMode=activeView==='day';
     const calendars=C.calendars(ctx.state), byId=new Map(calendars.map(c=>[c.id,c]));
-    const dates=daysOnGrid(ctx.date), actualDates=dates.filter(Boolean), first=actualDates[0], last=actualDates.at(-1), today=M.today();
+    const dates=dayMode?[ctx.date]:daysOnGrid(ctx.date), actualDates=dates.filter(Boolean), first=actualDates[0], last=actualDates.at(-1), today=M.today();
     const items=visibleEvents(ctx.state).filter(e=>e.startDate<=last && e.endDate>=first)
       .sort((a,b)=>Number(b.allDay)-Number(a.allDay) || a.startDate.localeCompare(b.startDate) || a.startTime.localeCompare(b.startTime) || a.title.localeCompare(b.title,'es'));
     const onDay=new Map(actualDates.map(date=>[date,items.filter(e=>C.occursOn(e,date))]));
     const selected=onDay.get(ctx.date)||[];
     const month=monthName.format(civilDate(ctx.date));
     const weekday=longDay.format(civilDate(ctx.date));
+    const categories=C.categories(ctx.state);
+    const categoriesList=categories.map(c=>'<li><button class="wc-category-row" type="button" data-wc-category-edit="'+esc(c.id)+'" aria-label="Editar categoría '+esc(c.name)+'"><span class="wc-category-dot" style="--wc-color:'+esc(c.color)+'"></span><span>'+esc(c.name)+'</span>'+icon('pencil',13)+'</button></li>').join('');
     const calendarList=calendars.map(cal=>'<li><label style="--wc-color:'+esc(cal.color)+'"><input type="checkbox" data-wc-visible="'+esc(cal.id)+'"'+
       (hidden.has(cal.id)?'':' checked')+'><span>'+esc(cal.name)+'</span></label><button type="button" class="wc-icon" data-wc-cal-edit="'+esc(cal.id)+'" aria-label="Editar calendario '+esc(cal.name)+'">'+icon('pencil',14)+'</button></li>').join('');
     function dayBox(date) {
@@ -258,36 +362,57 @@
       const label=longDay.format(civilDate(date))+(events.length?', '+events.length+(events.length===1?' evento':' eventos'):'');
       const chips=events.map(event=>{
         const clock=event.allDay || date!==event.startDate ? '' : '<time>'+esc(event.startTime)+'</time> ';
-        return '<button class="wc-chip" type="button" data-wc-event="'+esc(event.id)+'" aria-label="'+esc(event.title+', '+timeLabel(event,date))+'" style="--wc-color:'+esc(byId.get(event.calendarId).color)+'">'+clock+'<span>'+esc(event.title)+'</span></button>';
+        return '<button class="wc-chip" type="button" data-wc-event="'+esc(event.id)+'" aria-label="'+esc(event.title+', '+timeLabel(event,date))+'" style="--wc-color:'+esc(C.eventColor(ctx.state,event))+'">'+clock+'<span>'+esc(event.title)+'</span></button>';
       }).join('');
       return '<div class="wc-cell'+(other?' outside':'')+(date===ctx.date?' selected':'')+(date===today?' today':'')+'" data-wc-day="'+date+'">'+
         '<button type="button" class="wc-number" data-wc-number="'+date+'" tabindex="'+(date===ctx.date?'0':'-1')+'" aria-label="'+esc(label)+'" aria-pressed="'+(date===ctx.date)+'"'+(date===today?' aria-current="date"':'')+'>'+Number(date.slice(8))+'</button>'+
         '<div class="wc-chips">'+chips+'</div></div>';
     }
     const dailyEvents=selected.map(event=>{
-      const cal=byId.get(event.calendarId);
-      return '<li><button type="button" class="wc-day-event" data-wc-event="'+esc(event.id)+'" style="--wc-color:'+esc(cal.color)+'">'+
+      const cal=byId.get(event.calendarId), category=C.eventCategory(ctx.state,event);
+      return '<li><button type="button" class="wc-day-event" data-wc-event="'+esc(event.id)+'" style="--wc-color:'+esc(C.eventColor(ctx.state,event))+'">'+
         '<span class="wc-day-time">'+icon('clock',13)+esc(timeLabel(event,ctx.date))+'</span><strong>'+esc(event.title)+'</strong>'+
-        '<span class="wc-event-meta"><i></i>'+esc(cal.name)+(event.kind==='meeting'?' · Reunión':'')+'</span>'+
+        '<span class="wc-event-meta"><i></i>'+esc([category?.name,cal.name].filter(Boolean).join(' · '))+(event.kind==='meeting'?' · Reunión':'')+'</span>'+
         (event.startDate!==event.endDate?'<small>'+esc(fullDateRange(event))+'</small>':'')+
         (event.location?'<small>'+esc(event.location)+'</small>':'')+'</button></li>';
     }).join('');
+    const movePage=dayMode?shiftDay:changeMonth;
+    const label=dayMode?weekday:month;
+    const picker=dayMode?'<input type="date" data-wc-date aria-label="Elegir fecha" min="0001-01-01" max="9999-12-31" value="'+ctx.date+'">':
+      '<input type="month" data-wc-month aria-label="Elegir mes y año" min="0001-01" max="9999-12" value="'+ctx.date.slice(0,7)+'">';
+    const modePicker='<div class="wc-modes" role="group" aria-label="Vista del calendario">'+[['month','Mes'],['day','Día']].map(([key,name])=>
+      '<button type="button" data-wc-mode="'+key+'" aria-pressed="'+(activeView===key)+'">'+name+'</button>').join('')+'</div>';
+    const body=dayMode?'<div data-wc-day-body></div>':
+      '<div class="wc-weekdays" aria-hidden="true">'+weekdays.map((short,i)=>'<span title="'+weekNames[i]+'">'+short+'</span>').join('')+'</div><div class="wc-grid">'+dates.map(dayBox).join('')+'</div>';
+    const dayAgenda=dayMode?'':'<section class="wc-day panel" aria-label="Agenda del día"><header><span>Agenda del día</span><h2>'+esc(weekday)+'</h2></header>'+
+      (dailyEvents?'<ul>'+dailyEvents+'</ul>':'<p class="wc-empty">'+(calendars.every(cal=>hidden.has(cal.id))?'Activa un calendario para ver sus eventos.':'Sin eventos para este día.')+'</p>')+'</section>';
     stage.innerHTML='<section class="wc-view"><header class="wc-heading"><h1>Calendario</h1><div class="wc-actions"><button type="button" class="btn" data-wc-apple>'+icon('calendar',16)+'Calendario de Apple</button>'+
-      '<button type="button" class="btn primary" data-wc-new>'+icon('plus',16)+'Nuevo evento</button></div></header>'+
-      '<div class="wc-layout"><section class="wc-month panel" aria-label="Vista mensual"><header class="wc-month-head"><h2><label class="wc-month-picker"><span>'+esc(month)+'</span>'+icon('chevron-down',14)+'<input type="month" data-wc-month aria-label="Elegir mes y año" min="0001-01" max="9999-12" value="'+ctx.date.slice(0,7)+'"></label></h2><div class="wc-month-nav"><button type="button" class="wc-today" data-wc-today>Hoy</button>'+
-      '<button class="wc-icon" type="button" data-wc-step="-1" aria-label="Mes anterior"'+(!changeMonth(ctx.date,-1)?' disabled':'')+'>'+icon('chevron-left',16)+'</button><button class="wc-icon" type="button" data-wc-step="1" aria-label="Mes siguiente"'+(!changeMonth(ctx.date,1)?' disabled':'')+'>'+icon('chevron-right',16)+'</button></div></header>'+
-      '<div class="wc-weekdays" aria-hidden="true">'+weekdays.map((short,i)=>'<span title="'+weekNames[i]+'">'+short+'</span>').join('')+'</div>'+
-      '<div class="wc-grid">'+dates.map(dayBox).join('')+'</div></section>'+
-      '<aside class="wc-right"><section class="wc-day panel" aria-label="Agenda del día"><header><span>Agenda del día</span><h2>'+esc(weekday)+'</h2></header>'+
-      (dailyEvents?'<ul>'+dailyEvents+'</ul>':'<p class="wc-empty">'+(calendars.every(cal=>hidden.has(cal.id))?'Activa un calendario para ver sus eventos.':'Sin eventos para este día.')+'</p>')+
-      '</section><section class="wc-calendars panel" aria-label="Mis calendarios"><header><h2>Mis calendarios</h2><button type="button" class="wc-icon" data-wc-cal-new aria-label="Agregar calendario" title="Agregar calendario">'+icon('plus',17)+'</button></header><ul>'+calendarList+'</ul></section></aside></div></section>';
+      '<button type="button" class="btn" data-wc-reuse>'+icon('clipboard',16)+'Reutilizar evento</button><button type="button" class="btn primary" data-wc-new>'+icon('plus',16)+'Nuevo evento</button></div></header>'+
+      '<div class="wc-layout"><section class="wc-month panel" aria-label="'+(dayMode?'Vista de día':'Vista mensual')+'"><header class="wc-month-head"><h2><label class="wc-month-picker"><span>'+esc(label)+'</span>'+icon('chevron-down',14)+picker+'</label></h2>'+
+      '<div class="wc-month-controls">'+modePicker+'<div class="wc-month-nav"><button type="button" class="wc-today" data-wc-today>Hoy</button>'+
+      '<button class="wc-icon" type="button" data-wc-step="-1" aria-label="'+(dayMode?'Día anterior':'Mes anterior')+'"'+(!movePage(ctx.date,-1)?' disabled':'')+'>'+icon('chevron-left',16)+'</button><button class="wc-icon" type="button" data-wc-step="1" aria-label="'+(dayMode?'Día siguiente':'Mes siguiente')+'"'+(!movePage(ctx.date,1)?' disabled':'')+'>'+icon('chevron-right',16)+'</button></div></div></header>'+body+'</section>'+
+      '<aside class="wc-right">'+dayAgenda+'<section class="wc-calendars panel" aria-label="Mis calendarios"><header><h2>Mis calendarios</h2><button type="button" class="wc-icon" data-wc-cal-new aria-label="Agregar calendario" title="Agregar calendario">'+icon('plus',17)+'</button></header><ul>'+calendarList+'</ul></section>'+
+      '<section class="wc-calendars wc-categories panel" aria-label="Categorías de eventos"><header><h2>Categorías de eventos</h2><button type="button" class="wc-icon" data-wc-category-new aria-label="Agregar categoría" title="Agregar categoría">'+icon('plus',17)+'</button></header><ul>'+categoriesList+'</ul></section></aside></div></section>';
     const view=stage.querySelector('.wc-view');
+    if(dayMode) window.JCalendarDay.render(view.querySelector('[data-wc-day-body]'),{
+      date:ctx.date,state:ctx.state,events:selected,restoreKey:ctx.user?.id,
+      onCreate:(defaults,origin)=>eventEditor(ctx,null,origin,defaults),
+      onEdit:(item,origin)=>eventEditor(ctx,item,origin)
+    });
     function goTo(date,refocus=false) {
       if(!date) return;
       ctx.setDate(date);
-      if(refocus) focusControl(stage,'[data-wc-number]','wcNumber',date);
+      if(refocus) {
+        if(dayMode) focusControl(stage,'[data-wc-date]');
+        else focusControl(stage,'[data-wc-number]','wcNumber',date);
+      }
     }
     view.onchange=event=>{
+      if(event.target.hasAttribute('data-wc-date')) {
+        const chosen=event.target.value;
+        if(chosen && chosen>='0001-01-01' && chosen<='9999-12-31') goTo(chosen,true);
+        return;
+      }
       if(event.target.hasAttribute('data-wc-month')) {
         const next=event.target.value;
         if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(next) || next.startsWith('0000')) return;
@@ -321,12 +446,26 @@
       else if(button?.hasAttribute('data-wc-today')) goTo(today,true);
       else if(button?.hasAttribute('data-wc-step')){
         const step=button.dataset.wcStep;
-        goTo(changeMonth(ctx.date,Number(step)));focusControl(stage,'[data-wc-step]','wcStep',step);
+        goTo(movePage(ctx.date,Number(step)));focusControl(stage,'[data-wc-step]','wcStep',step);
+      } else if(button?.hasAttribute('data-wc-mode')){
+        activeView=button.dataset.wcMode;ctx.render();focusControl(stage,'[data-wc-mode]','wcMode',activeView);
       } else if(button?.hasAttribute('data-wc-new')) eventEditor(ctx,null,button);
-      else if(button?.hasAttribute('data-wc-cal-new')) calendarEditor(ctx,null,button);
-      else if(button?.hasAttribute('data-wc-cal-edit')) calendarEditor(ctx,byId.get(button.dataset.wcCalEdit),button);
+      else if(button?.hasAttribute('data-wc-reuse')) reuseChooser(ctx,button,source=>{
+        const defaults=moveToDate(source,ctx.date);
+        if(defaults)eventEditor(ctx,null,button,defaults);
+        else ctx.toast('El evento excede el rango de fechas.');
+      });
+      else if(button?.hasAttribute('data-wc-cal-new')) collectionEditor(ctx,null,button);
+      else if(button?.hasAttribute('data-wc-cal-edit')) collectionEditor(ctx,byId.get(button.dataset.wcCalEdit),button);
+      else if(button?.hasAttribute('data-wc-category-new')) collectionEditor(ctx,null,button,true);
+      else if(button?.hasAttribute('data-wc-category-edit')) collectionEditor(ctx,categories.find(c=>c.id===button.dataset.wcCategoryEdit),button,true);
       else if(button?.hasAttribute('data-wc-apple')) appleChooser(ctx,button);
     };
   }
-  window.JWorkCalendar={render,visibleEvents};
+  function openEvent(id,ctx) {
+    const item=C.events(ctx.state).find(event=>event.id===id);
+    if(item)eventEditor(ctx,item,document.activeElement);
+  }
+
+  window.JWorkCalendar={render,visibleEvents,openEvent};
 })();

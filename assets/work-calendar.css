@@ -172,3 +172,31 @@
   .wc-right { grid-template-columns:minmax(0,1fr); }
 }
 @media (max-width:420px) { .wc-dialog :is(header,footer),.wc-form-body { padding:12px; } }
+
+.wc-month-head { flex-wrap:wrap; }
+.wc-month-controls,.wc-modes { display:flex; align-items:center; }
+.wc-month-controls { gap:12px; margin-left:auto; }
+.wc-modes { padding:2px; border:1px solid #d4e0e1; border-radius:5px; background:#f0f5f5; }
+.wc-modes button { min-height:27px; padding:3px 12px; border:1px solid transparent; border-radius:3px; background:transparent; color:#4e6773; font:inherit; font-size:.75rem; font-weight:650; }
+.wc-modes button[aria-pressed=true] { border-color:#c8d8d8; background:white; color:var(--teal-deep); box-shadow:0 1px 2px #14373812; }
+.wc-modes button:hover { color:var(--teal-deep); }
+.wc-category-row,.wc-import { display:flex; align-items:center; gap:8px; padding:6px; color:#405c68; background:transparent; border:0; border-radius:4px; font:inherit; font-size:.78rem; font-weight:620; text-align:left; }
+.wc-category-row { width:100%; min-height:30px; padding-left:5px; }
+.wc-category-row .j-icon { margin-left:auto; flex:none; color:#647f89; }
+.wc-category-row:hover,.wc-import:hover { background:#eef5f3; color:var(--teal-deep); }
+.wc-category-dot { width:10px; height:10px; flex:none; border-radius:3px; background:var(--wc-color); }
+.wc-category-field { display:grid; grid-template-columns:minmax(0,1fr) 30px; gap:4px; align-items:end; }
+.wc-category-field .wc-icon { height:36px; border-color:#bbcdd2; }
+.wc-import { justify-self:start; color:var(--teal-deep); margin:-4px 0 -3px; padding:4px 0; }
+.wc-reuse-picker [data-wc-matches] { max-height:min(48vh,380px); overflow-y:auto; }
+.wc-reuse-picker ul { display:grid; gap:3px; list-style:none; margin:0; padding:0; }
+.wc-reuse-picker li button { display:flex; align-items:center; justify-content:space-between; gap:8px; width:100%; border:1px solid transparent; border-left:3px solid var(--wc-color); border-radius:3px; background:#f6f9f9; color:var(--navy); padding:8px 10px; text-align:left; }
+.wc-reuse-picker li button:hover { background:color-mix(in srgb,var(--wc-color) 10%,white); }
+.wc-reuse-picker li button span { display:grid; gap:3px; min-width:0; overflow-wrap:anywhere; }
+.wc-reuse-picker li strong { font-size:.83rem; }
+.wc-reuse-picker li small { font-size:.72rem; color:#506671; }
+.wc-reuse-picker li .j-icon { flex:none; color:#667e87; }
+@container work-calendar (max-width:490px) {
+  .wc-month-controls { gap:5px; }
+  .wc-modes button { padding-inline:8px; }
+}

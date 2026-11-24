@@ -56,8 +56,8 @@
     return pieces.join(' · ');
   }
 
-  function identity(id,seg,place) {
-    return 'data-week-detail data-id="' + esc(id) + '" data-segment="' + seg + '" data-place="' + place + '"';
+  function identity(id,seg) {
+    return 'data-week-detail data-id="' + esc(id) + '" data-segment="' + seg + '" data-place="week"';
   }
 
   function gather(ctx) {
@@ -120,7 +120,7 @@
     return Array.from({length:count},(_,i)=>{
       const cells = columns.map(day=>{
         const task = day.unplaced[i];
-        const button = task ? '<button type="button" class="jw-plan-task" ' + identity(task.id,0,'week') +
+        const button = task ? '<button type="button" class="jw-plan-task" ' + identity(task.id,0) +
           ' style="' + ctx.eventPaint(ctx.groupFor(task,goals)) + '" aria-label="' +
           esc(task.title + ' · Sin horario · ' + civilLabel(day.date)) + '" title="' + esc(task.title) + '">' +
           '<span>' + nameMarkup(task) + '</span></button>' : '';
@@ -140,27 +140,14 @@
     return '<li class="jw-slot' + (length===0 ? ' jw-point' : '') + (open ? ' jw-open' : '') + '" data-id="' +
       esc(entry.task.id) + '" data-start-minute="' + entry.start + '" data-end-minute="' + entry.end + '" style="' +
       position + ctx.eventPaint(entry.goal) + '">' +
-      '<button class="jw-event" type="button" ' + identity(entry.task.id,entry.index,'week') + ' title="' +
-      esc(label) + '" aria-label="' + esc(label) + '"' + (length===0 ? ' tabindex="-1" aria-hidden="true"' : '') + '>' +
+      '<button class="jw-event" type="button" ' + identity(entry.task.id,entry.index) + ' title="' +
+      esc(label) + '" aria-label="' + esc(label) + '">' +
       '<span class="jw-slot-heading"><span class="jw-name">' + nameMarkup(entry.task) + '</span>' +
       (entry.count>1 ? '<small class="jw-part">' + entry.index + '/' + entry.count + '</small>' : '') +
       (time.duration ? '<small class="jw-short-duration">' + time.duration + '</small>' : '') + '</span>' +
       '<span class="jw-range">' + timeMarkup(time) + '</span>' +
       (entry.task.context ? '<span class="jw-context">' + esc(entry.task.context) + '</span>' : '') +
       '</button></li>';
-  }
-
-  function briefIndex(columns,scale) {
-    const items = columns.flatMap(day=>day.entries.filter(e=>e.end-e.start<15 || scale.at(e.end)-scale.at(e.start)<31).map(e=>[e,day.date]));
-    if (!items.length) return '';
-    return '<section class="jw-short-index" aria-label="Tramos breves"><h3>Tramos breves (' + items.length + ')</h3><ul>' +
-      items.map(([entry,date])=>{
-        const time = segmentTime(entry);
-        return '<li><button type="button" ' + identity(entry.task.id,entry.index,'week-index') +
-          ' aria-label="' + esc(entryName(entry,date,time)) + '"><time datetime="' + date + '">' +
-          esc(model.formatDate(date,{day:'2-digit',month:'2-digit'})) + '</time> · ' + timeMarkup(time) +
-          ' · ' + esc(entry.task.title) + '</button></li>';
-      }).join('') + '</ul></section>';
   }
 
   function legend(columns,goals,ctx) {
@@ -191,7 +178,7 @@
     const noItems = !columns.some(day=>day.tasks.length);
     mount.innerHTML = '<section class="jw-week" aria-label="Calendario laboral semanal" data-week-start="' + week.start +
       '" data-week-end="' + week.end + '" style="--jw-days:' + columns.length + ';--jw-height:' + scale.total + 'px">' +
-      '<div class="jw-overview">' + totals(columns) + briefIndex(columns,scale) + '</div>' +
+      totals(columns) +
       (noItems ? '<p class="jw-empty">' + (ctx.filtered ? 'Ninguna actividad coincide con los filtros de esta semana.' : 'Esta semana aún no tiene actividades.') + '</p>' : '') +
       '<div class="jw-frame"><div class="jw-head-scroll"><div class="jw-day-heads"><span class="jw-corner">Hora</span>' +
         columns.map(day=>dayHead(day,ctx)).join('') + '</div></div>' +

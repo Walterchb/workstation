@@ -39,7 +39,7 @@ export {};
     return Date.parse(day + 'T' + parts.hour + ':' + parts.minute + ':' + parts.second + 'Z') - instant;
   }
 
-  function utcFromLima(day, clock) {
+  function limaInstant(day, clock) {
     const local = Date.parse(day + 'T' + clock + ':00Z');
     const margin = 86400000;
     const before = offsetAt(local-margin), after = offsetAt(local+margin);
@@ -49,7 +49,7 @@ export {};
       const later = local-after;
       if (offsetAt(later) === after) instant = later;
     }
-    return utcStamp(new Date(instant));
+    return instant;
   }
 
   function allDayDates(event) {
@@ -64,7 +64,8 @@ export {};
     return [startLine, 'DTEND;VALUE=DATE:' + end.toISOString().slice(0,10).replaceAll('-','')];
   }
 
-  function serialize(calendar, events) {
+  function serialize(calendar, events, categories = []) {
+    const categoryNames = new Map(categories.map(category => [category.id,category.name]));
     const lines = ['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//Work Hub//Calendario//ES','CALSCALE:GREGORIAN',
       'X-WR-CALNAME:' + text(calendar.name),'X-WR-TIMEZONE:America/Lima'];
     if (/^#[0-9a-f]{6}$/i.test(calendar.color)) lines.push('X-APPLE-CALENDAR-COLOR:' + calendar.color.toUpperCase() + 'FF');
@@ -74,25 +75,33 @@ export {};
       lines.push('BEGIN:VEVENT','UID:' + text(event.id) + '@workhub.calendar','DTSTAMP:' + stamp,
         'LAST-MODIFIED:' + stamp, 'SEQUENCE:' + String(Number(event.sequence)));
       if (event.allDay) lines.push(...allDayDates(event));
-      else lines.push('DTSTART:' + utcFromLima(event.startDate,event.startTime), 'DTEND:' + utcFromLima(event.endDate,event.endTime));
+      else lines.push('DTSTART:' + utcStamp(new Date(limaInstant(event.startDate,event.startTime))),
+        'DTEND:' + utcStamp(new Date(limaInstant(event.endDate,event.endTime))));
       lines.push('SUMMARY:' + text(event.title));
       if (event.location) lines.push('LOCATION:' + text(event.location));
       if (event.description) lines.push('DESCRIPTION:' + text(event.description));
-      lines.push('CATEGORIES:' + (event.kind === 'meeting' ? 'Reunión' : 'Evento'),'END:VEVENT');
+      const kind = event.kind === 'meeting' ? 'Reunión' : 'Evento';
+      const category = categoryNames.get(event.categoryId);
+      lines.push('CATEGORIES:' + (category && category !== kind ? text(category) + ',' + kind : kind));
+      const minutes = event.reminderMinutes;
+      if (Number.isInteger(minutes) && minutes >= 0 && minutes <= 1440) {
+        const trigger = minutes ? '-PT' + minutes + 'M' : 'PT0M';
+        lines.push('BEGIN:VALARM','ACTION:DISPLAY','TRIGGER:' + trigger,'DESCRIPTION:' + text(event.title),'END:VALARM');
+      }
+      lines.push('END:VEVENT');
     }
     lines.push('END:VCALENDAR');
     return lines.map(foldLine).join('\r\n') + '\r\n';
   }
 
-  const api = Object.freeze({serialize});
+  const api = Object.freeze({serialize,limaInstant});
   globalThis.JCalendarICS = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })();
 
-
-type CalendarData = {calendar: {id:string; name:string; color:string}; events: Record<string, unknown>[]};
+type CalendarData = {calendar: {id:string; name:string; color:string}; events: Record<string, unknown>[]; categories?: {id:string; name:string}[]};
 declare global {
-  var JCalendarICS: {serialize(calendar: CalendarData['calendar'], events: CalendarData['events']): string};
+  var JCalendarICS: {serialize(calendar: CalendarData['calendar'], events: CalendarData['events'], categories?: CalendarData['categories']): string};
 }
 
 const uuid = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
@@ -148,7 +157,7 @@ Deno.serve(async (req: Request) => {
     const data = await readFeed(owner, id, secret[1]);
     if (!data) return response(404);
     const calendarHeaders = {'Content-Type':'text/calendar; charset=utf-8','Content-Disposition':'inline; filename="workhub.ics"'};
-    return response(200, req.method === 'HEAD' ? null : globalThis.JCalendarICS.serialize(data.calendar, data.events), calendarHeaders);
+    return response(200, req.method === 'HEAD' ? null : globalThis.JCalendarICS.serialize(data.calendar, data.events, data.categories), calendarHeaders);
   } catch {
     // No registrar la URL, los eventos ni el token.
     return response(503);

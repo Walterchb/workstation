@@ -560,14 +560,15 @@
     const meta = entries.length ? `<p class="jd-schedule-meta">${esc(entries[0].segment.start)} – ${esc(end)}<span aria-hidden="true"> · </span>${plural(entries.length,"tramo","tramos")}${jump} ${hatchKey}</p>` :
       unplaced.length ? `<p class="jd-schedule-meta">${plural(unplaced.length,"registro sin horario","registros sin horario")}</p>` : "";
     el.innerHTML = `<div class="jd-view" data-date="${esc(ctx.date)}" data-mode="${mode}"><h1 class="jd-sr">${week ? "Agenda semanal" : "Actividades"}, ${esc(model.formatDate(ctx.date))}</h1>${week ? "" : `<div class="jd-overview">${stats(periodTasks,ctx)}${timeline(dayEntries,ctx)}</div>`}
-      <section class="jd-activities" aria-labelledby="jd-schedule-title"${filtered ? " data-filtered" : ""}><header class="jd-activities-head"><div class="jd-activities-intro">
+      <section class="jd-activities" aria-labelledby="jd-schedule-title"${filtered ? " data-filtered" : ""}><header class="jd-activities-head"><div class="jd-activities-summary"><div class="jd-activities-intro">
         <h2 id="jd-schedule-title">${week ? "Agenda semanal" : "Actividades del día"}</h2>
-        <span class="jd-filter-count" id="jd-filter-count" role="status">${filtered ? visibleTasks.length + " de " : ""}${periodTasks.length}<span${periodTasks.some(t=>t.kind==="space") ? "" : ' class="jd-sr"'}> ${periodTasks.length === 1 ? "registro" : "registros"}</span></span></div>
+        <span class="jd-filter-count" id="jd-filter-count" role="status">${filtered ? visibleTasks.length + " de " : ""}${plural(periodTasks.length,"registro","registros")}</span></div>
+        ${week ? "" : meta}</div>
         <div class="jd-actions">
           ${mode === "calendar" ? scalePicker(ctx.icon) : ""}
           ${filterBar(goals,ctx.icon,filtersOpen)}
           ${week ? "" : `<button type="button" class="btn primary jd-edit-day" data-edit-day aria-label="Editar actividades" title="Editar actividades" ${pending ? "disabled" : ""}>${ctx.icon("pencil",17)}</button>`}
-        </div>${week ? "" : meta}</header>
+        </div></header>
         ${schedule}</section></div>`;
     const view = el.querySelector(".jd-view");
     if (!week) window.JTimeline.bind(view.querySelector(".jd-timeline"),dayEntries,ctx,hourLabel);

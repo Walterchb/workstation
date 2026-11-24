@@ -361,7 +361,7 @@
       else { drawSubtitle(); drawColumns(); }
       // El encabezado de un grupo pertenece a la página física en que se imprime.
       // Dibujar la guía al terminar evita que el sombreado de otra fila la tape.
-      const joins = activityGroup && section.joins;
+      const joins = (activityGroup || section.kind==='comments') && section.joins;
       let guide = null;
       function finishGuide() {
         if (guide && guide.to > guide.from) {

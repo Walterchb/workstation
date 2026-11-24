@@ -12,9 +12,18 @@ set search_path = ''
 as $$
     select jsonb_build_object(
         'calendar', jsonb_build_object('id', c->>'id', 'name', c->>'name', 'color', c->>'color'),
+        'categories', coalesce((
+            select jsonb_agg(jsonb_build_object('id', cat->>'id', 'name', cat->>'name'))
+            from jsonb_array_elements(a.document->'eventCategories') as category_item(cat)
+            where exists (
+                select 1 from jsonb_array_elements(a.document->'events') as assigned_item(ev)
+                where ev->>'calendarId' = p_calendar_id and ev->>'categoryId' = cat->>'id'
+            )
+        ), '[]'::jsonb),
         'events', coalesce((
             select jsonb_agg(jsonb_build_object(
                 'id', e->>'id', 'calendarId', e->>'calendarId', 'kind', e->>'kind',
+                'categoryId', e->>'categoryId', 'reminderMinutes', e->'reminderMinutes',
                 'title', e->>'title', 'allDay', e->'allDay',
                 'startDate', e->>'startDate', 'endDate', e->>'endDate',
                 'startTime', e->>'startTime', 'endTime', e->>'endTime',

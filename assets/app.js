@@ -120,9 +120,18 @@
     window.JNotes.open(id,getContext());
   }
 
+  function openCalendarEvent(id) {
+    const event=window.JCalendarModel.events(state).find(item=>item.id===id);
+    if(!event){notify('El evento ya no está disponible.');return;}
+    date=event.startDate;
+    calendarMonth=date.slice(0,7);
+    navigate('calendar');
+    window.JWorkCalendar.openEvent(id,getContext());
+  }
+
   function getContext() {
     const day=date;
-    return {state,user:session?.user,date:day,setDate,mutate,toast:notify,render,icon,navigate,openSearch,openSearchTask,openSearchNote,
+    return {state,user:session?.user,date:day,setDate,mutate,toast:notify,render,icon,navigate,openSearch,openSearchTask,openSearchNote,openCalendarEvent,
       updateTaskField:(id,field,value)=>updateTaskField(day,id,field,value),
       updateTaskFieldForDate:updateTaskField,
       openTask:(id=null,defaults={})=>window.JEditor.open(id,defaults,getContext())};
@@ -271,7 +280,7 @@
     else if(view==='categories') window.JCategories.render(el,getContext());
     else window.JInsights.render(el,getContext(),view);
     updateContext(el); renderCalendar(); updateProfile(); updateStatus(); updateDateTools();
-    window.JReviews.update(root.querySelector('[data-reviews]'),state);
+    window.JReviews.update(root.querySelector('[data-reviews]'),state,notify);
   }
 
   function updateProfile() {
@@ -300,7 +309,7 @@
       '<div class="shell-content"><header class="workbar"><div class="toolbar-left"><button class="hamburger icon-btn" aria-label="Abrir menú" aria-controls="side-menu" aria-expanded="false">'+icon('menu',20)+'</button><nav class="work-context" aria-label="Ubicación actual"></nav></div>'+
       '<div id="work-modes" data-agenda-modes></div><div class="bar-right"><span class="work-running" hidden></span>'+
       '<button class="work-search" data-work-search type="button" aria-label="Buscar en Work Hub" aria-haspopup="dialog" aria-keyshortcuts="Control+k Meta+k">'+icon('search',16)+'<span>Buscar</span></button>'+
-      '<button class="wr-trigger" data-reviews type="button" aria-label="Notificaciones de revisión" aria-haspopup="dialog">'+icon('bell',17)+'<span aria-hidden="true" hidden></span></button>'+
+      '<button class="wr-trigger" data-reviews type="button" aria-label="Notificaciones" aria-haspopup="dialog">'+icon('bell',17)+'<span aria-hidden="true" hidden></span></button>'+
       dateTools()+'</div></header><main id="main" tabindex="-1" class="stage"></main></div></div>';
     const findButton=root.querySelector('[data-work-search]');
     findButton.title='Buscar ('+(/Mac|iPad|iPhone/.test(navigator.platform||'')?'⌘':'Ctrl')+' + K)';
@@ -323,9 +332,10 @@
       catch(error){logout.disabled=false;notify(error.message);}
     };
     render();
-    clearInterval(clockHandle);
-    clockHandle=setInterval(()=>{
-      window.JReviews.update(reviews,state);
+    clearTimeout(clockHandle);
+    function tick() {
+      clockHandle=setTimeout(tick,60000-Date.now()%60000);
+      window.JReviews.update(reviews,state,notify);
       if(saving||view!=='agenda'||document.querySelector('dialog[open]'))return;
       const today=model.today();
       const visible=weeklyAgenda()?window.JWeek.days(state,date).includes(today):date===today;
@@ -333,7 +343,8 @@
       const stage=root.querySelector('.stage');
       if(stage.contains(document.activeElement) && document.activeElement.matches('select,input,button,summary'))return;
       window.JAgenda.render(stage,getContext());
-    },60000);
+    }
+    clockHandle=setTimeout(tick,60000-Date.now()%60000);
   }
 
   function auth() {
@@ -382,7 +393,7 @@
   });
   document.addEventListener('visibilitychange',()=>{
     const button=root.querySelector('[data-reviews]');
-    if(!document.hidden && button && state) window.JReviews.update(button,state);
+    if(!document.hidden && button && state) window.JReviews.update(button,state,notify);
   });
   boot();
 })();

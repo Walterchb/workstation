@@ -127,3 +127,67 @@ test('Las horas históricas conservan los cambios horarios de Lima', () => {
   assert.match(file,/DTSTART:19940401T031000Z\r\nDTEND:19940401T035000Z/);
   assert.match(file,/DTSTART:19940201T143000Z\r\nDTEND:19940201T150000Z/);
 });
+
+test('La categoría y el color de cada evento se comparten entre calendarios y el cambio de nombre actualiza la suscripción', () => {
+  const state = empty();
+  const initial = calendarModel.categories(state);
+  initial[0].name = 'Copia local';
+  assert.equal(calendarModel.categories(state)[0].name,'Gestión');
+  const first = calendarModel.saveEvent(state,meeting({categoryId:'gestion'}),stamp);
+  assert.ok(state.eventCategories.some(c=>c.id === 'gestion'));
+  const second = calendarModel.saveEvent(state,meeting({id:'personal',calendarId:'personal',categoryId:'gestion'}),stamp);
+  assert.equal(calendarModel.eventColor(state,first),calendarModel.eventColor(state,second));
+  const newStamp = '2026-11-28T21:00:00.000Z';
+  calendarModel.saveCategory(state,{id:'gestion',name:'Preparación de informes',color:'#118899'},newStamp);
+  assert.ok(state.events.every(event=>event.sequence===1 && event.updatedAt===newStamp));
+  assert.equal(calendarModel.eventColor(state,first),'#118899');
+  assert.equal(calendarModel.eventCategory(state,second).name,'Preparación de informes');
+  assert.throws(()=>calendarModel.removeCategory(state,'gestion'),/eventos/);
+  const before = structuredClone(state);
+  assert.throws(()=>calendarModel.saveCategory(state,{name:'PREPARACIÓN DE INFORMES',color:'#112233'}),/nombre/);
+  assert.throws(()=>calendarModel.saveCategory(state,{id:'gestion',color:'bad-color'}),/color/);
+  assert.throws(()=>calendarModel.saveEvent(state,meeting({categoryId:'missing'})),/categoría/);
+  assert.deepEqual(state,before);
+  const custom = calendarModel.saveCategory(state,{name:'Categoría especial',color:'#012345'});
+  calendarModel.removeCategory(state,custom.id);
+  assert.equal(calendarModel.categories(state).some(category=>category.id===custom.id),false);
+});
+
+test('Los eventos nuevos tienen aviso a cinco minutos y los anteriores mantienen su configuración al editarse', () => {
+  const state = empty();
+  const legacy = {...meeting(),location:'',description:'',updatedAt:stamp,sequence:0};
+  state.events=[legacy];
+  calendarModel.validate(state);
+  assert.equal(calendarModel.eventCategory(state,legacy),null);
+  assert.equal(calendarModel.saveEvent(state,{id:legacy.id},stamp),legacy);
+  let event = calendarModel.saveEvent(state,{id:legacy.id,title:'Otro título'},stamp);
+  assert.equal(event.reminderMinutes,null);
+  assert.equal(event.categoryId,'');
+  event = calendarModel.saveEvent(state,meeting({id:'nuevo'}),stamp);
+  assert.equal(event.reminderMinutes,5);
+  for (const reminderMinutes of calendarModel.reminderOptions) {
+    event = calendarModel.saveEvent(state,{id:'nuevo',reminderMinutes},stamp);
+    assert.equal(event.reminderMinutes,reminderMinutes);
+  }
+  assert.throws(()=>calendarModel.saveEvent(state,{id:'nuevo',reminderMinutes:-1},stamp),/aviso/);
+  assert.throws(()=>calendarModel.saveEvent(state,{id:'nuevo',reminderMinutes:'5'},stamp),/aviso/);
+  assert.equal(calendarModel.saveEvent(state,{id:'nuevo',reminderMinutes:null},stamp).reminderMinutes,null);
+});
+
+test('Exportación iCalendar con alarma relativa, categoría escapada y alcance limitado al calendario', () => {
+  const state=empty(), cal=calendarModel.calendars(state)[0];
+  const category=calendarModel.saveCategory(state,{name:'Informes, FX; cobertura',color:'#112233'});
+  calendarModel.saveEvent(state,meeting({categoryId:category.id}),stamp);
+  calendarModel.saveEvent(state,meeting({id:'inicio',reminderMinutes:0,allDay:true}),stamp);
+  calendarModel.saveEvent(state,meeting({id:'sinaviso',reminderMinutes:null}),stamp);
+  const other=calendarModel.saveCategory(state,{name:'Solo privado',color:'#654321'});
+  calendarModel.saveEvent(state,meeting({id:'privado',calendarId:'personal',categoryId:other.id,reminderMinutes:30}),stamp);
+  const file=unfolded(ics.serialize(cal,state.events,state.eventCategories));
+  assert.ok(file.includes('CATEGORIES:Informes\\, FX\\; cobertura,Reunión\r\n'));
+  assert.equal(file.match(/BEGIN:VALARM/g).length,2);
+  assert.ok(file.includes('BEGIN:VALARM\r\nACTION:DISPLAY\r\nTRIGGER:-PT5M\r\nDESCRIPTION:Revisión de cierre\r\nEND:VALARM'));
+  assert.ok(file.includes('TRIGGER:PT0M\r\n'));
+  assert.equal(file.includes('Solo privado'),false);
+  assert.equal(file.includes('TRIGGER:-PT30M'),false);
+  assert.equal(new Date(ics.limaInstant('2026-11-24','00:02') - 5*60000).toISOString(),'2026-11-24T04:57:00.000Z');
+});

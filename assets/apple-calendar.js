@@ -4,8 +4,8 @@
   const {esc, icon} = window.JUI;
   const model = window.JCalendarModel;
 
-  function download(calendar, events) {
-    const text = window.JCalendarICS.serialize(calendar, events);
+  function download(calendar, state) {
+    const text = window.JCalendarICS.serialize(calendar, model.events(state), model.categories(state));
     const url = URL.createObjectURL(new Blob([text], {type:'text/calendar;charset=utf-8'}));
     const a = document.createElement('a');
     a.href = url;
@@ -99,7 +99,7 @@
       if (!target) return;
       if (target.hasAttribute('data-apple-close') && !busy) dialog.close();
       if (target.hasAttribute('data-apple-download')) {
-        try { download(current, model.events(ctx.state)); } catch (error) { announce(error.message); }
+        try { download(current, ctx.state); } catch (error) { announce(error.message); }
       }
       if (target.hasAttribute('data-apple-enable')) await change(true);
       if (target.hasAttribute('data-apple-revoke')) {

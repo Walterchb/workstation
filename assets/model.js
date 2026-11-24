@@ -275,7 +275,7 @@
     requireValue(isRecord(state) && state.version === 1 && Array.isArray(state.goals) && Array.isArray(state.tasks),
       'El formato de la agenda no es válido.');
     if (state.notes !== undefined) validateNotes(state.notes);
-    if (state.calendars !== undefined || state.events !== undefined) globalThis.JCalendarModel.validate(state);
+    if (state.calendars !== undefined || state.events !== undefined || state.eventCategories !== undefined) globalThis.JCalendarModel.validate(state);
     if (state.profile !== undefined) validateProfile(state.profile);
     const catalog = categoryList(state);
     validateCategories(catalog);

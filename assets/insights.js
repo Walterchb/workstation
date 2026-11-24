@@ -237,7 +237,7 @@
     }
     el.querySelector('[data-print]').addEventListener('click', () => {
       const author = window.JProfile?.display(ctx.state, ctx.user);
-      showReport(managementReport(s, filters.period, author), ctx);
+      showReport(fullHistory => managementReport(s, filters.period, author, fullHistory), ctx);
     });
     el.querySelector('[data-csv]').addEventListener('click', () => exportCSV(s));
     el.querySelectorAll('[data-task]').forEach(b => b.addEventListener('click', () => ctx.openTask(b.dataset.task)));
@@ -319,7 +319,77 @@
       rows:visible.map(g=>[reportExcerpt(g.title,100), formatTime(g.minutes), String(g.completed), String(g.started), String(g.pending)])};
   }
 
-  function managementReport(s, period, author = null) {
+  function reportActivityKey(task) {
+    const title = task.title.trim().replace(/\s+/g, ' ').normalize('NFC').toLocaleLowerCase('es-PE');
+    return JSON.stringify([task.goalId, title]);
+  }
+
+  function commentHistory(s, fullHistory) {
+    const byActivity = new Map();
+    let total = 0;
+    // Las tareas llegan en orden de fecha. En el mismo día prevalece el orden de la agenda.
+    for (const task of s.tasks) {
+      if (!task.comment.trim()) continue;
+      const key = reportActivityKey(task);
+      if (!byActivity.has(key)) byActivity.set(key, {entries:[], dates:new Set(), worked:false});
+      const group = byActivity.get(key);
+      group.entries.push(task);
+      group.dates.add(task.date);
+      if (executionStage(task) !== 'pending') group.worked = true;
+      total++;
+    }
+    if (!total) return null;
+
+    const ordered = [...byActivity.values()].sort((a,b) => Number(b.worked)-Number(a.worked) ||
+      b.dates.size-a.dates.size || b.entries.at(-1).date.localeCompare(a.entries.at(-1).date) ||
+      a.entries[0].title.localeCompare(b.entries[0].title,'es'));
+    // Reservar dos fechas para las actividades que se repiten y distribuir el espacio restante.
+    const needsSelection = !fullHistory && total > 8;
+    let remaining = needsSelection ? 8 : total;
+    const groups = [], quotas = [];
+    for (const group of ordered) {
+      if (!remaining) break;
+      const count = needsSelection ? Math.min(group.entries.length, 2, remaining) : group.entries.length;
+      groups.push(group);
+      quotas.push(count);
+      remaining -= count;
+    }
+    while (remaining > 0 && quotas.some((n,i)=>n<groups[i].entries.length)) {
+      for (let i=0; i<groups.length && remaining>0; i++) {
+        if (quotas[i]===groups[i].entries.length) continue;
+        quotas[i]++;
+        remaining--;
+      }
+    }
+
+    const rows = [], joins = [];
+    let shortened = false;
+    const withYear = s.range.from.slice(0,4) !== s.range.to.slice(0,4);
+    groups.forEach((group,i) => {
+      const count = quotas[i], entries = group.entries;
+      const title = entries[0].title.trim().replace(/\s+/g,' ');
+      const objective = s.goalsById.get(entries[0].goalId)?.title || unassignedGoal;
+      for (let j=0; j<count; j++) {
+        // Si se seleccionan dos o más hitos, conservar el primero y el último.
+        const index = count===1 ? entries.length-1 : Math.round(j*(entries.length-1)/(count-1));
+        const task = entries[index];
+        const original = task.comment.trim();
+        const excerpt = fullHistory ? original : reportExcerpt(original,220);
+        const truncated = !fullHistory && excerpt !== original.replace(/\s+/g,' ');
+        const comment = truncated ? excerpt : original;
+        if (truncated) shortened = true;
+        joins.push(j>0);
+        rows.push([title+'\n'+objective, shortDate(task.date,withYear)+'\n'+stages[executionStage(task)].single, comment]);
+      }
+    });
+    const abbreviated = rows.length < total || shortened;
+    const subtitle = rows.length < total ? `${rows.length} de ${total} comentarios del período. Selección cronológica por actividad.` :
+      shortened ? `${label(total,'comentario','comentarios')} del período. Los textos largos aparecen abreviados.` : '';
+    return {title:'Seguimiento por actividad', kind:'comments', subtitle, abbreviated,
+      columns:['Actividad y objetivo','Fecha y estado','Comentario registrado'], widths:[.28,.18,.54],rows,joins};
+  }
+
+  function managementReport(s, period, author = null, fullHistory = false) {
     const daily = period === 'day';
     const dateText = daily ? longDate(s.range.from) : `${shortDate(s.range.from,true)} al ${shortDate(s.range.to,true)}`;
     const milestones = [...s.achieved].sort((a,b) => b.achievedOn.localeCompare(a.achievedOn) || a.title.localeCompare(b.title,'es'));
@@ -328,16 +398,16 @@
       {label:'Cumplimiento del plan',value:s.planned ? pctTime(s.fulfilled,s.planned) : '—',note:s.planned ? `${s.fulfilled} de ${s.planned} planificadas cumplidas` : 'Sin actividades planificadas'},
       {label:'Trabajo imprevisto',value:formatTime(s.unplannedMinutes),note:label(s.unplanned,'actividad imprevista','actividades imprevistas')}
     ];
-    const sections = [];
+    const history = commentHistory(s,fullHistory);
+    const sections = history ? [history] : [];
     const priorityOrder = {Alta:0, Media:1, Baja:2};
     const ranked = [...s.tasks].sort((a,b) => priorityOrder[a.priority] - priorityOrder[b.priority] ||
       b.date.localeCompare(a.date) || a.title.localeCompare(b.title,'es'));
-    // Una misma tarea periódica puede tener filas en varios días. Seleccionar un solo ejemplo
-    // por objetivo y título evita que los cierres habituales ocupen todo el seguimiento.
+    // En prioridades basta una fila por actividad. Su historial conserva cada comentario.
     function examples(candidates, limit) {
       const selected = [], seen = new Set();
       for (const task of candidates) {
-        const key = JSON.stringify([task.goalId,task.title.trim().replace(/\s+/g,' ').normalize('NFC').toLocaleLowerCase('es-PE')]);
+        const key = reportActivityKey(task);
         if (seen.has(key)) continue;
         seen.add(key);
         selected.push(task);
@@ -352,15 +422,6 @@
         columns:daily ? ['Objetivo general','Resultado registrado'] : ['Fecha','Objetivo general','Resultado registrado'],
         widths:daily ? [.36,.64] : [.16,.30,.54],
         rows:shown.map(g => [...(daily ? [] : [shortDate(g.achievedOn,true)]),reportExcerpt(g.title,100),reportExcerpt(g.result,210)])});
-    } else {
-      const documented = ranked.filter(t => executionStage(t) === 'completed' && t.comment.trim());
-      if (documented.length) {
-        const shown = examples(documented, 2);
-        sections.push({title:'Cierres documentados',
-          subtitle:shown.length < documented.length ? `${shown.length} de ${documented.length} actividades culminadas con comentario, seleccionadas por prioridad y fecha.` : '',
-          columns:['Actividad culminada','Comentario registrado'], widths:[.36,.64],
-          rows:shown.map(t => [reportExcerpt(t.title,100),reportExcerpt(t.comment,210)])});
-      }
     }
     if (s.goals.length) sections.push(objectiveSummary(s.goals));
 
@@ -369,24 +430,30 @@
       const shown = examples(open, 3);
       const selection = shown.length < open.length ? `${shown.length} de ${open.length} registros abiertos. ` : '';
       sections.push({title:'Prioridades de seguimiento', subtitle:selection + 'Por prioridad y fecha de actividad más reciente.',
-        columns:['Actividad','Objetivo general','Ejecución','Prioridad'], widths:[.40,.30,.18,.12],
+        columns:['Actividad','Objetivo general',daily ? 'Ejecución' : 'Fecha y estado','Prioridad'], widths:[.40,.30,.18,.12],
         rows:shown.map(t => [reportExcerpt(t.title,100),reportExcerpt(s.goalsById.get(t.goalId)?.title || unassignedGoal,80),
-          stages[executionStage(t)].single,t.priority])});
+          (daily ? '' : shortDate(t.date,s.range.from.slice(0,4)!==s.range.to.slice(0,4))+'\n')+stages[executionStage(t)].single,t.priority])});
     }
 
     let takeaway = '';
     if (!s.tasks.length && !milestones.length) takeaway = s.spaces.length
       ? 'En este período se registraron únicamente espacios sin objetivo.' : 'No se registraron actividades ni resultados en el período.';
     const footnote = 'Las horas corresponden a tramos cerrados. El cumplimiento del plan se calcula con la casilla «¿Se hizo?».';
-    return {period,from:s.range.from,to:s.range.to,title:reportTitles[period],periodLabel:dateText,author,takeaway,metrics,sections,footnote,
+    return {period,from:s.range.from,to:s.range.to,title:reportTitles[period],periodLabel:dateText,author,takeaway,metrics,sections,footnote,abbreviatedComments:!!history?.abbreviated,
       filename:`Informe_${({day:'diario',week:'semanal',month:'mensual',custom:'de_gestion'})[period]}_${s.range.from}${s.range.from===s.range.to?'':'_'+s.range.to}.pdf`};
   }
 
   function reportSection(section) {
+    const rowHTML = (row,i) => {
+      if (section.kind !== 'comments') return '<tr>'+row.map(cell=>`<td>${esc(cell)}</td>`).join('')+'</tr>';
+      const [title,...objective] = row[0].split('\n');
+      const [date,stage] = row[1].split('\n');
+      return `<tr class="ji-comment-row ${section.joins[i] ? 'ji-repeat' : ''}"><td><div class="ji-comment-key"><b>${esc(title)}</b><small>${esc(objective.join('\n'))}</small></div></td><td><time>${esc(date)}</time><small>${esc(stage)}</small></td><td>${esc(row[2])}</td></tr>`;
+    };
     return `<section class="ji-paper-section"><h3>${esc(section.title)}</h3>${section.subtitle ? `<p>${esc(section.subtitle)}</p>` : ''}
       <div class="ji-paper-scroll"><table><colgroup>${section.widths.map(w => `<col style="width:${Math.round(w*100)}%">`).join('')}</colgroup>
       <thead><tr>${section.columns.map(c => `<th scope="col">${esc(c)}</th>`).join('')}</tr></thead>
-      <tbody>${section.rows.map(row=>'<tr>'+row.map(cell=>`<td>${esc(cell)}</td>`).join('')+'</tr>').join('')}</tbody></table></div></section>`;
+      <tbody>${section.rows.map(rowHTML).join('')}</tbody></table></div></section>`;
   }
 
   function reportHTML(report) {
@@ -401,24 +468,41 @@
       <footer class="ji-paper-note">${esc(report.footnote)}</footer></article>`;
   }
 
-  function showReport(report, ctx) {
+  function showReport(makeReport, ctx) {
+    const summary=makeReport(false);
+    const full=summary.abbreviatedComments ? makeReport(true) : summary;
     const dialog=document.createElement('dialog');
     dialog.className='ji-report-dialog'; dialog.setAttribute('aria-labelledby','ji-report-title');
     const trigger=document.activeElement;
-    dialog.innerHTML=`<div class="ji-report-tools"><span>Vista previa del informe</span><div><button type="button" class="btn ghost" data-print-paper>${ctx.icon('printer',16)} Imprimir</button><button type="button" class="btn primary" data-pdf>${ctx.icon('download',16)} Descargar PDF</button><button type="button" class="icon-btn" aria-label="Cerrar informe" data-close-report>${ctx.icon('x',18)}</button></div></div><div class="ji-report-message" role="status" hidden></div><div class="ji-paper-wrap">${reportHTML(report)}</div>`;
-    const portrait = dialog.querySelector('.ji-paper-avatar img');
-    portrait?.addEventListener('error', () => portrait.remove(), {once:true});
+    dialog.innerHTML=`<div class="ji-report-tools"><span>Informe gerencial</span><div>${summary.abbreviatedComments ? '<label class="ji-edition"><span>Al imprimir o descargar</span><select data-edition aria-label="Comentarios al imprimir o descargar"><option value="summary">Comentarios destacados</option><option value="complete">Comentarios completos</option></select></label>' : ''}<button type="button" class="btn ghost" data-print-paper>${ctx.icon('printer',16)} Imprimir</button><button type="button" class="btn primary" data-pdf>${ctx.icon('download',16)} Descargar PDF</button><button type="button" class="icon-btn" aria-label="Cerrar informe" data-close-report>${ctx.icon('x',18)}</button></div></div><div class="ji-report-message" role="status" hidden></div><div class="ji-paper-wrap">${reportHTML(full)}</div>`;
+    const paper=dialog.querySelector('.ji-paper-wrap');
+    paper.addEventListener('error',e=>{
+      if (e.target.matches?.('.ji-paper-avatar img')) e.target.remove();
+    },true);
+    const edition=dialog.querySelector('[data-edition]');
+    const exportReport=()=>edition?.value==='complete' ? full : summary;
     document.body.append(dialog);
     const download=dialog.querySelector('[data-pdf]'),message=dialog.querySelector('.ji-report-message');
     download.addEventListener('click',async()=>{
       if(download.disabled) return;
       download.disabled=true; download.setAttribute('aria-busy','true'); message.hidden=true;
-      try { await window.JReportPDF.download(report); }
+      try { await window.JReportPDF.download(exportReport()); }
       catch { message.textContent='No se pudo generar el PDF. Vuelve a intentarlo.'; message.hidden=false; }
       finally { download.disabled=false; download.removeAttribute('aria-busy'); }
     });
-    const preparePaper = () => document.body.classList.add('ji-printing');
-    const restorePaper = () => document.body.classList.remove('ji-printing');
+    let printedSummary=false;
+    const preparePaper = () => {
+      if (!printedSummary && exportReport()!==full) {
+        paper.innerHTML=reportHTML(summary);
+        printedSummary=true;
+      }
+      document.body.classList.add('ji-printing');
+    };
+    const restorePaper = () => {
+      document.body.classList.remove('ji-printing');
+      if (printedSummary) paper.innerHTML=reportHTML(full);
+      printedSummary=false;
+    };
     const printWindow=dialog.ownerDocument.defaultView;
     printWindow.addEventListener('beforeprint',preparePaper);
     printWindow.addEventListener('afterprint',restorePaper);
@@ -594,8 +678,8 @@
   }
 
   window.JInsights = {
-    makeReport(state, range, period, user) {
-      return managementReport(summarize(state, range), period, window.JProfile?.display(state, user));
+    makeReport(state, range, period, user, fullHistory = false) {
+      return managementReport(summarize(state, range), period, window.JProfile?.display(state, user), fullHistory);
     },
     render(el, ctx, view) { if (view === 'goals') goalsView(el, ctx); else analysisView(el, ctx); },
     reset() { Object.assign(filters, { period: 'day', anchor: '', lastDate: '', from: '', to: '', scope: 'Todos', goalId: '', grouping: 'goals' }); }

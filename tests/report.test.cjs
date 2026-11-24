@@ -31,8 +31,11 @@ test('El informe resume la ejecución real y distingue las actividades de los es
   ];
   const state = {...model.empty(), goals:[goal], tasks};
   const report = insights.makeReport(state,range,'day');
-  assert.deepEqual(report.sections.map(s=>s.title),['Cierres documentados','Ejecución por objetivo general','Prioridades de seguimiento']);
-  assert.deepEqual(report.sections[0].rows, [[tasks[0].title,tasks[0].comment]]);
+  assert.deepEqual(report.sections.map(s=>s.title),['Seguimiento por actividad','Ejecución por objetivo general','Prioridades de seguimiento']);
+  const history = report.sections[0].rows;
+  assert.deepEqual(history.map(r=>r[2]),[tasks[0].comment,tasks[5].comment]);
+  assert.match(history[0][1],/24 nov\nCulminada$/);
+  assert.match(history[1][1],/24 nov\nSin iniciar$/);
   assert.deepEqual(report.sections[1].rows, [[goal.title,'30 min','2','3','2']]);
   assert.equal(report.sections[2].rows.length,3);
   assert.match(report.sections[2].subtitle,/3 de 5 registros abiertos/);
@@ -41,7 +44,7 @@ test('El informe resume la ejecución real y distingue las actividades de los es
   assert.equal(report.metrics[0].note,'30 min de actividades · 1 h de espacios');
   assert.equal(report.metrics[1].value,'50%');
   assert.equal(report.metrics[2].note,'1 actividad imprevista');
-  assert.doesNotMatch(JSON.stringify(report),/Otro día|Espacio de almuerzo|Solicitar insumo/);
+  assert.doesNotMatch(JSON.stringify(report),/Otro día|Espacio de almuerzo/);
 });
 
 test('Los períodos vacíos y las jornadas con sólo espacios resumen el total sin tablas vacías', () => {
@@ -83,12 +86,63 @@ test('Los resultados deben estar confirmados y el informe indica la cobertura de
   const tasks = [row('A',{comment:'Comentario no confirmado',done:true}),row('B',{priority:'Alta'}),
     row('B2',{title:'B',priority:'Alta'}),row('C',{priority:'Media'}),row('D',{priority:'Baja'})];
   const report = insights.makeReport({...model.empty(),goals,tasks},{from:'2026-11-01',to:date},'month');
-  const confirmed = report.sections[0];
+  const confirmed = report.sections.find(s=>s.title==='Resultados confirmados');
   assert.equal(confirmed.title,'Resultados confirmados');
   assert.equal(confirmed.rows.length,3);
   assert.equal(confirmed.rows[0][1],'Objetivo 5');
   assert.match(confirmed.rows[0][2],/…$/);
   assert.match(confirmed.subtitle,/3 más recientes de 6/);
-  assert.doesNotMatch(JSON.stringify(report),/Expectativa aún no confirmada|Comentario no confirmado/);
+  assert.doesNotMatch(JSON.stringify(report),/Expectativa aún no confirmada/);
+  assert.doesNotMatch(JSON.stringify(confirmed),/Comentario no confirmado/);
+  assert.deepEqual(report.sections[0].rows.map(r=>r[2]),['Comentario no confirmado']);
   assert.deepEqual(report.sections.at(-1).rows.map(r=>r[0]),['B','C','D']);
+});
+
+
+test('El seguimiento agrupa por objetivo y actividad, conserva comentarios individuales y diferencia las observaciones previas al inicio', () => {
+  const other = {...goal,id:'g2',title:'Auditoría'};
+  const rows = [
+    row('r5',{title:'Revisar cartera',comment:'Se envió el sustento.',date:'2026-11-24',status:'Culminado'}),
+    row('r2',{title:'Revisar cartera',comment:'Falta la respuesta de Riesgos.',date:'2026-11-21'}),
+    row('r3',{title:'Revisar cartera',comment:'Se acordó el nuevo corte.',date:'2026-11-21',status:'En proceso'}),
+    row('r1',{title:'  REVISAR   CARTERA ',comment:'Se recibió la primera versión.',date:'2026-11-20',status:'En proceso'}),
+    row('r4',{goalId:other.id,title:'Revisar cartera',comment:'Observación del auditor.'}),
+    row('r6',{title:'Plan sin comentario',comment:' '}),
+    row('s',{title:'Almuerzo',kind:'space',goalId:'',comment:'Pausa'}),
+    row('out',{title:'Anterior',date:'2026-11-19',comment:'Comentario fuera del período.'})
+  ];
+  const state={...model.empty(),goals:[goal,other],tasks:rows};
+  const {sections,abbreviatedComments}=insights.makeReport(state,{from:'2026-11-20',to:date},'week');
+  assert.equal(abbreviatedComments,false);
+  const section=sections[0];
+  assert.deepEqual(section.joins,[false,true,true,true,false]);
+  assert.deepEqual(section.rows.map(r=>r[2]),[rows[3].comment,rows[1].comment,rows[2].comment,rows[0].comment,rows[4].comment]);
+  assert.match(section.rows[1][1],/21 nov\nSin iniciar/);
+  assert.match(section.rows[2][1],/21 nov\nIniciada/);
+  assert.ok(section.rows.slice(0,4).every(r=>r[0].endsWith(goal.title)));
+  assert.ok(section.rows[4][0].endsWith(other.title));
+  assert.doesNotMatch(JSON.stringify(section),/Plan sin comentario|Pausa|Comentario fuera/);
+});
+
+test('La selección conserva el primer y último día y el historial conserva todos los textos completos', () => {
+  const rows=Array.from({length:17},(_,i)=>row('r'+i,{title:'Conciliar el ROF',date:model.shiftDate(date,i-16),
+    comment:'Entrega '+i+' '+(i===4 ? 'Detalle mensual '.repeat(28)+'Fin del comentario' : 'validada.'),status:'En proceso'}));
+  const state={...model.empty(),goals:[goal],tasks:rows.reverse()};
+  const range={from:'2026-11-01',to:date};
+  const summary=insights.makeReport(state,range,'month');
+  assert.equal(summary.abbreviatedComments,true);
+  const exec=summary.sections[0];
+  assert.equal(exec.rows.length,8);
+  assert.match(exec.subtitle,/8 de 17 comentarios/);
+  assert.match(exec.rows[0][2],/^Entrega 0 /);
+  assert.match(exec.rows.at(-1)[2],/^Entrega 16 /);
+  const all=insights.makeReport(state,range,'month',null,true);
+  assert.equal(all.sections[0].rows.length,17);
+  assert.match(all.sections[0].rows[4][2],/Fin del comentario$/);
+  assert.equal(all.abbreviatedComments,false);
+  const day=insights.makeReport(state,{from:rows[12].date,to:rows[12].date},'day');
+  assert.equal(day.abbreviatedComments,true);
+  assert.equal(day.sections[0].rows[0][2].endsWith('…'),true);
+  assert.match(day.sections[0].subtitle,/textos largos/);
+  assert.deepEqual(all.metrics,summary.metrics);
 });
