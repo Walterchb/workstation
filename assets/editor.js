@@ -11,7 +11,7 @@
   }
 
   function open(id, defaults, ctx) {
-    if (activeDialog?.open) return;
+    if (ctx.canEdit?.() === false || activeDialog?.open) return;
     const existing = id ? ctx.state.tasks.find(item => item.id === id) : null;
     if (id && !existing) {
       ctx.toast('La actividad ya no está disponible.');
@@ -29,6 +29,7 @@
     const initialSnapshot = JSON.stringify(activity);
     const trigger = document.activeElement;
     const dialog = document.createElement('dialog');
+    dialog.setAttribute('data-edit-dialog','');
     dialog.className = 'je-dialog';
     dialog.setAttribute('aria-labelledby','je-heading');
     activeDialog = dialog;

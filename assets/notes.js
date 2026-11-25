@@ -44,13 +44,14 @@
     (title || board.querySelector('[data-jn-add]'))?.focus();
   }
 
-  function createDialog(title, content, actions, ctx, returnId) {
+  function createDialog(title, content, actions, ctx, returnId, readOnly=false) {
     const dialog = document.createElement('dialog');
     dialog.className = 'jn-dialog';
+    dialog.setAttribute(readOnly ? 'data-record-detail' : 'data-edit-dialog','');
     dialog.setAttribute('aria-labelledby', 'jn-dialog-title');
-    dialog.innerHTML = '<form><header><h2 id="jn-dialog-title">' + title + '</h2>' +
+    dialog.innerHTML = '<form><header><h2 id="jn-dialog-title">' + esc(title) + '</h2>' +
       '<button class="icon-btn" type="button" data-close aria-label="Cerrar">' + icon('x',18) + '</button></header>' +
-      '<div class="jn-fields">' + content + '</div><footer>' + actions + '</footer></form>';
+      '<div class="jn-fields">' + content + '</div>' + (actions ? '<footer>' + actions + '</footer>' : '') + '</form>';
     const form = dialog.querySelector('form');
     let busy = false;
     dialog.addEventListener('cancel', event => { if (busy) event.preventDefault(); });
@@ -59,7 +60,7 @@
       button.onclick = () => { if (!busy) dialog.close(); };
     });
     async function commit(change) {
-      if (busy) return;
+      if (busy || ctx.canEdit?.() === false) return;
       busy = true;
       form.inert = true;
       form.setAttribute('aria-busy','true');
@@ -79,6 +80,16 @@
   function open(id, ctx, initialLane = 'inbox') {
     const note = id && (ctx.state.notes || []).find(item => item.id === id);
     if (id && !note) { ctx.toast('La nota ya no está disponible.'); return; }
+    if (ctx.canEdit?.() === false) {
+      if (!note) return;
+      const fields = [['Columna',lanes[note.lane]],['Tema',note.topic],
+        ['Fecha de revisión',note.reviewDate && model.formatDate(note.reviewDate,{day:'numeric',month:'long',year:'numeric'})]];
+      const details = '<dl class="record-fields">' + fields.filter(([,value])=>value).map(([label,value])=>
+        '<div><dt>' + label + '</dt><dd>' + esc(value) + '</dd></div>').join('') + '</dl>' +
+        (note.body ? '<p class="record-description">' + esc(note.body) + '</p>' : '');
+      createDialog(note.title,details,'',ctx,id,true);
+      return;
+    }
     const noteId = id || model.id();
     const knownTopics = new Set((ctx.state.notes || []).map(item => item.topic).filter(Boolean));
     const topicOptions = [...knownTopics].sort((a,b) => a.localeCompare(b, 'es')).map(topic => '<option value="' + esc(topic) + '"></option>').join('');
@@ -126,6 +137,7 @@
   }
 
   function openMove(note, ctx) {
+    if (ctx.canEdit?.() === false) return;
     const fields = '<p class="jn-move-title">' + esc(note.title) + '</p><label>Columna de destino<select name="lane">' +
       laneOptions(note.lane) + '</select></label><label>Posición<select name="position"></select></label>';
     const {form, dialog, commit} = createDialog('Mover nota', fields,
@@ -160,11 +172,11 @@
       '" title="' + esc(formatted) + '">' + icon('calendar',13) + esc(label) + '</time>';
   }
 
-  function card(note, today) {
+  function card(note, today, editable) {
     const title = esc(note.title), id = esc(note.id);
     return '<li class="jn-card" data-jn-id="' + id + '"><div class="jn-card-head">' +
-      '<h3><button type="button" data-jn-open="' + id + '" title="Editar nota">' + title + '</button></h3>' +
-      '<button class="jn-grip" type="button" data-jn-move="' + id + '" aria-label="Mover ' + title + '" title="Arrastrar o elegir columna y posición">' + gripIcon + '<span>Mover</span></button></div>' +
+      '<h3><button type="button" data-jn-open="' + id + '" title="' + (editable?'Editar nota':'Ver nota') + '">' + title + '</button></h3>' +
+      (editable ? '<button class="jn-grip" type="button" data-jn-move="' + id + '" aria-label="Mover ' + title + '" title="Arrastrar o elegir columna y posición">' + gripIcon + '<span>Mover</span></button>' : '') + '</div>' +
       (note.body ? '<p class="jn-card-body">' + esc(note.body) + '</p>' : '') +
       (note.topic || note.reviewDate ? '<div class="jn-card-foot">' +
         (note.topic ? '<span class="jn-topic">' + icon('folder',13) + esc(note.topic) + '</span>' : '') + reviewDate(note,today) + '</div>' : '') + '</li>';
@@ -231,6 +243,7 @@
 
     function move(event) {
       if (!gesture || event.pointerId !== gesture.pointerId) return;
+      if (!board.isConnected || ctx.canEdit?.() === false) {clearGesture(); return;}
       const {clientX:x, clientY:y} = event;
       if (!gesture.preview) {
         if (Math.hypot(x-gesture.x, y-gesture.y) < 5) return;
@@ -255,6 +268,7 @@
 
     async function release(event) {
       if (!gesture || event.pointerId !== gesture.pointerId) return;
+      if (!board.isConnected || ctx.canEdit?.() === false) {clearGesture(); return;}
       if (!gesture.preview) { clearGesture(); return; }
       locate(event.clientX,event.clientY);
       const id = gesture.card.dataset.jnId, destination = lane?.dataset.jnLane, beforeId = before?.dataset.jnId || '';
@@ -274,7 +288,7 @@
     }
 
     board.addEventListener('pointerdown', event => {
-      if (gesture || !event.isPrimary || event.button !== 0) return;
+      if (gesture || !event.isPrimary || event.button !== 0 || ctx.canEdit?.() === false) return;
       suppressClick = false;
       const card = event.target.closest('[data-jn-id]');
       if (!card) return;
@@ -299,16 +313,17 @@
 
   function render(stage, ctx) {
     const notes = ctx.state.notes || [], today = model.today();
+    const editable = ctx.canEdit?.() !== false;
     stage.innerHTML = '<section class="jn-view"><header class="jn-head"><div><h1>Notas</h1><p>Guarda recordatorios, consultas y respuestas pendientes.</p></div>' +
-      '<button class="btn primary" type="button" data-jn-add="inbox">' + icon('plus',17) + 'Nueva nota</button></header>' +
+      (editable ? '<button class="btn primary" type="button" data-jn-add="inbox">' + icon('plus',17) + 'Nueva nota</button>' : '') + '</header>' +
       '<div class="jn-board" aria-label="Tablero de notas">' +
       Object.entries(lanes).map(([lane, label]) => {
         const items = notes.filter(note => note.lane === lane);
         return '<section class="jn-lane" data-jn-lane="' + lane + '" aria-labelledby="jn-lane-' + lane + '"><header class="jn-lane-head"><div>' +
           '<h2 id="jn-lane-' + lane + '"><i aria-hidden="true"></i>' + label + ' <span class="jn-count" aria-label="' + items.length + (items.length === 1 ? ' nota' : ' notas') + '">' + items.length + '</span></h2>' +
-          (items.length ? '<button type="button" data-jn-add="' + lane + '" title="Agregar nota en ' + label + '" aria-label="Agregar nota en ' + label + '">' + icon('plus',16) + '</button>' : '') + '</div>' +
-          '<p>' + laneHints[lane] + '</p></header><ol class="jn-stack">' + items.map(item => card(item,today)).join('') + '</ol>' +
-          (!items.length ? '<button type="button" class="jn-empty" data-jn-add="' + lane + '">' + icon('plus',14) + 'Agregar nota</button>' : '') + '</section>';
+          (editable && items.length ? '<button type="button" data-jn-add="' + lane + '" title="Agregar nota en ' + label + '" aria-label="Agregar nota en ' + label + '">' + icon('plus',16) + '</button>' : '') + '</div>' +
+          '<p>' + laneHints[lane] + '</p></header><ol class="jn-stack">' + items.map(item => card(item,today,editable)).join('') + '</ol>' +
+          (editable && !items.length ? '<button type="button" class="jn-empty" data-jn-add="' + lane + '">' + icon('plus',14) + 'Agregar nota</button>' : '') + '</section>';
       }).join('') + '</div></section>';
     const view = stage.querySelector('.jn-view');
     view.onclick = event => {
@@ -317,7 +332,7 @@
       const title = event.target.closest('[data-jn-open]');
       if (title) open(title.dataset.jnOpen,ctx);
     };
-    bindMove(view.querySelector('.jn-board'),ctx);
+    if (editable) bindMove(view.querySelector('.jn-board'),ctx);
   }
 
   window.JNotes = {render, open, lanes};

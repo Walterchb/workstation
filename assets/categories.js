@@ -19,6 +19,7 @@
   }
 
   function openDialog(el, ctx, item, action) {
+    if (ctx.canEdit?.() === false) return;
     const editing = action === 'edit';
     const archive = action === 'archive';
     const list = M.categoryList(ctx.state);
@@ -27,6 +28,7 @@
     const assigned = count === 1 ? '1 actividad asociada' : count + ' actividades asociadas';
     const title = editing ? (item ? 'Editar categoría' : 'Nueva categoría') : archive ? 'Archivar categoría' : 'Reactivar categoría';
     const dialog = document.createElement('dialog');
+    dialog.setAttribute('data-edit-dialog','');
     dialog.className = 'jcat-dialog';
     dialog.setAttribute('aria-labelledby','jcat-dialog-title');
     const initialColor = item?.color || swatches[list.length % swatches.length][0];
@@ -120,6 +122,7 @@
   function render(el, ctx) {
     const list = M.categoryList(ctx.state);
     const usage = usageFor(ctx.state);
+    const actionVisibility = ctx.canEdit?.() === false ? ' hidden' : '';
     const active = list.filter(c => !c.archived);
     const archived = list.filter(c => c.archived);
     const rows = showArchived ? archived : active;
@@ -127,9 +130,9 @@
       const {count,minutes} = usage.get(category.title) || {count:0,minutes:0};
       const color = /^#[a-f\d]{6}$/i.test(category.color) ? category.color : '#526A76';
       const sole = !category.archived && active.length === 1;
-      return `<tr><th scope="row"><span class="jcat-name"><i style="--swatch:${color}"></i><span>${esc(category.title)}${category.isDefault ? '<small>Predeterminada</small>' : ''}</span></span></th><td data-label="Actividades">${count}</td><td data-label="Tiempo acumulado">${esc(M.duration(minutes))}</td><td><div class="jcat-actions"><button type="button" class="jcat-edit" data-cat-item="${esc(category.id)}" data-action="edit" aria-label="Editar ${esc(category.title)}">${ctx.icon('pencil',14)}Editar</button><button type="button" class="jcat-text" aria-label="${category.archived ? 'Reactivar' : 'Archivar'} ${esc(category.title)}" data-cat-item="${esc(category.id)}" data-action="${category.archived ? 'restore' : 'archive'}" ${sole ? 'disabled title="Añade otra categoría activa antes de archivar la última."' : ''}>${category.archived ? 'Reactivar' : 'Archivar'}</button></div></td></tr>`;
+      return `<tr><th scope="row"><span class="jcat-name"><i style="--swatch:${color}"></i><span>${esc(category.title)}${category.isDefault ? '<small>Predeterminada</small>' : ''}</span></span></th><td data-label="Actividades">${count}</td><td data-label="Tiempo acumulado">${esc(M.duration(minutes))}</td><td${actionVisibility}><div class="jcat-actions"><button type="button" class="jcat-edit" data-cat-item="${esc(category.id)}" data-action="edit" aria-label="Editar ${esc(category.title)}">${ctx.icon('pencil',14)}Editar</button><button type="button" class="jcat-text" aria-label="${category.archived ? 'Reactivar' : 'Archivar'} ${esc(category.title)}" data-cat-item="${esc(category.id)}" data-action="${category.archived ? 'restore' : 'archive'}" ${sole ? 'disabled title="Añade otra categoría activa antes de archivar la última."' : ''}>${category.archived ? 'Reactivar' : 'Archivar'}</button></div></td></tr>`;
     }).join('');
-    el.innerHTML = `<section class="jcat-view"><header class="jcat-head"><div><h1>Categorías</h1><p>Clasifica tus actividades por tipo de trabajo para comparar el tiempo que dedicas a cada uno.</p></div><button class="btn primary" type="button" data-cat-new>${ctx.icon('plus',17)} Nueva categoría</button></header><section class="jcat-panel panel"><div class="jcat-tools"><div class="jcat-tabs" role="group" aria-label="Estado de las categorías"><button type="button" data-cat-filter="active" aria-pressed="${!showArchived}">Activas <span>${active.length}</span></button><button type="button" data-cat-filter="archived" aria-pressed="${showArchived}">Archivadas <span>${archived.length}</span></button></div></div>${rows.length ? `<div class="jcat-scroll"><table><thead><tr><th>Categoría</th><th>Actividades</th><th>Tiempo acumulado</th><th><span class="jcat-sr">Acciones</span></th></tr></thead><tbody>${buttons}</tbody></table></div>` : '<p class="jcat-empty">Todavía no tienes categorías archivadas.</p>'}</section></section>`;
+    el.innerHTML = `<section class="jcat-view"><header class="jcat-head"><div><h1>Categorías</h1><p>Clasifica tus actividades por tipo de trabajo para comparar el tiempo que dedicas a cada uno.</p></div><button class="btn primary" type="button" data-cat-new${actionVisibility}>${ctx.icon('plus',17)} Nueva categoría</button></header><section class="jcat-panel panel"><div class="jcat-tools"><div class="jcat-tabs" role="group" aria-label="Estado de las categorías"><button type="button" data-cat-filter="active" aria-pressed="${!showArchived}">Activas <span>${active.length}</span></button><button type="button" data-cat-filter="archived" aria-pressed="${showArchived}">Archivadas <span>${archived.length}</span></button></div></div>${rows.length ? `<div class="jcat-scroll"><table><thead><tr><th>Categoría</th><th>Actividades</th><th>Tiempo acumulado</th><th${actionVisibility}><span class="jcat-sr">Acciones</span></th></tr></thead><tbody>${buttons}</tbody></table></div>` : '<p class="jcat-empty">Todavía no tienes categorías archivadas.</p>'}</section></section>`;
     el.onclick = event => {
       const button = event.target.closest('button');
       if (!button || button.disabled) return;

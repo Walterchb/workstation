@@ -104,7 +104,8 @@
       const key = token(current);
       const hint = byCategory ? '<p>Apple asigna un color a cada calendario. Suscríbete una vez por categoría. Si Apple elige otro tono, usa el color indicado arriba.</p>' : '';
       if (!key) {
-        content.innerHTML = hint + '<p>Quien tenga el enlace podrá ver los eventos de '+(byCategory?'esta categoría en «'+esc(current.name)+'»':'este calendario')+'.</p>' +
+        content.innerHTML = ctx.canEdit?.()===false ? '<p>Suscripción inactiva.</p>' : hint +
+          '<p>Quien tenga el enlace podrá ver los eventos de '+(byCategory?'esta categoría en «'+esc(current.name)+'»':'este calendario')+'.</p>' +
           '<button type="button" class="btn primary" data-apple-enable>Activar suscripción</button>';
         return;
       }
@@ -116,12 +117,12 @@
         '<div class="japple-actions"><a class="btn primary" data-apple-subscribe rel="noreferrer" href="' + esc(url.replace(/^https:/,'webcal:')) + '">Abrir en Calendario de Apple</a>' +
         '<button class="btn" type="button" data-apple-copy>Copiar enlace</button></div>' +
         '<label class="japple-address" hidden>Enlace de suscripción<input type="text" readonly></label>' +
-        '<button type="button" class="japple-revoke" data-apple-revoke>Desactivar enlace</button>';
+        (ctx.canEdit?.()!==false?'<button type="button" class="japple-revoke" data-apple-revoke>Desactivar enlace</button>':'');
       content.querySelector('input').value = url;
     }
 
     async function change(enable) {
-      if (busy) return;
+      if (busy || ctx.canEdit?.()===false) return;
       let changed = false;
       busy = true; content.inert = true; setup.inert = true;
       content.setAttribute('aria-busy','true');
@@ -131,6 +132,7 @@
         if (enable) {
           announce('Comprobando el servicio…');
           await checkService(byCategory);
+          if(ctx.canEdit?.()===false) { draw(); announce(''); return; }
           if (!pending.has(scope)) pending.set(scope,freshToken());
         }
         announce('Guardando…');
@@ -180,6 +182,7 @@
       }
       if (target.hasAttribute('data-apple-enable')) await change(true);
       if (target.hasAttribute('data-apple-revoke')) {
+        if (ctx.canEdit?.()===false) { draw(); return; }
         content.innerHTML = '<p>Apple dejará de recibir actualizaciones mediante este enlace. Podrás crear uno nuevo cuando quieras.</p>' +
           '<div class="japple-actions"><button type="button" class="btn" data-apple-keep>Conservar enlace</button>' +
           '<button class="btn" type="button" data-apple-confirm>Desactivar enlace</button></div>';
@@ -193,8 +196,14 @@
         catch { input.parentElement.hidden = false; input.focus(); input.select(); announce('Copia el enlace seleccionado.'); }
       }
     });
+    function modeChanged() {
+      draw();
+      if(!busy) announce('');
+    }
+    document.addEventListener('workhub:editmodechange',modeChanged);
     dialog.addEventListener('cancel',event => { if (busy) event.preventDefault(); });
     dialog.addEventListener('close',() => {
+      document.removeEventListener('workhub:editmodechange',modeChanged);
       dialog.remove();
       if (trigger?.isConnected) trigger.focus({preventScroll:true});
       else (document.querySelector('[data-wc-apple]') || document.querySelector('#main'))?.focus({preventScroll:true});

@@ -4,6 +4,7 @@
   const {icon,esc}=window.JUI;
   const model=window.JModel;
   const store=window.JStore;
+  const mobileEdit=window.JMobileEdit;
   const root=document.getElementById('root');
   const titles={agenda:'Actividades',calendar:'Calendario',notes:'Notas',goals:'Objetivos',analysis:'Análisis',chat:'Chat',categories:'Categorías'};
   let view='agenda', date=model.today(), calendarMonth=date.slice(0,7);
@@ -73,6 +74,10 @@
   }
 
   async function mutate(change) {
+    if (!mobileEdit.canEdit()) {
+      notify('Estás en modo lectura. Para modificar registros, toca «Lectura» en la barra.');
+      return false;
+    }
     if(saving) {notify('Hay un cambio guardándose. Inténtalo de nuevo en un momento.');return false;}
     saving=true;
     updateStatus();
@@ -88,6 +93,8 @@
       if(error.code==='CONFLICT')notify(error.message,{label:'Recargar',run:()=>location.reload()});
       else if(error.code==='AUTH'){
         session.mode='auth';
+        mobileEdit.reset();
+        mobileEdit.sync(render);
         resetChat();
         if(view==='chat')render();
         notify(error.message,{label:'Ingresar',run:()=>location.reload()});
@@ -158,6 +165,8 @@
     catch(error) {
       if(error.code==='CHAT_AUTH' && !signal?.aborted && owner===session?.user?.id) {
         session.mode='auth';
+        mobileEdit.reset();
+        mobileEdit.sync(render);
         resetChat();
         if(view==='chat')render();
         notify('Tu sesión venció. Vuelve a ingresar para consultar tus registros.',{label:'Ingresar',run:()=>location.reload()});
@@ -168,10 +177,13 @@
 
   function getContext() {
     const day=date;
-    return {state,user:session?.user,date:day,setDate,mutate,toast:notify,render,icon,navigate,openSearch,openSearchTask,openSearchNote,openCalendarEvent,openChatSource,askChat,
+    return {state,user:session?.user,date:day,canEdit:mobileEdit.canEdit,setDate,mutate,toast:notify,render,icon,navigate,openSearch,openSearchTask,openSearchNote,openCalendarEvent,openChatSource,askChat,
       updateTaskField:(id,field,value)=>updateTaskField(day,id,field,value),
       updateTaskFieldForDate:updateTaskField,
-      openTask:(id=null,defaults={})=>window.JEditor.open(id,defaults,getContext())};
+      openTask:(id=null,defaults={})=>{
+        if (mobileEdit.canEdit()) return window.JEditor.open(id,defaults,getContext());
+        if (id) openSearchTask(id);
+      }};
   }
 
   function dateTools() {
@@ -302,6 +314,7 @@
 
   function render() {
     if(!state||!root.querySelector('.stage'))return;
+    mobileEdit.sync(render);
     const el=root.querySelector('.stage');
     root.querySelectorAll('[data-view]').forEach(btn=>{
       if(btn.dataset.view===view)btn.setAttribute('aria-current','page');
@@ -328,7 +341,9 @@
     const avatar=trigger.querySelector('.monogram');
     const label=trigger.querySelector('.usercopy b');
     label.textContent=name;
-    trigger.title='Editar perfil · '+name;
+    trigger.disabled=!mobileEdit.canEdit();
+    trigger.title=trigger.disabled ? name : 'Editar perfil · '+name;
+    trigger.setAttribute('aria-label',trigger.disabled ? 'Perfil de '+name : 'Editar perfil');
     if(photo) {
       let img=avatar.querySelector('img');
       if(!img){img=document.createElement('img');img.alt='';avatar.replaceChildren(img);}
@@ -346,10 +361,12 @@
       '<div class="rail-bottom"><div class="rail-user"><button class="profile-trigger" data-profile type="button" aria-label="Editar perfil" aria-haspopup="dialog"><span class="monogram" aria-hidden="true"></span><span class="usercopy"><b></b><span class="account-mode" role="status"></span></span>'+icon('pencil',13)+'</button>'+
       '<button data-logout aria-label="Cerrar sesión" title="Cerrar sesión">'+icon('logout',18)+'</button></div></div></aside>'+
       '<div class="shell-content"><header class="workbar"><div class="toolbar-left"><button class="hamburger icon-btn" aria-label="Abrir menú" aria-controls="side-menu" aria-expanded="false">'+icon('menu',20)+'</button><nav class="work-context" aria-label="Ubicación actual"></nav></div>'+
-      '<div id="work-modes" data-agenda-modes></div><div class="bar-right"><span class="work-running" hidden></span>'+
+      '<div id="work-modes" data-agenda-modes></div><div class="bar-right"><div class="work-quick-actions"><span class="work-running" hidden></span>'+
       '<button class="work-search" data-work-search type="button" aria-label="Buscar en Work Hub" aria-haspopup="dialog" aria-keyshortcuts="Control+k Meta+k">'+icon('search',16)+'<span>Buscar</span></button>'+
       '<button class="wr-trigger" data-reviews type="button" aria-label="Notificaciones" aria-haspopup="dialog">'+icon('bell',17)+'<span aria-hidden="true" hidden></span></button>'+
+      '<button type="button" class="mobile-edit-toggle" data-mobile-edit-toggle hidden></button></div>'+
       dateTools()+'</div></header><main id="main" tabindex="-1" class="stage"></main></div></div>';
+    root.querySelector('[data-mobile-edit-toggle]').onclick=()=>mobileEdit.toggle(render);
     const findButton=root.querySelector('[data-work-search]');
     findButton.title='Buscar ('+(/Mac|iPad|iPhone/.test(navigator.platform||'')?'⌘':'Ctrl')+' + K)';
     findButton.onclick=openSearch;
@@ -410,7 +427,7 @@
   }
 
   function accept(opened) {
-    if(!opened.user || opened.user.id!==session?.user?.id) resetChat();
+    if(!opened.user || opened.user.id!==session?.user?.id) {resetChat();mobileEdit.reset();}
     session=opened;
     if(session.mode==='auth'){state=null;auth();return;}
     model.validate(session.state);state=session.state;shell();
@@ -436,5 +453,6 @@
     const button=root.querySelector('[data-reviews]');
     if(!document.hidden && button && state) window.JReviews.update(button,state,openCalendarEvent);
   });
+  mobileEdit.connect(render);
   boot();
 })();

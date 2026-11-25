@@ -1,0 +1,131 @@
+@media screen and (max-width: 860px),
+       screen and (max-width: 1000px) and (orientation: landscape) and (pointer: coarse) {
+  .workbar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 8px 12px;
+    padding: 9px clamp(12px, 2.8vw, 20px);
+  }
+  .workbar .toolbar-left { grid-area: 1 / 1; min-width: 0; }
+  .workbar .bar-right { display: contents; }
+  .work-quick-actions { grid-area: 1 / 2; display: flex; gap: 6px; align-items: center; justify-self: end; }
+  .work-quick-actions :is(.work-search, .wr-trigger),
+  .workbar .toolbar-left > .hamburger { width: 40px; height: 40px; }
+  .work-quick-actions .mobile-edit-toggle { min-height: 40px; }
+  .workbar #work-modes { grid-area: 2 / 1; min-width: 0; order: 0; }
+  .workbar .jd-heading-tools { grid-area: 2 / 2; justify-content: flex-end; min-width: 0; }
+  .workbar #work-modes[hidden] ~ .bar-right .jd-heading-tools { grid-column: 1 / -1; }
+  .workbar .jd-view-switch { width: min(100%, 18rem); }
+  .workbar .jd-view-switch button { flex: 1; min-height: 34px; }
+  .workbar .jd-date-nav { min-height: 40px; }
+  .workbar .jd-date-nav button { width: 35px; }
+  .workbar .jd-today { min-height: 40px; }
+}
+
+@media screen and (max-width: 600px) {
+  .stage { padding: 14px 12px max(64px, calc(48px + env(safe-area-inset-bottom))); }
+  .workbar { column-gap: 8px; }
+  .workbar .jd-view-switch button { padding-inline: 4px; }
+  .workbar .jd-view-switch svg { display: none; }
+  .workbar .jd-picker { padding-inline: 6px; gap: 4px; }
+  .workbar .jd-picker svg { display: none; }
+
+  /* El nombre y los controles comparten fila. El resumen tiene todo el ancho. */
+  .jd-activities .jd-activities-head {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-content: center;
+    min-height: 0;
+    gap: 5px 8px;
+    padding: 10px var(--jd-gutter);
+  }
+  .jd-activities-head .jd-activities-summary { display: contents; }
+  .jd-activities-head .jd-activities-intro { grid-area: 1 / 1; flex-wrap: wrap; gap: 4px 7px; }
+  .jd-activities-head .jd-actions { grid-area: 1 / 2; }
+  .jd-activities-head .jd-schedule-meta { grid-area: 2 / 1 / auto / -1; white-space: normal; overflow: visible; }
+  .jd-activities-head .jd-filter-control select { min-height: 40px; }
+  .jd-activities-head .jd-filters { width: min(17rem, calc(100cqi - 4rem)); }
+
+  .wc-heading, .ji-head, .jn-head, .jcat-head {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    justify-items: start;
+    gap: 9px;
+  }
+  .wc-heading h1, .ji-head h1, .jn-head h1, .jcat-head h1 { overflow-wrap: anywhere; }
+  .wc-heading .wc-actions, .ji-head .ji-actions { width: 100%; gap: 6px; }
+  .wc-actions > .btn, .ji-head .ji-actions > .btn { flex: 1 1 8rem; padding-inline: 8px; min-height: 40px; }
+  .wc-month-head { align-items: start; gap: 8px; }
+  .wc-month-head h2 { min-width: 0; }
+  .wc-month-head .wc-month-controls { width: 100%; margin: 0; justify-content: space-between; }
+  .wc-month-controls :is(.wc-today, .wc-icon) { height: 38px; }
+  .wc-month-controls .wc-icon { width: 36px; }
+  .wc-month-controls .wc-modes button { min-width: 46px; min-height: 32px; }
+
+  .ji-controls { display: grid; grid-template-columns: minmax(0, 1fr); align-items: start; }
+  .ji-controls > .ji-switch, .ji-controls > .ji-range, .ji-distribution-head > .ji-switch { width: 100%; }
+  .ji-controls .ji-switch button, .ji-distribution-head .ji-switch button { flex: 1; min-height: 34px; padding-inline: 5px; }
+  .ji-range > span, .ji-range > .ji-date-control { justify-content: center; flex: 1; min-width: 0; text-align: center; }
+  .ji-range > span { flex-wrap: wrap; gap: 3px; }
+  .ji-controls .ji-count { margin-left: 0; }
+  .ji-custom { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 8px; }
+  .ji-custom label { display: grid; gap: 4px; grid-row: 1; min-width: 0; }
+  .ji-custom input { width: 100%; min-width: 0; min-height: 38px; }
+  .ji-custom .jd-today, .ji-custom .btn { grid-row: 2; }
+  .ji-custom .jd-today { justify-self: start; }
+  .ji-custom .btn { justify-self: end; }
+  .ji-distribution-head { align-items: flex-start; }
+  .ji-goal-card, .ji-history, .ji-history li { overflow-wrap: anywhere; }
+  .ji-history-row { flex-wrap: wrap; }
+  .jcat-tabs { display: flex; width: 100%; }
+  .jcat-tabs button { justify-content: center; flex: 1; min-height: 34px; }
+
+  /* Alinea valores y notas incluso cuando solo uno de los títulos necesita dos líneas. */
+  @supports (grid-template-rows: subgrid) {
+    .jd-metrics > .jd-metric, .ji-kpis > .ji-metric {
+      display: grid;
+      grid-row: span 3;
+      grid-template-rows: subgrid;
+    }
+  }
+}
+
+/* En un teléfono estrecho, una semana que cruza de mes y el regreso a hoy
+   necesitan su propia fila. Los nombres de las tres vistas siguen completos. */
+@media screen and (max-width: 460px) {
+  .workbar:has(.jd-heading-tools:not([hidden]) .jd-today:not([hidden])) #work-modes:not([hidden]) {
+    grid-column: 1 / -1;
+  }
+  .workbar:has(#work-modes:not([hidden])) .jd-heading-tools:has(.jd-today:not([hidden])) {
+    grid-area: 3 / 1 / auto / -1;
+    justify-content: space-between;
+  }
+  .workbar:has(.jd-heading-tools .jd-today:not([hidden])) .jd-view-switch { width: 100%; }
+}
+@media screen and (max-width: 370px) {
+  .work-quick-actions { gap: 4px; }
+  .workbar #work-modes:not([hidden]) { grid-column: 1 / -1; }
+  .workbar #work-modes:not([hidden]) ~ .bar-right .jd-heading-tools {
+    grid-area: 3 / 1 / auto / -1;
+  }
+  .workbar .jd-view-switch { width: 100%; }
+}
+
+[data-record-detail] h2, [data-record-detail] dd, .record-description {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+[data-record-detail] .record-fields { display: grid; gap: 0; margin: 0; }
+[data-record-detail] header .icon-btn { flex: none; }
+.record-fields > div {
+  display: grid;
+  grid-template-columns: minmax(6rem, .8fr) minmax(0, 1.5fr);
+  align-items: baseline;
+  gap: 12px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--line);
+}
+.record-fields > div:first-child { padding-top: 0; }
+.record-fields > div:last-child { padding-bottom: 0; border-bottom: 0; }
+.record-fields dt { color: var(--muted); font-size: .79rem; font-weight: 650; }
+.record-fields dd, .record-description { margin: 0; white-space: pre-wrap; font-size: .86rem; line-height: 1.5; }

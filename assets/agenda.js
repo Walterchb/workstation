@@ -102,6 +102,10 @@
   let detail = null;
   let pending = false;
 
+  function fieldsDisabled() {
+    return pending || current?.ctx.canEdit?.() === false;
+  }
+
   function goalValue(id) {
     return id === noGoalFilter || id === spaceFilter || id.startsWith("~") ? "~" + id : id;
   }
@@ -169,9 +173,10 @@
       end:entry ? entry.segment.end || (entry.live ? "En curso" : "Sin cierre") : "—",
       duration:entry && (entry.segment.end || entry.live) ? durationLabel(entry.end-entry.start) : "—"
     };
-    const status = '<select class="jd-status-input" data-jd-field="status" ' + attrs + ' aria-label="Estado de ' + taskName + '"' + (pending ? ' disabled' : '') + '>' +
+    const disabled = fieldsDisabled();
+    const status = '<select class="jd-status-input" data-jd-field="status" ' + attrs + ' aria-label="Estado de ' + taskName + '"' + (disabled ? ' disabled' : '') + '>' +
       model.statuses.map(value => '<option value="' + esc(value) + '"' + (value === task.status ? ' selected' : '') + '>' + esc(value) + '</option>').join("") + '</select>';
-    const done = `<label class="jd-done"><input type="checkbox" data-jd-field="done" ${attrs} aria-label="¿Se hizo? ${taskName}" ${task.done ? "checked" : ""} ${pending ? "disabled" : ""}></label>`;
+    const done = `<label class="jd-done"><input type="checkbox" data-jd-field="done" ${attrs} aria-label="¿Se hizo? ${taskName}" ${task.done ? "checked" : ""} ${disabled ? "disabled" : ""}></label>`;
     return '<div class="jd-event-fields">' + headers.map(([key,label]) => {
       const content = key === "status" ? status : key === "done" ? done :
         `<span class="jd-field-value" title="${esc(values[key])}">${esc(values[key])}</span>`;
@@ -404,9 +409,10 @@
       <div class="jd-detail-sub">${meta.map(value=>"<span>"+esc(value)+"</span>").join(" · ")}</div>
       <p class="jd-detail-context">${esc(task.context || "Sin contexto registrado.")}</p>${taskFields(task,entry,"detail")}
       <div class="jd-detail-actions">${mode === "week" ? '<button type="button" class="btn" data-from-week>Abrir jornada</button>' : ""}
-      <button type="button" class="btn" data-edit-this>${ctx.icon("pencil",15)} Editar ${task.kind === "space" ? "espacio" : "actividad"}</button></div>`;
+      <button type="button" class="btn" data-edit-this ${fieldsDisabled() ? "disabled" : ""}>${ctx.icon("pencil",15)} Editar ${task.kind === "space" ? "espacio" : "actividad"}</button></div>`;
     dialog.querySelector(".jd-detail-close").onclick = closeDetail;
     dialog.querySelector("[data-edit-this]").onclick = () => {
+      if (fieldsDisabled()) return;
       detail.editTask = {id:task.id,date:task.date};
       closeDetail();
     };
@@ -428,7 +434,7 @@
       detail = null;
       dialog.remove();
       (locate(current?.el,"[data-jd-detail],[data-week-detail]",key) || filterFocusTarget(current?.el))?.focus({preventScroll:true});
-      if (task && current) window.JSheet.open({...current.ctx,date:task.date},{taskId:task.id,mode:"full"});
+      if (task && current && !fieldsDisabled()) window.JSheet.open({...current.ctx,date:task.date},{taskId:task.id,mode:"full"});
     },{once:true});
     dialog.addEventListener("change",quickChange);
     document.body.append(dialog);
@@ -437,10 +443,11 @@
     dialog.querySelector(".jd-detail-close").focus({preventScroll:true});
   }
 
-  function gateFields(disabled) {
+  function gateFields() {
+    const disabled = fieldsDisabled();
     for (const container of [current?.el,detail?.dialog]) {
       if (!container) continue;
-      for (const field of container.querySelectorAll("[data-jd-field],[data-edit-day]")) field.disabled = disabled;
+      for (const field of container.querySelectorAll("[data-jd-field],[data-edit-day],[data-edit-this]")) field.disabled = disabled;
     }
   }
 
@@ -464,12 +471,12 @@
     if (!task || !["done","status"].includes(field)) return;
     const previous = task[field];
     const value = field === "done" ? input.checked : input.value;
-    if (pending) { reflect(id,field,previous); return; }
+    if (fieldsDisabled()) { reflect(id,field,previous); return; }
     if (previous === value) return;
     pending = true;
     const key = {...input.dataset,field};
     const hadFocus = document.activeElement === input;
-    gateFields(true);
+    gateFields();
     let saved = false;
     try {
       saved = task.date === ctx.date ? await ctx.updateTaskField(id,field,value) :
@@ -478,7 +485,7 @@
       ctx.toast(error.message || "No se pudo guardar el cambio.");
     } finally {
       pending = false;
-      gateFields(false);
+      gateFields();
       if (current?.ctx.date === ctx.date) {
         reflect(id,field,saved ? value : current.ctx.state.tasks.find(row=>row.id === id)?.[field] ?? previous);
         const container = key.place === "detail" ? detail?.dialog : current.el;
@@ -567,7 +574,7 @@
         <div class="jd-actions">
           ${mode === "calendar" ? scalePicker(ctx.icon) : ""}
           ${filterBar(goals,ctx.icon,filtersOpen)}
-          ${week ? "" : `<button type="button" class="btn primary jd-edit-day" data-edit-day aria-label="Editar actividades" title="Editar actividades" ${pending ? "disabled" : ""}>${ctx.icon("pencil",17)}</button>`}
+          ${week ? "" : `<button type="button" class="btn primary jd-edit-day" data-edit-day aria-label="Editar actividades" title="Editar actividades" ${fieldsDisabled() ? "disabled" : ""}>${ctx.icon("pencil",17)}</button>`}
         </div></header>
         ${schedule}</section></div>`;
     const view = el.querySelector(".jd-view");
@@ -632,7 +639,10 @@
         applyFilters("[data-jd-status-filter]");
         return;
       }
-      if (btn.matches("[data-edit-day]")) { window.JSheet.open(current.ctx); return; }
+      if (btn.matches("[data-edit-day]")) {
+        if (!fieldsDisabled()) window.JSheet.open(current.ctx);
+        return;
+      }
       if (btn.matches("[data-jd-detail]")) { openDetail(btn); return; }
       if (btn.matches("[data-jd-jump-plan]")) {
         const first = view.querySelector(".jd-plan-row");

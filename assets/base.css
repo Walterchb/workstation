@@ -155,3 +155,18 @@ dialog::backdrop{background:#09263b65;backdrop-filter:blur(2px)}
 @container breadcrumb-space (max-width: 175px){
   .work-context .crumb-parent,.work-context .crumb-parent + .crumb-separator{display:none}
 }
+
+.work-quick-actions{display:contents}
+.mobile-edit-toggle{display:inline-flex;align-items:center;justify-content:center;gap:6px;flex:none;min-height:38px;padding:0 10px;border:1px solid #c6d3d9;border-radius:5px;background:#fff;color:#344b57;font-size:.77rem;font-weight:700;white-space:nowrap}
+.mobile-edit-toggle[aria-pressed="true"]{background:#1b1e24;border-color:#1b1e24;color:#fff}
+.mobile-edit-toggle[hidden]{display:none}
+.mobile-edit-dialog{width:min(355px,calc(100% - 28px));padding:22px;border:1px solid var(--line);border-radius:5px;box-shadow:0 18px 60px #172b3733;color:var(--ink);background:#fff}
+.mobile-edit-dialog::backdrop{background:#15263366}
+.mobile-edit-dialog h2,.mobile-draft-guard h2{margin:0;color:var(--navy);font-size:1.15rem;line-height:1.35}
+.mobile-edit-dialog p,.mobile-draft-guard p{margin:9px 0 18px;line-height:1.55;font-size:.87rem;color:var(--muted)}
+.mobile-edit-dialog>div,.mobile-draft-guard>div{display:flex;justify-content:flex-end;flex-wrap:wrap;gap:8px}
+.mobile-edit-dialog .btn,.mobile-draft-guard .btn{min-height:42px}
+dialog[data-draft-frozen]{width:min(380px,calc(100% - 28px));height:auto;max-height:90dvh;padding:0}
+dialog[data-draft-frozen]>:not(.mobile-draft-guard){display:none!important}
+.mobile-draft-guard{background:#fff;padding:18px}
+@media print{.mobile-edit-toggle{display:none!important}}

@@ -79,7 +79,7 @@
   }
 
   function open(ctx, options={}) {
-    if (currentDialog?.open) return;
+    if (currentDialog?.open || ctx.canEdit?.() === false) return;
     const model = window.JModel;
     const sheet = window.JSheetModel;
     const draft = sheet.createDraft(ctx.state,ctx.date);
@@ -93,6 +93,7 @@
     const trigger = document.activeElement;
     const dialog = document.createElement('dialog');
     dialog.className = 'jsheet';
+    dialog.setAttribute('data-edit-dialog','');
     dialog.setAttribute('aria-labelledby','jsheet-title');
     currentDialog = dialog;
     let selected = requested < 0 ? draft.rows.length-1 : requested;
@@ -449,15 +450,26 @@
         return;
       }
       const candidates = model.reusableActivities(workingState(),sourceDate,draft.date);
+      const goalTitles = new Map(ctx.state.goals.map(goal=>[goal.id,goal.title]));
       const available = new Set(candidates.filter(x=>!x.reason).map(x=>x.activity.id));
       reuseIds = new Set([...reuseIds].filter(id=>available.has(id)));
       extra.innerHTML = '<div class="jsheet-extra-head"><label>Jornada de origen <select data-source>' +
         dates.map(day=>option(day,sourceDate,model.formatDate(day,{day:'numeric',month:'short',year:'numeric'}))).join('') +
         '</select></label>' + action('hide-extra','Cerrar') + '</div><div class="jsheet-reuse-rows">' +
-        candidates.map(({activity,reason})=>'<label><input type="checkbox" data-reuse-id="' + esc(activity.id) + '"' +
-          (reason ? ' disabled' : '') + (reuseIds.has(activity.id) ? ' checked' : '') + '><span>' + esc(activity.title) +
-          (activity.kind === 'space' ? '<small>Espacio sin objetivo</small>' : '') +
-          (reason ? '<small>' + esc(reason) + '</small>' : '') + '</span></label>').join('') +
+        candidates.map(({activity,reason},index)=>{
+          const id = 'jsheet-reuse-'+index;
+          const fields = [
+            ['Objetivo',goalTitles.get(activity.goalId)], ['Contexto',activity.context],
+            ['Comentario de origen',activity.comment]
+          ].filter(([,value])=>value?.trim());
+          const details = (activity.kind === 'space' ? '<small>Espacio sin objetivo</small>' : '') +
+            fields.map(([label,value])=>'<small><b>'+label+'</b> '+esc(value)+'</small>').join('') +
+            (reason ? '<small class="jsheet-reuse-reason">'+esc(reason)+'</small>' : '');
+          return '<label><input type="checkbox" data-reuse-id="'+esc(activity.id)+'" aria-labelledby="'+id+'-title"' +
+            (details ? ' aria-describedby="'+id+'-details"' : '') + (reason ? ' disabled' : '') +
+            (reuseIds.has(activity.id) ? ' checked' : '') + '><span class="jsheet-reuse-copy"><strong id="'+id+'-title">' +
+            esc(activity.title)+'</strong>'+(details ? '<span id="'+id+'-details">'+details+'</span>' : '')+'</span></label>';
+        }).join('') +
         '</div><div class="jsheet-reuse-foot">' + action('copy-rows','Añadir seleccionadas') + '</div>';
       btn('copy-rows').disabled = !reuseIds.size;
     }

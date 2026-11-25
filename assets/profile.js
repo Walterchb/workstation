@@ -59,6 +59,7 @@
   }
 
   function open(ctx, user) {
+    if (ctx.canEdit?.() === false) return;
     if (currentDialog?.open) return;
     const before = {name:ctx.state.profile?.name || '',photo:ctx.state.profile?.photo || ''};
     let photo = before.photo, conversion = null, saving = false;
@@ -66,6 +67,7 @@
     const dialog = document.createElement('dialog');
     currentDialog = dialog;
     dialog.className = 'jprofile-dialog';
+    dialog.setAttribute('data-edit-dialog','');
     dialog.setAttribute('aria-labelledby','jprofile-title');
     dialog.innerHTML = `<form novalidate><header><h2 id="jprofile-title">Mi perfil</h2><button type="button" class="icon-btn" data-profile-close aria-label="Cerrar perfil">${ctx.icon('x',18)}</button></header>
       <div class="jprofile-body"><div class="jprofile-photo"><div class="jprofile-preview" aria-hidden="true"></div>

@@ -100,6 +100,7 @@
     const selectedSlot = Math.floor(firstMinute/step)*step;
     const hourLabels = Array.from({length:24},(_,hour) => '<span>'+timeText(hour*60)+'</span>').join('');
     const buttons = Array.from({length:dayMinutes/step},(_,index) => {
+      if(!onCreate) return '<span class="wd-slot" aria-hidden="true"></span>';
       const minute = index*step, hour = timeText(minute);
       return '<button type="button" class="wd-slot" data-wd-minute="'+minute+'" tabindex="'+(minute===selectedSlot?0:-1)+
         '" aria-label="Crear evento a las '+hour+'" title="Crear evento a las '+hour+'"><span aria-hidden="true">'+icon('plus',13)+'</span></button>';
@@ -107,7 +108,7 @@
     mount.classList.add('wd-day');
     mount.innerHTML='<div class="wd-all"><span class="wd-all-label">Todo el día</span><div class="wd-all-list">'+
       allDay.map(event=>eventButton({event},date,state,byCalendar)).join('')+
-      '<button type="button" class="wd-add-all" data-wd-all title="Crear evento de día completo" aria-label="Crear evento de día completo">'+icon('plus',14)+'</button></div></div>'+
+      (onCreate?'<button type="button" class="wd-add-all" data-wd-all title="Crear evento de día completo" aria-label="Crear evento de día completo">'+icon('plus',14)+'</button>':'')+'</div></div>'+
       '<div class="wd-scroll" role="region" aria-label="Horario del día en hora de Lima"><div class="wd-timeline" style="--wd-track-min:'+peak*68+'px">'+
       '<div class="wd-ruler" aria-hidden="true">'+hourLabels+'</div><div class="wd-track">'+buttons+
       '<div class="wd-events">'+timed.map(item=>eventButton(item,date,state,byCalendar)).join('')+'</div><div class="wd-now" hidden></div></div></div></div>';

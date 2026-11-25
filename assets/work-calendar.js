@@ -60,12 +60,14 @@
     button?.focus({preventScroll:true});
   }
 
-  function mountDialog(title, html, origin) {
+  function mountDialog(title, html, origin, role='editor') {
     const dialog = document.createElement('dialog');
     dialog.className = 'wc-dialog';
+    if(role==='editor') dialog.setAttribute('data-edit-dialog','');
+    if(role==='detail') dialog.setAttribute('data-record-detail','');
     const titleId='wc-dialog-title-'+(++dialogNumber);
     dialog.setAttribute('aria-labelledby',titleId);
-    dialog.innerHTML = '<form><header><h2 id="'+titleId+'">'+title+'</h2><button type="button" data-wc-close class="icon-btn" aria-label="Cerrar">'+icon('x',16)+'</button></header>'+html+'</form>';
+    dialog.innerHTML = '<form><header><h2 id="'+titleId+'">'+esc(title)+'</h2><button type="button" data-wc-close class="icon-btn" aria-label="Cerrar">'+icon('x',16)+'</button></header>'+html+'</form>';
     const form = dialog.querySelector('form');
     let busy = false;
     dialog.oncancel = event => { if(busy) event.preventDefault(); };
@@ -81,7 +83,7 @@
     document.body.append(dialog);
     dialog.showModal();
     async function commit(ctx,change,onSave) {
-      if(busy) return;
+      if(busy || ctx.canEdit?.()===false) return;
       busy = true;
       form.inert = true;
       form.setAttribute('aria-busy','true');
@@ -126,6 +128,7 @@
   }
 
   function collectionEditor(ctx,item,origin,isCategory=false,onSave) {
+    if(ctx.canEdit?.()===false) return;
     const list = isCategory ? C.categories(ctx.state) : C.calendars(ctx.state);
     const assigned = item && C.events(ctx.state).some(event=>(isCategory?event.categoryId:event.calendarId)===item.id);
     const blocked = item && (assigned || (!isCategory && list.length===1));
@@ -281,6 +284,10 @@
   }
 
   function eventEditor(ctx,record,origin,defaults={}) {
+    if(ctx.canEdit?.()===false) {
+      if(record) eventDetail(ctx,record,origin);
+      return;
+    }
     const initial=record||defaults;
     const categories=C.categories(ctx.state).slice();
     const calendars=C.calendars(ctx.state);
@@ -392,7 +399,7 @@
     if(calendars.length===1){window.JAppleCalendar.open(calendars[0],ctx);return;}
     const {dialog,form}=mountDialog('Calendario de Apple','<div class="wc-form-body"><label>Calendario para vincular<select name="calendarId">'+
       calendars.map(cal=>'<option value="'+esc(cal.id)+'">'+esc(cal.name)+'</option>').join('')+'</select></label></div>'+
-      '<footer><button type="button" data-wc-close class="btn">Cancelar</button><button class="btn primary" type="submit">Continuar</button></footer>',origin);
+      '<footer><button type="button" data-wc-close class="btn">Cancelar</button><button class="btn primary" type="submit">Continuar</button></footer>',origin,'chooser');
     form.onsubmit=event=>{
       event.preventDefault();
       const chosen=calendars.find(cal=>cal.id===form.elements.calendarId.value);
@@ -412,6 +419,22 @@
 
   function fullDateRange(event) {
     return shortDate.formatRange(civilDate(event.startDate),civilDate(event.endDate));
+  }
+
+  function eventDetail(ctx,event,origin) {
+    const calendar=C.calendars(ctx.state).find(item=>item.id===event.calendarId);
+    const category=C.eventCategory(ctx.state,event);
+    let schedule;
+    if(event.allDay) schedule=fullDateRange(event)+' · Todo el día';
+    else if(event.startDate===event.endDate) schedule=fullDateRange(event)+' · '+event.startTime+' – '+event.endTime+' (Lima)';
+    else schedule=shortDate.format(civilDate(event.startDate))+' '+event.startTime+' – '+
+      shortDate.format(civilDate(event.endDate))+' '+event.endTime+' (Lima)';
+    const fields=[['Cuándo',schedule],['Calendario',calendar?.name],['Tipo',event.kind==='meeting'?'Reunión':'Evento'],
+      ['Categoría',category?.name||'Sin categoría'],['Aviso',reminderLabel(event.reminderMinutes)],['Lugar o enlace',event.location]];
+    const body='<div class="wc-form-body"><dl class="record-fields">'+fields.filter(([,value])=>value).map(([label,value])=>
+      '<div><dt>'+label+'</dt><dd>'+esc(value)+'</dd></div>').join('')+'</dl>'+
+      (event.description?'<p class="record-description">'+esc(event.description)+'</p>':'')+'</div>';
+    mountDialog(event.title,body,origin,'detail');
   }
 
   function monthAgenda(ctx,weekday,events,byCalendar) {
@@ -446,6 +469,7 @@
   function render(stage,ctx) {
     if(currentUser!==ctx.user?.id){currentUser=ctx.user?.id;hidden=new Set();activeView='month';}
     const dayMode=activeView==='day';
+    const editable=ctx.canEdit?.()!==false;
     const calendars=C.calendars(ctx.state), byId=new Map(calendars.map(c=>[c.id,c]));
     const dates=dayMode?[ctx.date]:daysOnGrid(ctx.date), actualDates=dates.filter(Boolean), first=actualDates[0], last=actualDates.at(-1), today=M.today();
     const items=visibleEvents(ctx.state).filter(e=>e.startDate<=last && e.endDate>=first)
@@ -455,9 +479,12 @@
     const month=monthName.format(civilDate(ctx.date));
     const weekday=longDay.format(civilDate(ctx.date));
     const categories=C.categories(ctx.state);
-    const categoriesList=categories.map(c=>'<li><button class="wc-category-row" type="button" data-wc-category-edit="'+esc(c.id)+'" aria-label="Editar categoría '+esc(c.name)+'"><span class="wc-category-dot" style="--wc-color:'+esc(c.color)+'"></span><span>'+esc(c.name)+'</span>'+icon('pencil',13)+'</button></li>').join('');
+    const categoriesList=categories.map(c=>{
+      const name='<span class="wc-category-dot" style="--wc-color:'+esc(c.color)+'"></span><span>'+esc(c.name)+'</span>';
+      return '<li>'+(editable?'<button class="wc-category-row" type="button" data-wc-category-edit="'+esc(c.id)+'" aria-label="Editar categoría '+esc(c.name)+'">'+name+icon('pencil',13)+'</button>':'<span class="wc-category-row">'+name+'</span>')+'</li>';
+    }).join('');
     const calendarList=calendars.map(cal=>'<li><label style="--wc-color:'+esc(cal.color)+'"><input type="checkbox" data-wc-visible="'+esc(cal.id)+'"'+
-      (hidden.has(cal.id)?'':' checked')+'><span>'+esc(cal.name)+'</span></label><button type="button" class="wc-icon" data-wc-cal-edit="'+esc(cal.id)+'" aria-label="Editar calendario '+esc(cal.name)+'">'+icon('pencil',14)+'</button></li>').join('');
+      (hidden.has(cal.id)?'':' checked')+'><span>'+esc(cal.name)+'</span></label>'+(editable?'<button type="button" class="wc-icon" data-wc-cal-edit="'+esc(cal.id)+'" aria-label="Editar calendario '+esc(cal.name)+'">'+icon('pencil',14)+'</button>':'')+'</li>').join('');
     function dayBox(date) {
       if(!date) return '<div class="wc-cell outside" aria-hidden="true"></div>';
       const events=onDay.get(date), other=date.slice(0,7)!==ctx.date.slice(0,7);
@@ -480,16 +507,16 @@
       '<div class="wc-weekdays" aria-hidden="true">'+weekdays.map((short,i)=>'<span title="'+weekNames[i]+'">'+short+'</span>').join('')+'</div><div class="wc-grid">'+dates.map(dayBox).join('')+'</div>';
     const dayAgenda=dayMode?'':monthAgenda(ctx,weekday,selected,byId);
     stage.innerHTML='<section class="wc-view"><header class="wc-heading"><h1>Calendario</h1><div class="wc-actions"><button type="button" class="btn" data-wc-apple>'+icon('calendar',16)+'Calendario de Apple</button>'+
-      '<button type="button" class="btn primary" data-wc-new>'+icon('plus',16)+'Nuevo evento</button></div></header>'+
+      (editable?'<button type="button" class="btn primary" data-wc-new>'+icon('plus',16)+'Nuevo evento</button>':'')+'</div></header>'+
       '<div class="wc-layout"><section class="wc-month panel" aria-label="'+(dayMode?'Vista de día':'Vista mensual')+'"><header class="wc-month-head"><h2><label class="wc-month-picker"><span>'+esc(label)+'</span>'+icon('chevron-down',14)+picker+'</label></h2>'+
       '<div class="wc-month-controls">'+modePicker+'<div class="wc-month-nav"><button type="button" class="wc-today" data-wc-today>Hoy</button>'+
       '<button class="wc-icon" type="button" data-wc-step="-1" aria-label="'+(dayMode?'Día anterior':'Mes anterior')+'"'+(!movePage(ctx.date,-1)?' disabled':'')+'>'+icon('chevron-left',16)+'</button><button class="wc-icon" type="button" data-wc-step="1" aria-label="'+(dayMode?'Día siguiente':'Mes siguiente')+'"'+(!movePage(ctx.date,1)?' disabled':'')+'>'+icon('chevron-right',16)+'</button></div></div></header>'+body+'</section>'+
-      '<aside class="wc-right">'+dayAgenda+'<section class="wc-calendars panel" aria-label="Mis calendarios"><header><h2>Mis calendarios</h2><button type="button" class="wc-icon" data-wc-cal-new aria-label="Agregar calendario" title="Agregar calendario">'+icon('plus',17)+'</button></header><ul>'+calendarList+'</ul></section>'+
-      '<section class="wc-calendars wc-categories panel" aria-label="Categorías de eventos"><header><h2>Categorías de eventos</h2><button type="button" class="wc-icon" data-wc-category-new aria-label="Agregar categoría" title="Agregar categoría">'+icon('plus',17)+'</button></header><ul>'+categoriesList+'</ul></section></aside></div></section>';
+      '<aside class="wc-right">'+dayAgenda+'<section class="wc-calendars panel" aria-label="Mis calendarios"><header><h2>Mis calendarios</h2>'+(editable?'<button type="button" class="wc-icon" data-wc-cal-new aria-label="Agregar calendario" title="Agregar calendario">'+icon('plus',17)+'</button>':'')+'</header><ul>'+calendarList+'</ul></section>'+
+      '<section class="wc-calendars wc-categories panel" aria-label="Categorías de eventos"><header><h2>Categorías de eventos</h2>'+(editable?'<button type="button" class="wc-icon" data-wc-category-new aria-label="Agregar categoría" title="Agregar categoría">'+icon('plus',17)+'</button>':'')+'</header><ul>'+categoriesList+'</ul></section></aside></div></section>';
     const view=stage.querySelector('.wc-view');
     if(dayMode) window.JCalendarDay.render(view.querySelector('[data-wc-day-body]'),{
       date:ctx.date,state:ctx.state,events:selected,restoreKey:ctx.user?.id,
-      onCreate:(defaults,origin)=>eventEditor(ctx,null,origin,defaults),
+      onCreate:editable?(defaults,origin)=>eventEditor(ctx,null,origin,defaults):null,
       onEdit:(item,origin)=>eventEditor(ctx,item,origin)
     });
     function goTo(date,refocus=false) {
