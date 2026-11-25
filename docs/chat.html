@@ -46,7 +46,7 @@
     <li>Abre el proyecto <strong>Work-Station</strong> que usas para la agenda y entra en <strong>Edge Functions → Secrets</strong>.</li>
     <li>En <strong>Key</strong> escribe exactamente <code>OPENAI_API_KEY</code>. En <strong>Value</strong> pega la clave de OpenAI y pulsa <strong>Save</strong>. Al terminar, verás el nombre del secreto en el listado. El repositorio, el archivo <code>config.js</code> y los mensajes del chat deben quedar libres de esta clave.</li>
   </ol>
-  <details><summary>Elegir otro modelo (opcional)</summary><p>El chat usa <code>gpt-5.4-mini</code> de forma predeterminada. Para cambiarlo, crea en el mismo panel un secreto llamado <code>OPENAI_MODEL</code> y usa como valor el identificador de un modelo habilitado en tu proyecto que admita Responses API y llamadas a funciones. <a href="https://developers.openai.com/api/docs/models/gpt-5.4-mini">Ficha del modelo predeterminado</a></p></details>
+  <details><summary>Elegir otro modelo (opcional)</summary><p>El chat usa <code>gpt-6.2-sol</code> de forma predeterminada. Para cambiarlo, crea en el mismo panel un secreto llamado <code>OPENAI_MODEL</code> y usa como valor el identificador de un modelo habilitado en tu proyecto que admita Responses API y llamadas a funciones. <a href="https://developers.openai.com/api/docs/models/gpt-6.2-sol">Ficha del modelo predeterminado</a></p></details>
 
   <h2>3. Comprobar la función del chat</h2>
   <p>En <strong>Edge Functions → Functions</strong>, busca <code>workhub-chat</code>. Si figura como <strong>Active</strong>, continúa directamente con el paso 4. Los pasos siguientes permiten instalarla en un proyecto en el que todavía falte.</p>
@@ -62,7 +62,7 @@
   <h2>4. Publicar la web y probarla con un registro tuyo</h2>
   <ol>
     <li>Copia el contenido del ZIP en la carpeta de tu repositorio donde está <code>index.html</code>, conservando las subcarpetas. En GitHub Desktop revisa los cambios, escribe <em>Agregar chat a Work Station</em> y pulsa <strong>Commit</strong> y después <strong>Push origin</strong>.</li>
-    <li>Cuando GitHub Pages termine de publicar, abre tu página, recarga e inicia sesión. En la barra lateral elige <strong>Chat</strong>.</li>
+    <li>Cuando GitHub Pages termine de publicar, abre tu página, recarga e inicia sesión. En la barra lateral elige <strong>Chat</strong>. En otras vistas puedes abrir el botón de chat de la esquina inferior derecha. La ventana y la pestaña comparten la conversación y el borrador del ámbito elegido.</li>
     <li>Busca en tu calendario la fecha de una reunión que ya registraste. En el chat selecciona <strong>Calendario</strong> y sustituye la fecha de esta pregunta por la de tu reunión.
       <blockquote>¿Qué reuniones tengo el 26 de noviembre? Indica la hora y muéstrame el registro.</blockquote>
       Abre la referencia de la reunión en la respuesta y compara el título y la hora con el evento original. Si la fecha seleccionada no tiene reuniones, prueba con una fecha que sí las tenga.</li>

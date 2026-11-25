@@ -7,29 +7,29 @@
   ]);
   const examples = {
     all: [
-      ['clipboard', '¿Qué quedó pendiente esta semana?'],
-      ['timer', '¿Cuánto tiempo dediqué a cada objetivo este mes?'],
-      ['calendar', '¿Qué reuniones y revisiones de notas tengo mañana?']
+      ['file-text', 'Avances de la semana', '¿Qué avances documenté esta semana en mis comentarios?'],
+      ['clipboard', 'Pendientes', '¿Qué quedó pendiente esta semana?'],
+      ['calendar', 'Próxima jornada', '¿Qué reuniones y revisiones de notas tengo mañana?']
     ],
     tasks: [
-      ['clipboard', '¿Qué actividades dejé pendientes esta semana?'],
-      ['timer', '¿Cuántas horas registré en actividades y en espacios este mes?'],
-      ['file-text', '¿Qué avances anoté en mis comentarios esta semana?']
+      ['activity', 'Avances registrados', '¿Qué avances anoté en mis comentarios esta semana?'],
+      ['timer', 'Tiempo registrado', '¿Cuántas horas registré en actividades y en espacios este mes?'],
+      ['clipboard', 'Actividades pendientes', '¿Qué actividades dejé pendientes esta semana?']
     ],
     notes: [
-      ['clock', '¿Qué notas debo revisar esta semana?'],
-      ['notes-board', '¿Qué notas están en espera?'],
-      ['list', '¿Qué temas se repiten en mis notas?']
+      ['clock', 'Próximas revisiones', '¿Qué notas debo revisar esta semana?'],
+      ['notes-board', 'Notas en espera', '¿Qué notas siguen en espera y desde cuándo?'],
+      ['list', 'Temas frecuentes', '¿Qué temas se repiten en mis notas?']
     ],
     calendar: [
-      ['calendar', '¿Qué reuniones tengo mañana?'],
-      ['calendar-days', '¿Qué eventos tengo esta semana?'],
-      ['layers', '¿Cómo se distribuyen mis eventos de este mes por categoría?']
+      ['calendar', 'Reuniones de mañana', '¿A qué hora tengo reuniones mañana?'],
+      ['calendar-days', 'Agenda semanal', '¿Qué eventos tengo programados esta semana?'],
+      ['layers', 'Categorías', '¿Cómo se distribuyen los eventos del mes por categoría?']
     ],
     goals: [
-      ['target', '¿Qué objetivos siguen en curso?'],
-      ['check-circle', '¿Qué objetivos alcancé este mes?'],
-      ['file-text', '¿Qué resultados registré en mis objetivos?']
+      ['target', 'Objetivos en curso', '¿Qué objetivos siguen en curso?'],
+      ['check-circle', 'Objetivos alcanzados', '¿Qué objetivos marqué como alcanzados este mes?'],
+      ['timer', 'Tiempo por objetivo', '¿Cuánto tiempo registré en cada objetivo este mes?']
     ]
   };
   const sourceTypes = new Map([
@@ -91,26 +91,6 @@
       '" title="'+esc(sourceLabel(source))+'">'+label+'</button>';
   }
 
-  function formatAnswer(text, sources, turnIndex) {
-    // Las referencias se resuelven contra los registros que devolvió la función autenticada.
-    // Las etiquetas, URL y atributos que escriba el modelo quedan como texto.
-    const parts = String(text).split(/(\[\d+\]|\*\*|__)/g);
-    let html = '', emphasis = '';
-    for (let i = 0; i < parts.length; i++) {
-      const item = parts[i];
-      if (item === '**' || item === '__') {
-        if (emphasis === item) { html += '</strong>'; emphasis = ''; continue; }
-        if (!emphasis && parts.indexOf(item, i + 1) !== -1) {
-          html += '<strong>'; emphasis = item; continue;
-        }
-      }
-      const number = /^\[(\d+)\]$/.exec(item);
-      const source = number && sources.get(Number(number[1]));
-      html += source ? sourceButton(source, turnIndex, esc(item), 'jchat-ref') : esc(item);
-    }
-    return html;
-  }
-
   function contextHistory(t) {
     let budget = 18000;
     const history = [];
@@ -127,34 +107,115 @@
     return history;
   }
 
-  function row(speaker, content) {
+  function row(speaker, content, icon) {
+    const assistant = speaker === 'Asistente';
     const element = document.createElement('article');
-    element.className = 'jchat-turn '+(speaker === 'Tú' ? 'jchat-user' : 'jchat-assistant');
-    element.innerHTML = '<p class="jchat-speaker">'+speaker+'</p>'+content;
+    element.className = 'jchat-turn '+(assistant ? 'jchat-assistant' : 'jchat-user');
+    const mark = assistant ? '<span class="jchat-speaker-mark">'+icon('sparkles',13)+'</span>' : '';
+    element.innerHTML = '<p class="jchat-speaker">'+mark+speaker+'</p>'+content;
     return element;
   }
 
   function answerRow(turn, index, icon) {
     const chips = [...turn.sources.values()].map(source => {
-      const label = '<b>'+source.number+'</b><span>'+esc(source.title)+'</span>'+icon('arrow-up-right',12);
+      const details = [sourceTypes.get(source.type),readableDate(source.date)].filter(Boolean).join(' · ');
+      const label = '<b>'+source.number+'</b><span class="jchat-source-copy"><strong>'+esc(source.title)+
+        '</strong><small class="jchat-source-detail">'+esc(details)+'</small></span>'+icon('arrow-up-right',13);
       return sourceButton(source, index, label, 'jchat-source');
     }).join('');
-    const sources = chips ? '<div class="jchat-sources" aria-label="Registros citados">'+chips+'</div>' : '';
-    return row('Asistente', '<div class="jchat-text">'+formatAnswer(turn.answer,turn.sources,index)+'</div>'+sources);
+    const sources = chips ? '<div class="jchat-sources" role="group" aria-label="Registros citados">'+
+      '<p class="jchat-source-title">Registros citados</p><div class="jchat-source-list">'+chips+'</div></div>' : '';
+    const answer = window.JChatFormat.render(turn.answer, {citation(number) {
+      const source = turn.sources.get(number);
+      return source ? sourceButton(source,index,String(number),'jchat-ref') : '';
+    }});
+    return row('Asistente', '<div class="jchat-answer">'+answer+'</div>'+sources+
+      '<div class="jchat-answer-actions"><button type="button" class="jchat-copy" data-chat-copy data-turn="'+index+
+      '">'+icon('clipboard',13)+'<span>Copiar respuesta</span></button>'+
+      '<span class="jchat-sr" role="status" data-chat-copy-status></span></div>', icon);
+  }
+
+  async function copyAnswer(button, turn, icon) {
+    const actions = button.parentNode;
+    const status = actions.querySelector('[data-chat-copy-status]');
+    const references = [...turn.sources.values()].map(source=>'['+source.number+'] '+sourceLabel(source));
+    const text = turn.answer+(references.length ? '\n\nRegistros citados\n'+references.join('\n') : '');
+    try {
+      const clipboard = navigator.clipboard;
+      let copied = false;
+      if (clipboard?.write && typeof ClipboardItem === 'function') {
+        const rich = button.closest('.jchat-turn').querySelector('.jchat-answer').cloneNode(true);
+        for (const ref of rich.querySelectorAll('[data-chat-source]')) {
+          const number = Number(ref.dataset.number);
+          ref.replaceWith(document.createTextNode(turn.sources.has(number) ? '['+number+']' : ''));
+        }
+        for (const wrap of rich.querySelectorAll('.jchat-table-wrap')) wrap.replaceWith(wrap.querySelector('table'));
+        if (references.length) {
+          const heading = document.createElement('h3');
+          heading.textContent = 'Registros citados';
+          rich.append(heading);
+          for (const label of references) {
+            const line = document.createElement('p');
+            line.textContent = label;
+            rich.append(line);
+          }
+        }
+        // Algunos navegadores aceptan texto simple aunque bloqueen el formato HTML.
+        try {
+          await clipboard.write([new ClipboardItem({
+            'text/plain':new Blob([text],{type:'text/plain'}),
+            'text/html':new Blob([rich.innerHTML],{type:'text/html'})
+          })]);
+          copied = true;
+        } catch { /* Usar la misma respuesta en texto simple. */ }
+      }
+      if (!copied) await clipboard.writeText(text);
+      if (!button.isConnected) return;
+      actions.querySelector('.jchat-copy-manual')?.remove();
+      status.classList.add('jchat-sr');
+      button.innerHTML = icon('check-circle',13)+'<span>Copiada</span>';
+      status.textContent = 'Respuesta copiada al portapapeles.';
+      setTimeout(()=>{
+        if (!button.isConnected) return;
+        button.innerHTML = icon('clipboard',13)+'<span>Copiar respuesta</span>';
+        status.textContent = '';
+      },2200);
+    } catch {
+      if (!button.isConnected) return;
+      let field = actions.querySelector('.jchat-copy-manual');
+      if (!field) {
+        field = document.createElement('textarea');
+        field.className = 'jchat-copy-manual';
+        field.readOnly = true;
+        field.rows = 2;
+        field.setAttribute('aria-label','Respuesta y referencias para copiar');
+        actions.append(field);
+      }
+      field.value = text;
+      field.focus({preventScroll:true});
+      field.select();
+      status.classList.remove('jchat-sr');
+      status.textContent = 'Usa la opción Copiar sobre el texto seleccionado.';
+    }
   }
 
   function examplesHTML(icon) {
-    return '<div class="jchat-welcome"><span class="jchat-mark" aria-hidden="true">'+icon('sparkles',24)+'</span>'+
-      '<h2>¿Qué quieres consultar?</h2><div class="jchat-examples">'+examples[scope].map(([glyph,question],i)=>
-        '<button type="button" data-chat-example="'+i+'">'+icon(glyph,17)+'<span>'+esc(question)+'</span>'+
-        icon('arrow-up-right',13)+'</button>').join('')+'</div></div>';
+    return '<div class="jchat-welcome"><span class="jchat-mark" aria-hidden="true">'+icon('sparkles',25)+'</span>'+
+      '<div class="jchat-welcome-copy"><h2>¿Qué quieres revisar?</h2>'+
+      '<p>Puedes abrir los registros citados en cada respuesta.</p></div>'+
+      '<div class="jchat-examples">'+examples[scope].map(([glyph,title,question],i)=>
+        '<button type="button" data-chat-example="'+i+'"><span class="jchat-example-icon">'+icon(glyph,18)+
+        '</span><span class="jchat-example-copy"><strong>'+esc(title)+'</strong><span>'+esc(question)+'</span></span>'+
+        '<span class="jchat-example-arrow">'+icon('arrow-up-right',15)+'</span></button>').join('')+'</div></div>';
   }
 
   function paint() {
     if (!view?.page.isConnected) return;
     const t = thread(), v = view, icon = v.ctx.icon;
     const fresh = v.thread !== t;
-    const atEnd = v.scroll.scrollHeight - v.scroll.clientHeight - v.scroll.scrollTop < 60;
+    const previousTop = v.scroll.scrollTop;
+    const atEnd = v.scroll.scrollHeight - v.scroll.clientHeight - previousTop < 60;
+    let latestAnswer;
     if (fresh) {
       v.thread = t;
       v.seen = 0; v.interim = null;
@@ -169,12 +230,13 @@
     }
     while (v.seen < t.turns.length) {
       const turn = t.turns[v.seen];
-      v.log.append(row('Tú','<div class="jchat-text">'+esc(turn.question)+'</div>'),answerRow(turn,v.seen,icon));
+      latestAnswer = answerRow(turn,v.seen,icon);
+      v.log.append(row('Tú','<div class="jchat-text">'+esc(turn.question)+'</div>'),latestAnswer);
       v.seen++;
     }
     if (t.pending && !v.interim) {
       const question = row('Tú','<div class="jchat-text">'+esc(t.pending.question)+'</div>');
-      const waiting = row('Asistente','<div class="jchat-wait"><i aria-hidden="true"></i>Consultando tus registros…</div>');
+      const waiting = row('Asistente','<div class="jchat-wait"><i aria-hidden="true"></i>Consultando tus registros…</div>',icon);
       question.setAttribute('data-chat-interim',''); waiting.setAttribute('data-chat-interim','');
       v.log.append(question,waiting);
       v.interim = t.pending;
@@ -187,15 +249,25 @@
     v.send.hidden = !!t.pending;
     v.send.disabled = !t.draft.trim() || !!t.pending;
     v.stop.hidden = !t.pending;
-    v.clear.hidden = !(t.turns.length || t.pending || t.draft || t.error);
+    v.clear.disabled = !(t.turns.length || t.pending || t.draft || t.error);
     v.error.hidden = !t.error;
     if (t.error) {
       v.error.querySelector('[data-chat-error-text]').textContent = t.error.message;
-      const setup = t.error.code === 'CHAT_NOT_CONFIGURED';
+      const setup = ['CHAT_NOT_CONFIGURED','CHAT_SUPABASE_CONFIG','CHAT_KEY_MISSING','CHAT_KEY_INVALID',
+        'CHAT_KEY_PERMISSION','CHAT_MODEL','CHAT_QUOTA'].includes(t.error.code);
       v.error.querySelector('[data-chat-setup]').hidden = !setup;
-      v.error.querySelector('[data-chat-retry]').hidden = setup || !t.draft.trim();
+      v.error.querySelector('[data-chat-retry]').hidden = !t.draft.trim();
     }
-    if ((fresh || (added && atEnd)) && !v.log.hidden) v.scroll.scrollTop = v.scroll.scrollHeight;
+    if (v.log.hidden || (!fresh && !added)) return;
+    if (!fresh && !atEnd) {
+      v.scroll.scrollTop = previousTop;
+    } else if (latestAnswer && !t.pending) {
+      const top = latestAnswer.getBoundingClientRect().top - v.scroll.getBoundingClientRect().top;
+      // El navegador limita el desplazamiento al final si la respuesta entera cabe.
+      v.scroll.scrollTop = Math.max(0, v.scroll.scrollTop + top - 10);
+    } else {
+      v.scroll.scrollTop = v.scroll.scrollHeight;
+    }
   }
 
   async function submit() {
@@ -227,33 +299,40 @@
     }
   }
 
-  function render(el, ctx) {
+  function render(el, ctx, {compact = false} = {}) {
     const userId = ctx.user?.id;
     if (owner !== undefined && owner !== userId) reset();
     owner = userId;
-    if (view?.page.parentNode === el) { view.ctx = ctx; paint(); return; }
-    const icon = ctx.icon;
-    el.innerHTML = '<section class="jchat" aria-labelledby="jchat-title">'+
-      '<header class="jchat-head"><div><h1 id="jchat-title">Chat</h1>'+
-      '<p>Consulta tus registros de Work Station con ChatGPT.</p></div>'+
+    if (view?.page.parentNode === el && view.compact === compact) { view.ctx = ctx; paint(); return; }
+    if (view) view.page.remove();
+    const icon = ctx.icon, id = compact ? 'jchat-quick' : 'jchat';
+    const header = compact ? '' : '<header class="jchat-head"><div class="jchat-heading">'+
+      '<span class="jchat-brand-icon">'+icon('sparkles',20)+'</span><div><h1 id="'+id+'-title">Chat de Work Station</h1>'+
+      '<p>Consulta tus actividades, notas, objetivos y calendario con ChatGPT.</p></div></div></header>';
+    el.innerHTML = '<section class="jchat'+(compact ? ' jchat-compact' : '')+'" '+
+      (compact ? 'aria-label="Conversación"' : 'aria-labelledby="'+id+'-title"')+'>'+header+
+      '<div class="panel jchat-panel"><div class="jchat-tools jchat-toolbar">'+
       '<label class="jchat-scope"><span>Consultar en</span><select data-chat-scope>'+
-      [...scopes].map(([id,label])=>'<option value="'+id+'">'+label+'</option>').join('')+'</select></label></header>'+
-      '<div class="panel jchat-panel"><div class="jchat-tools"><button type="button" class="btn ghost" data-chat-new hidden>'+
-      icon('plus',15)+'Nueva conversación</button></div>'+
+      [...scopes].map(([key,label])=>'<option value="'+key+'">'+label+'</option>').join('')+'</select></label>'+
+      '<button type="button" class="btn ghost" data-chat-new title="Empezar de nuevo en el ámbito seleccionado" disabled>'+
+      icon('plus',15)+'<span>Nueva conversación</span></button></div>'+
       '<div class="jchat-scroll" data-chat-scroll><div data-chat-empty></div>'+
       '<div class="jchat-log" role="log" aria-label="Mensajes de la conversación" aria-live="polite" aria-relevant="additions" data-chat-log></div></div>'+
       '<div class="jchat-footer"><div class="jchat-error" data-chat-error role="alert" hidden>'+
-      '<span data-chat-error-text></span><a href="./docs/chat.html" target="_blank" rel="noopener" data-chat-setup hidden>Ver pasos de configuración</a>'+
+      '<span data-chat-error-text></span><a href="./docs/chat.html" target="_blank" rel="noopener" data-chat-setup hidden>Ver configuración</a>'+
       '<button type="button" data-chat-retry hidden>Reintentar</button></div>'+
-      '<form class="jchat-compose" data-chat-form><label class="jchat-sr" for="jchat-question">Tu pregunta</label>'+
-      '<textarea id="jchat-question" name="message" rows="2" maxlength="'+maxQuestion+'" placeholder="Escribe tu pregunta…" required></textarea>'+
+      '<form class="jchat-compose" data-chat-form><label class="jchat-sr" for="'+id+'-question">Tu consulta</label>'+
+      '<textarea id="'+id+'-question" name="message" rows="2" maxlength="'+maxQuestion+
+      '" placeholder="Pregunta sobre tus registros…" enterkeyhint="send" required></textarea>'+
       '<div class="jchat-actions"><span class="jchat-keyhint">Enter para enviar · Mayús + Enter para otra línea</span>'+
-      '<button type="submit" class="btn primary" data-chat-send disabled>Enviar '+icon('arrow-right',16)+'</button>'+
+      '<button type="submit" class="btn primary" data-chat-send aria-label="Enviar consulta" disabled><span>Enviar</span> '+icon('arrow-right',16)+'</button>'+
       '<button class="btn" type="button" data-chat-stop hidden>'+icon('x',15)+' Detener</button></div></form>'+
-      '<p class="jchat-disclosure">'+icon('info',14)+'<span>Al enviar, OpenAI recibe tu pregunta, los mensajes recientes de este ámbito y los datos necesarios para responder. El hilo se borra al recargar o cerrar sesión.</span></p></div></div></section>';
+      '<details class="jchat-disclosure"><summary>'+icon('lock',12)+'Privacidad de la conversación</summary>'+
+      '<p>OpenAI recibe tu consulta, los mensajes recientes de este ámbito y los registros necesarios para responder. La conversación se borra al recargar la página o cerrar sesión.</p></details>'+
+      '</div></div></section>';
     const page = el.querySelector('.jchat');
     const get = selector => page.querySelector(selector);
-    const v = {page,ctx,log:get('[data-chat-log]'),scroll:get('[data-chat-scroll]'),empty:get('[data-chat-empty]'),
+    const v = {page,ctx,compact,log:get('[data-chat-log]'),scroll:get('[data-chat-scroll]'),empty:get('[data-chat-empty]'),
       error:get('[data-chat-error]'),input:get('textarea'),select:get('[data-chat-scope]'),clear:get('[data-chat-new]'),
       send:get('[data-chat-send]'),stop:get('[data-chat-stop]'),thread:null,seen:0,interim:null};
     view = v;
@@ -267,7 +346,7 @@
       const t = thread(); t.draft = v.input.value;
       if (t.error) { t.error = null; v.error.hidden = true; }
       v.send.disabled = !t.draft.trim() || !!t.pending;
-      v.clear.hidden = !(t.turns.length || t.pending || t.draft);
+      v.clear.disabled = !(t.turns.length || t.pending || t.draft);
     });
     v.input.addEventListener('keydown',event=>{
       if (event.key === 'Enter' && !event.shiftKey && !event.isComposing && event.keyCode !== 229) {
@@ -292,7 +371,10 @@
       if (!button) return;
       if (button.hasAttribute('data-chat-example')) {
         const item = examples[scope][Number(button.dataset.chatExample)];
-        if (item && !thread().pending) { thread().draft = item[1]; submit(); v.input.focus({preventScroll:true}); }
+        if (item && !thread().pending) { thread().draft = item[2]; submit(); v.input.focus({preventScroll:true}); }
+      } else if (button.hasAttribute('data-chat-copy')) {
+        const turn = thread().turns[Number(button.dataset.turn)];
+        if (turn) copyAnswer(button,turn,icon);
       } else if (button.hasAttribute('data-chat-source')) {
         const source = thread().turns[Number(button.dataset.turn)]?.sources.get(Number(button.dataset.number));
         if (source) v.ctx.openChatSource(source);

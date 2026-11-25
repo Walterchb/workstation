@@ -11,6 +11,11 @@
   const mark='<img src="./assets/icons/mark.svg" width="37" height="37" alt="">';
   const brand='<div class="brandbar">'+mark+'<span>Work Hub</span></div>';
 
+  function resetChat() {
+    window.JChatWidget.reset();
+    window.JChat.reset();
+  }
+
   function notify(message,action) {
     // Dentro de un diálogo modal el aviso se mantiene en la capa visible.
     const host=document.querySelector('dialog[open]') || document.getElementById('notices');
@@ -82,7 +87,8 @@
     } catch(error) {
       if(error.code==='CONFLICT')notify(error.message,{label:'Recargar',run:()=>location.reload()});
       else if(error.code==='AUTH'){
-        window.JChat.reset();
+        session.mode='auth';
+        resetChat();
         if(view==='chat')render();
         notify(error.message,{label:'Ingresar',run:()=>location.reload()});
       }
@@ -151,7 +157,8 @@
     try {return await store.askChat(payload,signal);}
     catch(error) {
       if(error.code==='CHAT_AUTH' && !signal?.aborted && owner===session?.user?.id) {
-        window.JChat.reset();
+        session.mode='auth';
+        resetChat();
         if(view==='chat')render();
         notify('Tu sesión venció. Vuelve a ingresar para consultar tus registros.',{label:'Ingresar',run:()=>location.reload()});
       }
@@ -310,6 +317,7 @@
     else if(view==='chat') window.JChat.render(el,getContext());
     else if(view==='categories') window.JCategories.render(el,getContext());
     else window.JInsights.render(el,getContext(),view);
+    if(session?.mode==='cloud') window.JChatWidget.update(view,getContext());
     updateContext(el); renderCalendar(); updateProfile(); updateStatus(); updateDateTools();
     window.JReviews.update(root.querySelector('[data-reviews]'),state,openCalendarEvent);
   }
@@ -359,7 +367,7 @@
     if(logout)logout.onclick=async()=>{
       if(saving){notify('Espera a que termine el guardado.');return;}
       logout.disabled=true;
-      window.JChat.reset();
+      resetChat();
       try {await store.signOut();location.reload();}
       catch(error){logout.disabled=false;notify(error.message);}
     };
@@ -402,7 +410,7 @@
   }
 
   function accept(opened) {
-    if(!opened.user || opened.user.id!==session?.user?.id) window.JChat.reset();
+    if(!opened.user || opened.user.id!==session?.user?.id) resetChat();
     session=opened;
     if(session.mode==='auth'){state=null;auth();return;}
     model.validate(session.state);state=session.state;shell();
