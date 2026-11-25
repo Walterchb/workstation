@@ -215,17 +215,62 @@
         '<span class="jchat-example-arrow">'+icon('arrow-up-right',15)+'</span></button>').join('')+'</div></div>';
   }
 
-  function renderPartial(container, text) {
-    // La numeración definitiva llega con las fuentes verificadas al terminar la respuesta.
+  // Conserva los párrafos, la selección y el desplazamiento mientras crece el Markdown.
+  function syncAnswerChildren(target, source) {
+    const incoming = [...source.childNodes];
+    for (const [index, fresh] of incoming.entries()) {
+      const current = target.childNodes[index];
+      if (!current) { target.append(fresh); continue; }
+      if (current.isEqualNode(fresh)) continue;
+      if (current.nodeType === 3 && fresh.nodeType === 3) {
+        if (fresh.data.startsWith(current.data) && typeof current.appendData === 'function') {
+          current.appendData(fresh.data.slice(current.data.length));
+        } else {
+          current.nodeValue = fresh.data;
+        }
+      } else if (current.nodeType === 1 && fresh.nodeType === 1 && current.cloneNode(false).isEqualNode(fresh.cloneNode(false))) {
+        syncAnswerChildren(current,fresh);
+      } else {
+        current.replaceWith(fresh);
+      }
+    }
+    while (target.childNodes.length > incoming.length) target.lastChild.remove();
+  }
+
+  // El matiz solo afecta a caracteres que el navegador ya ha mostrado.
+  function softenAppend(container, offset) {
+    const registry = window.CSS?.highlights;
+    if (!registry || typeof Highlight !== 'function' || typeof StaticRange !== 'function' || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const walker = document.createTreeWalker(container,NodeFilter.SHOW_TEXT);
+    let start, end;
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      if (!start && offset < node.length) start = {node,offset};
+      if (!start) offset -= node.length;
+      end = node;
+    }
+    if (!start || !end) return;
+    // Un fragmento posterior puede ampliar el mismo nodo sin modificar este intervalo.
+    const frozen = new StaticRange({startContainer:start.node,startOffset:start.offset,
+      endContainer:end,endOffset:end.length});
+    function layer(key) {
+      if (!registry.has(key)) registry.set(key,new Highlight());
+      return registry.get(key);
+    }
+    const fresh = layer('jchat-fresh'), settling = layer('jchat-settling');
+    fresh.add(frozen);
+    setTimeout(()=>{
+      fresh.delete(frozen); settling.add(frozen);
+      setTimeout(()=>settling.delete(frozen),55);
+    },55);
+  }
+
+  function renderPartial(container, text, soften) {
     const markup = window.JChatFormat.render(text.replace(/\[\d*$/,''), {citation:()=> ' '});
     const template = document.createElement('template');
     template.innerHTML = markup;
-    const existing = [...container.children], next = [...template.content.children];
-    let at = 0;
-    while (at < existing.length && at < next.length && existing[at].isEqualNode(next[at])) at++;
-    // Mantener en su sitio los bloques ya leídos y actualizar únicamente el tramo que crece.
-    for (const block of existing.slice(at)) block.remove();
-    container.append(...next.slice(at));
+    const before = container.textContent;
+    syncAnswerChildren(container,template.content);
+    if (soften && container.textContent.startsWith(before)) softenAppend(container,before.length);
   }
 
   function paint() {
@@ -246,7 +291,24 @@
     }
     const added = v.seen < t.turns.length || !!reply && (v.interim !== reply || v.shownText !== reply.text);
     if (v.interim !== reply && v.interim) {
-      for (const node of v.log.querySelectorAll('[data-chat-interim]')) node.remove();
+      const completed = !reply && t.turns[v.seen];
+      if (completed && completed.question === v.interim.question) {
+        // Finalizar sobre los nodos que ya se están leyendo también conserva la selección.
+        const finished = answerRow(completed,v.seen,icon);
+        const content = finished.querySelector('.jchat-answer');
+        syncAnswerChildren(v.partial,content);
+        const existing = v.partial.parentNode;
+        v.partial.classList.remove('jchat-partial');
+        v.partial.removeAttribute('data-chat-partial');
+        v.progress.remove();
+        while (content.nextSibling) existing.append(content.nextSibling);
+        existing.removeAttribute('aria-live');
+        for (const node of v.log.querySelectorAll('[data-chat-interim]')) node.removeAttribute('data-chat-interim');
+        latestAnswer = existing;
+        v.seen++;
+      } else {
+        for (const node of v.log.querySelectorAll('[data-chat-interim]')) node.remove();
+      }
       v.interim = null; v.shownText = '';
     }
     while (v.seen < t.turns.length) {
@@ -266,13 +328,13 @@
       v.partial = waiting.querySelector('[data-chat-partial]');
       v.progress = waiting.querySelector('[data-chat-progress]');
     }
-    const status = reply ? progressText[reply.stage] : '';
+    const status = reply ? progressText[reply.stage] : latestAnswer && !fresh ? 'Respuesta completa.' : '';
     if (v.activity.textContent !== status) v.activity.textContent = status;
     if (reply) {
       if (v.progress.lastElementChild.textContent !== status) v.progress.lastElementChild.textContent = status;
       v.progress.firstElementChild.hidden = !t.pending;
       if (v.shownText !== reply.text) {
-        renderPartial(v.partial,reply.text);
+        renderPartial(v.partial,reply.text,!fresh && !!t.pending);
         v.shownText = reply.text;
       }
     }
@@ -383,8 +445,6 @@
       '<div class="jchat-actions"><span class="jchat-keyhint">Enter para enviar · Mayús + Enter para otra línea</span>'+
       '<button type="submit" class="btn primary" data-chat-send aria-label="Enviar consulta" disabled><span>Enviar</span> '+icon('arrow-right',16)+'</button>'+
       '<button class="btn" type="button" data-chat-stop hidden>'+icon('x',15)+' Detener</button></div></form>'+
-      '<details class="jchat-disclosure"><summary>'+icon('lock',12)+'Privacidad de la conversación</summary>'+
-      '<p>OpenAI recibe tu consulta, los mensajes recientes de este ámbito y los registros necesarios para responder. La conversación se borra al recargar la página o cerrar sesión.</p></details>'+
       '</div></div></section>';
     const page = el.querySelector('.jchat');
     const get = selector => page.querySelector(selector);

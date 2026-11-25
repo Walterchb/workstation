@@ -179,10 +179,6 @@
 .jchat-actions .btn { flex: none; min-height: 33px; margin-left: auto; padding: 5px 11px; font-size: .77rem; }
 .jchat-actions .btn:disabled { box-shadow: none; opacity: .57; }
 .jchat-keyhint { color: #566c72; font-size: .69rem; line-height: 1.45; }
-.jchat-disclosure { margin: 6px 1px 0; color: #566c73; font-size: .69rem; line-height: 1.5; }
-.jchat-disclosure summary { width: fit-content; padding: 2px 0; font-weight: 650; }
-.jchat-disclosure summary svg { margin: 0 5px 1px 1px; }
-.jchat-disclosure p { margin: 4px 0 0; max-width: 85ch; }
 @supports (field-sizing: content) {
   .jchat-compose textarea { field-sizing: content; resize: none; }
 }
@@ -296,3 +292,8 @@ html:has(.jchat-widget-dialog[open]) { overflow: hidden; }
 }
 @media (prefers-reduced-motion: reduce) { .jchat-wait i { animation: none; } }
 @media print { [data-jchat-widget], .jchat-widget-dialog, .jchat-widget-launcher { display: none !important; } }
+
+@media (prefers-reduced-motion: no-preference) {
+  .jchat-partial::highlight(jchat-fresh) { color: #526675; }
+  .jchat-partial::highlight(jchat-settling) { color: #384c5a; }
+}

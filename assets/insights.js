@@ -474,35 +474,25 @@
     const dialog=document.createElement('dialog');
     dialog.className='ji-report-dialog'; dialog.setAttribute('aria-labelledby','ji-report-title');
     const trigger=document.activeElement;
-    dialog.innerHTML=`<div class="ji-report-tools"><span>Informe gerencial</span><div>${summary.abbreviatedComments ? '<label class="ji-edition"><span>Al imprimir o descargar</span><select data-edition aria-label="Comentarios al imprimir o descargar"><option value="summary">Comentarios destacados</option><option value="complete">Comentarios completos</option></select></label>' : ''}<button type="button" class="btn ghost" data-print-paper>${ctx.icon('printer',16)} Imprimir</button><button type="button" class="btn primary" data-pdf>${ctx.icon('download',16)} Descargar PDF</button><button type="button" class="icon-btn" aria-label="Cerrar informe" data-close-report>${ctx.icon('x',18)}</button></div></div><div class="ji-report-message" role="status" hidden></div><div class="ji-paper-wrap">${reportHTML(full)}</div>`;
+    dialog.innerHTML=`<div class="ji-report-tools"><span>Informe gerencial</span><div>${summary.abbreviatedComments ? '<label class="ji-edition"><span>Edición del informe</span><select data-edition aria-label="Edición del informe"><option value="summary">Comentarios destacados</option><option value="complete">Comentarios completos</option></select></label>' : ''}<button type="button" class="btn ghost" data-print-paper>${ctx.icon('printer',16)} Imprimir</button><button type="button" class="btn primary" data-pdf>${ctx.icon('download',16)} Descargar PDF</button><button type="button" class="icon-btn" aria-label="Cerrar informe" data-close-report>${ctx.icon('x',18)}</button></div></div><div class="ji-report-message" role="status" hidden></div><div class="ji-paper-wrap">${reportHTML(summary)}</div>`;
     const paper=dialog.querySelector('.ji-paper-wrap');
     paper.addEventListener('error',e=>{
       if (e.target.matches?.('.ji-paper-avatar img')) e.target.remove();
     },true);
     const edition=dialog.querySelector('[data-edition]');
     const exportReport=()=>edition?.value==='complete' ? full : summary;
+    edition?.addEventListener('change',()=>{paper.innerHTML=reportHTML(exportReport());});
     document.body.append(dialog);
     const download=dialog.querySelector('[data-pdf]'),message=dialog.querySelector('.ji-report-message');
     download.addEventListener('click',async()=>{
       if(download.disabled) return;
       download.disabled=true; download.setAttribute('aria-busy','true'); message.hidden=true;
-      try { await window.JReportPDF.download(exportReport()); }
+      try { await window.JReportPDF.download(exportReport(),paper.querySelector('.ji-paper')); }
       catch { message.textContent='No se pudo generar el PDF. Vuelve a intentarlo.'; message.hidden=false; }
       finally { download.disabled=false; download.removeAttribute('aria-busy'); }
     });
-    let printedSummary=false;
-    const preparePaper = () => {
-      if (!printedSummary && exportReport()!==full) {
-        paper.innerHTML=reportHTML(summary);
-        printedSummary=true;
-      }
-      document.body.classList.add('ji-printing');
-    };
-    const restorePaper = () => {
-      document.body.classList.remove('ji-printing');
-      if (printedSummary) paper.innerHTML=reportHTML(full);
-      printedSummary=false;
-    };
+    const preparePaper=()=>document.body.classList.add('ji-printing');
+    const restorePaper=()=>document.body.classList.remove('ji-printing');
     const printWindow=dialog.ownerDocument.defaultView;
     printWindow.addEventListener('beforeprint',preparePaper);
     printWindow.addEventListener('afterprint',restorePaper);
@@ -678,6 +668,11 @@
   }
 
   window.JInsights = {
+    reportPaper(report) {
+      const template=document.createElement('template');
+      template.innerHTML=reportHTML(report);
+      return template.content.firstElementChild;
+    },
     openGoal(id,ctx) { filters.goalId=id; filters.scope='Todos'; ctx.navigate('goals'); },
     makeReport(state, range, period, user, fullHistory = false) {
       return managementReport(summarize(state, range), period, window.JProfile?.display(state, user), fullHistory);
