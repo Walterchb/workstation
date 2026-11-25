@@ -412,6 +412,52 @@
       }
     }
 
+    function reuseCard({activity,reason,segments,index},goalColors) {
+      const id = 'jsheet-reuse-' + index;
+      const isSpace = activity.kind === 'space';
+      const goalColor = goalColors.get(activity.goalId);
+      const accent = isSpace ? '#94642C' : /^#[a-f\d]{6}$/i.test(goalColor) ? goalColor : '#778a9a';
+      const times = segments.map(({start,end})=>
+        '<span class="jsheet-reuse-range">' + esc(start) + ' – ' + esc(end || 'sin cierre') + '</span>'
+      ).join(' ');
+      const details = (times ? '<span class="jsheet-reuse-times">' + times + '</span>' : '') +
+        (activity.context?.trim() ? '<span class="jsheet-reuse-context"><b>Contexto</b> ' + esc(activity.context) + '</span>' : '') +
+        (activity.comment?.trim() ? '<span class="jsheet-reuse-comment"><b>Comentario de origen</b> ' + esc(activity.comment) + '</span>' : '') +
+        (reason ? '<span class="jsheet-reuse-reason">' + esc(reason) + '</span>' : '');
+      const kind = isSpace ? ' <span class="jsheet-reuse-kind">Espacio</span>' : '';
+      return '<label class="jsheet-reuse-card" style="--event-accent:' + accent + '">' +
+        '<input type="checkbox" data-reuse-id="' + esc(activity.id) + '" aria-labelledby="' + id + '-title"' +
+        (details ? ' aria-describedby="' + id + '-details"' : '') + (reason ? ' disabled' : '') +
+        (reuseIds.has(activity.id) ? ' checked' : '') + '><span class="jsheet-reuse-copy">' +
+        '<span class="jsheet-reuse-heading" id="' + id + '-title"><strong>' + esc(activity.title) + '</strong>' + kind + '</span>' +
+        (details ? '<span class="jsheet-reuse-details" id="' + id + '-details">' + details + '</span>' : '') + '</span></label>';
+    }
+
+    function reuseGroup(key,title,items,goalColors,canJump) {
+      const id = 'jsheet-reuse-' + key;
+      let jump = '';
+      if (canJump) {
+        const down = key === 'timed';
+        const target = down ? 'untimed' : 'timed';
+        const label = down ? 'Sin horario' : 'Con horario';
+        const hint = 'Ir a las actividades ' + label.toLowerCase();
+        jump = '<button type="button" class="jsheet-reuse-jump" data-act="jump-group" data-reuse-jump="' + target +
+          '" aria-controls="jsheet-group-' + target + '" aria-label="' + hint + '" title="' + hint + '">' +
+          label + ' <span aria-hidden="true">' + (down ? '↓' : '↑') + '</span></button>';
+      }
+      return '<section class="jsheet-reuse-group" id="jsheet-group-' + key + '" data-schedule="' + key + '" aria-labelledby="' + id + '">' +
+        '<header class="jsheet-reuse-group-head">' + icon(key === 'timed' ? 'clock' : 'list',16) +
+        '<h3 id="' + id + '" tabindex="-1">' + title + '</h3><span class="jsheet-reuse-count">' + items.length + '</span>' + jump + '</header>' +
+        (items.length ? '<div class="jsheet-reuse-cards">' + items.map(item=>reuseCard(item,goalColors)).join('') + '</div>' :
+          '<p class="jsheet-reuse-empty">Ningún registro ' + title.toLowerCase() + '.</p>') + '</section>';
+    }
+
+    function updateReuseSelection() {
+      const count = reuseIds.size;
+      extra.querySelector('.jsheet-reuse-selection').textContent = count + (count === 1 ? ' seleccionada' : ' seleccionadas');
+      btn('copy-rows').disabled = !count;
+    }
+
     function drawPanel() {
       extra.hidden = !panel;
       if (!panel) { extra.replaceChildren(); return; }
@@ -450,28 +496,23 @@
         return;
       }
       const candidates = model.reusableActivities(workingState(),sourceDate,draft.date);
-      const goalTitles = new Map(ctx.state.goals.map(goal=>[goal.id,goal.title]));
+      const goalColors = new Map(ctx.state.goals.map(goal=>[goal.id,goal.color]));
+      const timed = [], untimed = [];
+      candidates.forEach((candidate,index)=>{
+        const segments = [...candidate.activity.segments].sort((a,b)=>a.start.localeCompare(b.start));
+        const group = segments.length ? timed : untimed;
+        group.push({...candidate,index,segments});
+      });
+      timed.sort((a,b)=>a.segments[0].start.localeCompare(b.segments[0].start));
+      const canJump = timed.length > 0 && untimed.length > 0;
       const available = new Set(candidates.filter(x=>!x.reason).map(x=>x.activity.id));
       reuseIds = new Set([...reuseIds].filter(id=>available.has(id)));
       extra.innerHTML = '<div class="jsheet-extra-head"><label>Jornada de origen <select data-source>' +
         dates.map(day=>option(day,sourceDate,model.formatDate(day,{day:'numeric',month:'short',year:'numeric'}))).join('') +
         '</select></label>' + action('hide-extra','Cerrar') + '</div><div class="jsheet-reuse-rows">' +
-        candidates.map(({activity,reason},index)=>{
-          const id = 'jsheet-reuse-'+index;
-          const fields = [
-            ['Objetivo',goalTitles.get(activity.goalId)], ['Contexto',activity.context],
-            ['Comentario de origen',activity.comment]
-          ].filter(([,value])=>value?.trim());
-          const details = (activity.kind === 'space' ? '<small>Espacio sin objetivo</small>' : '') +
-            fields.map(([label,value])=>'<small><b>'+label+'</b> '+esc(value)+'</small>').join('') +
-            (reason ? '<small class="jsheet-reuse-reason">'+esc(reason)+'</small>' : '');
-          return '<label><input type="checkbox" data-reuse-id="'+esc(activity.id)+'" aria-labelledby="'+id+'-title"' +
-            (details ? ' aria-describedby="'+id+'-details"' : '') + (reason ? ' disabled' : '') +
-            (reuseIds.has(activity.id) ? ' checked' : '') + '><span class="jsheet-reuse-copy"><strong id="'+id+'-title">' +
-            esc(activity.title)+'</strong>'+(details ? '<span id="'+id+'-details">'+details+'</span>' : '')+'</span></label>';
-        }).join('') +
-        '</div><div class="jsheet-reuse-foot">' + action('copy-rows','Añadir seleccionadas') + '</div>';
-      btn('copy-rows').disabled = !reuseIds.size;
+        reuseGroup('timed','Con horario',timed,goalColors,canJump) + reuseGroup('untimed','Sin horario',untimed,goalColors,canJump) +
+        '</div><div class="jsheet-reuse-foot"><span class="jsheet-reuse-selection" role="status"></span>' + action('copy-rows','Añadir seleccionadas') + '</div>';
+      updateReuseSelection();
     }
 
     function readCell(control) {
@@ -506,10 +547,13 @@
         refreshSummary(); feedback();
       } else if (el.matches('[data-segment-pick]')) selectedSegment = Number(el.value);
       else if (el.matches('[data-plan-position]')) { planPosition=el.value; updatePlanPreview(); }
-      else if (el.matches('[data-source]')) { sourceDate = el.value; reuseIds.clear(); drawPanel(); }
+      else if (el.matches('[data-source]')) {
+        sourceDate = el.value; reuseIds.clear(); drawPanel();
+        extra.querySelector('[data-source]').focus({preventScroll:true});
+      }
       else if (el.matches('[data-reuse-id]')) {
         if (el.checked) reuseIds.add(el.dataset.reuseId); else reuseIds.delete(el.dataset.reuseId);
-        btn('copy-rows').disabled = !reuseIds.size;
+        updateReuseSelection();
       }
     }
 
@@ -749,6 +793,14 @@
       if (menu.open) menu.open = false;
       if (key === 'save') { save(); return; }
       if (key === 'cancel') { requestClose(); return; }
+      if (key === 'jump-group') {
+        const group = document.getElementById(button.getAttribute('aria-controls'));
+        const list = group.parentElement;
+        const scroller = window.getComputedStyle(list).overflowY === 'visible' ? extra : list;
+        scroller.scrollTop += group.getBoundingClientRect().top - scroller.getBoundingClientRect().top - scroller.clientTop;
+        group.querySelector('h3').focus({preventScroll:true});
+        return;
+      }
       if (key === 'edit-cell') {
         const cell=focusCell(selected,lastColumn,selectedSegment);
         if (cell) startEdit(cell,'end');
