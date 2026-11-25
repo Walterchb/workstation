@@ -412,28 +412,32 @@
       }
     }
 
-    function reuseCard({activity,reason,segments,index},goalColors) {
+    function reuseCard({activity,reason,segments,index},goals) {
       const id = 'jsheet-reuse-' + index;
-      const isSpace = activity.kind === 'space';
-      const goalColor = goalColors.get(activity.goalId);
-      const accent = isSpace ? '#94642C' : /^#[a-f\d]{6}$/i.test(goalColor) ? goalColor : '#778a9a';
-      const times = segments.map(({start,end})=>
-        '<span class="jsheet-reuse-range">' + esc(start) + ' – ' + esc(end || 'sin cierre') + '</span>'
-      ).join(' ');
-      const details = (times ? '<span class="jsheet-reuse-times">' + times + '</span>' : '') +
-        (activity.context?.trim() ? '<span class="jsheet-reuse-context"><b>Contexto</b> ' + esc(activity.context) + '</span>' : '') +
-        (activity.comment?.trim() ? '<span class="jsheet-reuse-comment"><b>Comentario de origen</b> ' + esc(activity.comment) + '</span>' : '') +
+      const timed = segments.length > 0;
+      const kind = activity.kind === 'space' ? '<span class="jd-space-label">Espacio</span>' : '';
+      const title = kind + esc(activity.title);
+      const times = segments.map(segment=>{
+        const duration = segment.end ? '<span class="jw-time-separator"> | </span><strong>' +
+          esc(model.duration(model.minutes({segments:[segment]}))) + '</strong>' : '';
+        return '<span class="jsheet-reuse-range">' + esc(segment.start) + ' – ' +
+          esc(segment.end || 'sin cierre') + duration + '</span>';
+      }).join(' ');
+      const details = (timed ? '<span class="jsheet-reuse-times jw-range">' + times + '</span>' : '') +
+        (activity.context?.trim() ? '<span class="jsheet-reuse-context jw-context">' + esc(activity.context) + '</span>' : '') +
+        (activity.comment?.trim() ? '<span class="jsheet-reuse-comment"><b>Comentario</b> ' + esc(activity.comment) + '</span>' : '') +
         (reason ? '<span class="jsheet-reuse-reason">' + esc(reason) + '</span>' : '');
-      const kind = isSpace ? ' <span class="jsheet-reuse-kind">Espacio</span>' : '';
-      return '<label class="jsheet-reuse-card" style="--event-accent:' + accent + '">' +
-        '<input type="checkbox" data-reuse-id="' + esc(activity.id) + '" aria-labelledby="' + id + '-title"' +
-        (details ? ' aria-describedby="' + id + '-details"' : '') + (reason ? ' disabled' : '') +
-        (reuseIds.has(activity.id) ? ' checked' : '') + '><span class="jsheet-reuse-copy">' +
-        '<span class="jsheet-reuse-heading" id="' + id + '-title"><strong>' + esc(activity.title) + '</strong>' + kind + '</span>' +
+      const heading = timed ? '<span class="jw-slot-heading"><span class="jw-name" id="' + id + '-title">' + title + '</span></span>' :
+        '<span id="' + id + '-title">' + title + '</span>';
+      return '<label class="jsheet-reuse-card"><input type="checkbox" data-reuse-id="' + esc(activity.id) +
+        '" aria-labelledby="' + id + '-title"' + (details ? ' aria-describedby="' + id + '-details"' : '') +
+        (reason ? ' disabled' : '') + (reuseIds.has(activity.id) ? ' checked' : '') + '>' +
+        '<span class="jsheet-reuse-copy ' + (timed ? 'jw-event' : 'jw-plan-task') + '" style="' +
+        window.JAgenda.taskPaint(activity,goals) + '">' + heading +
         (details ? '<span class="jsheet-reuse-details" id="' + id + '-details">' + details + '</span>' : '') + '</span></label>';
     }
 
-    function reuseGroup(key,title,items,goalColors,canJump) {
+    function reuseGroup(key,title,items,goals,canJump) {
       const id = 'jsheet-reuse-' + key;
       let jump = '';
       if (canJump) {
@@ -448,7 +452,7 @@
       return '<section class="jsheet-reuse-group" id="jsheet-group-' + key + '" data-schedule="' + key + '" aria-labelledby="' + id + '">' +
         '<header class="jsheet-reuse-group-head">' + icon(key === 'timed' ? 'clock' : 'list',16) +
         '<h3 id="' + id + '" tabindex="-1">' + title + '</h3><span class="jsheet-reuse-count">' + items.length + '</span>' + jump + '</header>' +
-        (items.length ? '<div class="jsheet-reuse-cards">' + items.map(item=>reuseCard(item,goalColors)).join('') + '</div>' :
+        (items.length ? '<div class="jsheet-reuse-cards">' + items.map(item=>reuseCard(item,goals)).join('') + '</div>' :
           '<p class="jsheet-reuse-empty">Ningún registro ' + title.toLowerCase() + '.</p>') + '</section>';
     }
 
@@ -496,7 +500,7 @@
         return;
       }
       const candidates = model.reusableActivities(workingState(),sourceDate,draft.date);
-      const goalColors = new Map(ctx.state.goals.map(goal=>[goal.id,goal.color]));
+      const goals = new Map(ctx.state.goals.map(goal=>[goal.id,goal]));
       const timed = [], untimed = [];
       candidates.forEach((candidate,index)=>{
         const segments = [...candidate.activity.segments].sort((a,b)=>a.start.localeCompare(b.start));
@@ -510,7 +514,7 @@
       extra.innerHTML = '<div class="jsheet-extra-head"><label>Jornada de origen <select data-source>' +
         dates.map(day=>option(day,sourceDate,model.formatDate(day,{day:'numeric',month:'short',year:'numeric'}))).join('') +
         '</select></label>' + action('hide-extra','Cerrar') + '</div><div class="jsheet-reuse-rows">' +
-        reuseGroup('timed','Con horario',timed,goalColors,canJump) + reuseGroup('untimed','Sin horario',untimed,goalColors,canJump) +
+        reuseGroup('timed','Con horario',timed,goals,canJump) + reuseGroup('untimed','Sin horario',untimed,goals,canJump) +
         '</div><div class="jsheet-reuse-foot"><span class="jsheet-reuse-selection" role="status"></span>' + action('copy-rows','Añadir seleccionadas') + '</div>';
       updateReuseSelection();
     }

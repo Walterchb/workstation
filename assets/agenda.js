@@ -156,6 +156,8 @@
     return `--event-accent:${color};--ribbon-color:${ribbon};--ribbon-ink:${ink};--heading-ink:${ink}`;
   }
 
+  const taskPaint = (task,goals) => paint(groupFor(task,goals));
+
   function identity(task,entry,place) {
     return `data-id="${esc(task.id)}" data-segment="${entry?.index || 0}" data-place="${place}"`;
   }
@@ -404,7 +406,7 @@
     const dialog = detail.dialog;
     const focused = dialog.contains(document.activeElement) ? document.activeElement : null;
     const key = focused?.dataset.jdField ? {...focused.dataset,field:focused.dataset.jdField} : null;
-    dialog.setAttribute("style",paint(groupFor(task,goals)));
+    dialog.setAttribute("style",taskPaint(task,goals));
     dialog.innerHTML = `<header class="jd-detail-heading"><h2 id="jd-detail-title">${esc(task.title)}</h2><button type="button" class="jd-detail-close icon-btn" aria-label="Cerrar detalle">${ctx.icon("x",17)}</button></header>
       <div class="jd-detail-sub">${meta.map(value=>"<span>"+esc(value)+"</span>").join(" · ")}</div>
       <p class="jd-detail-context">${esc(task.context || "Sin contexto registrado.")}</p>${taskFields(task,entry,"detail")}
@@ -694,5 +696,5 @@
     }
   }
 
-  window.JAgenda = {render,renderModes,getMode:()=>mode,openDay,openTaskDetail};
+  window.JAgenda = {render,renderModes,taskPaint,getMode:()=>mode,openDay,openTaskDetail};
 })();
