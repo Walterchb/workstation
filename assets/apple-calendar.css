@@ -15,3 +15,15 @@
 .japple-dialog .japple-status { margin:10px 0 0; color:var(--navy); }
 .japple-dialog footer { padding:12px 20px; font-size:.78rem; }
 .japple-dialog .btn { min-height:34px; padding:7px 10px; font-size:.79rem; }
+.japple-setup { margin:10px 0 13px; }
+.japple-modes { display:flex; width:fit-content; max-width:100%; padding:3px; border:1px solid var(--line); border-radius:5px; background:#f2f6f6; }
+.japple-modes button { padding:6px 10px; border:1px solid transparent; border-radius:3px; background:transparent; color:var(--muted); font:inherit; font-size:.8rem; cursor:pointer; }
+.japple-modes button[aria-pressed="true"] { background:#fff; color:var(--teal-deep); border-color:#c6d7d7; font-weight:700; }
+.japple-category { display:flex; align-items:flex-end; gap:10px; margin-top:13px; }
+.japple-category[hidden],.japple-address[hidden] { display:none; }
+.japple-category label { display:grid; min-width:0; flex:1; gap:4px; font-size:.76rem; font-weight:650; }
+.japple-category select,.japple-color { height:35px; border:1px solid var(--line); background:#fff; border-radius:4px; color:var(--ink); }
+.japple-category select { min-width:0; max-width:100%; font:inherit; font-size:.83rem; font-weight:500; padding:0 8px; }
+.japple-color { display:flex; align-items:center; gap:7px; padding:0 8px; cursor:copy; font-size:.77rem; font-variant-numeric:tabular-nums; }
+.japple-color i { width:12px; height:12px; background:var(--japple-hue); border:1px solid #0002; border-radius:3px; }
+.japple-dialog .japple-migration { font-size:.77rem; margin:13px 0 0; padding-left:10px; border-left:2px solid var(--line); }

@@ -92,18 +92,41 @@ test('iCalendar filtra el calendario elegido, usa horas de Lima, identificadores
   calendarModel.saveEvent(state,meeting({id:'personal',calendarId:'personal',title:'Privado y distinto'}),stamp);
   const first = ics.serialize(work,state.events);
   assert.equal(first,ics.serialize(work,state.events));
-  assert.match(first,/DTSTART:20261124T234500Z\r\nDTEND:20261125T001500Z/);
+  assert.equal(first.split('BEGIN:VTIMEZONE').length,2);
+  assert.ok(first.includes('BEGIN:VTIMEZONE\r\nTZID:America/Lima\r\n'));
+  assert.ok(first.includes('TZOFFSETTO:-0500\r\n'));
+  assert.ok(first.includes('DTSTART;TZID=America/Lima:20261124T184500\r\nDTEND;TZID=America/Lima:20261124T191500'));
+  assert.doesNotMatch(first,/DT(?:START|END):\d{8}T\d{6}Z/);
   assert.match(first,/DTSTART;VALUE=DATE:20280228\r\nDTEND;VALUE=DATE:20280301/);
   assert.match(first,/UID:meet-1@workhub.calendar/);
   assert.match(first,/DTSTAMP:20261124T123000Z/);
-  assert.match(first,/SEQUENCE:0\r\n/);
+  assert.match(first,/SEQUENCE:1\r\n/);
   assert.equal(first.includes('Privado y distinto'),false);
   assert.equal(first.includes(work.appleToken),false);
   assert.equal(first.endsWith('END:VCALENDAR\r\n'),true);
   calendarModel.saveEvent(state,meeting({title:'Actualizada'}),'2026-11-25T12:30:00.000Z');
   const update = ics.serialize(work,state.events);
-  assert.match(update,/UID:meet-1@workhub.calendar[\s\S]*?SEQUENCE:1\r\n/);
+  assert.match(update,/UID:meet-1@workhub.calendar[\s\S]*?SEQUENCE:2\r\n/);
   assert.match(update,/SUMMARY:Actualizada/);
+});
+
+test('Un evento de una suscripción anterior conserva su UID y publica la revisión siguiente incluso al cambiar de tipo', () => {
+  const state = empty(), calendar = calendarModel.calendars(state)[0];
+  const original = calendarModel.saveEvent(state,meeting(),stamp);
+  original.sequence = 12;
+  const exported = () => {
+    const text = ics.serialize(calendar,state.events);
+    return [text.match(/^UID:(.+)$/m)[1], Number(text.match(/^SEQUENCE:(\d+)$/m)[1])];
+  };
+  const previousUid = original.id + '@workhub.calendar';
+  assert.deepEqual(exported(),[previousUid,13]);
+  assert.equal(original.sequence,12);
+  calendarModel.saveEvent(state,{id:original.id,allDay:true,expectedSequence:12},stamp);
+  assert.deepEqual(exported(),[previousUid,14]);
+  calendarModel.saveEvent(state,{id:original.id,allDay:false,startTime:'08:00',endTime:'09:00',expectedSequence:13},stamp);
+  assert.deepEqual(exported(),[previousUid,15]);
+  state.events[0].sequence = 2147483647;
+  assert.deepEqual(exported(),[previousUid,2147483647]);
 });
 
 test('El archivo escapa caracteres reservados, no permite inyectar propiedades y pliega UTF-8 completo en 75 octetos', () => {
@@ -123,9 +146,15 @@ test('Las horas históricas conservan los cambios horarios de Lima', () => {
     calendarModel.saveEvent(state,meeting({id:'hist-'+index,startDate,endDate:startDate,startTime,endTime}),stamp);
   }
   const file = ics.serialize(calendarModel.calendars(state)[0],state.events);
-  assert.match(file,/DTSTART:19940101T053000Z\r\nDTEND:19940101T060000Z/);
-  assert.match(file,/DTSTART:19940401T031000Z\r\nDTEND:19940401T035000Z/);
-  assert.match(file,/DTSTART:19940201T143000Z\r\nDTEND:19940201T150000Z/);
+  assert.ok(file.includes('BEGIN:DAYLIGHT\r\n'));
+  for (const event of state.events) {
+    const start = event.startDate.replaceAll('-','')+'T'+event.startTime.replace(':','')+'00';
+    const end = event.endDate.replaceAll('-','')+'T'+event.endTime.replace(':','')+'00';
+    assert.ok(file.includes('DTSTART;TZID=America/Lima:'+start+'\r\nDTEND;TZID=America/Lima:'+end));
+  }
+  assert.equal(new Date(ics.limaInstant('1994-01-01','00:30')).toISOString(),'1994-01-01T05:30:00.000Z');
+  assert.equal(new Date(ics.limaInstant('1994-03-31','23:10')).toISOString(),'1994-04-01T03:10:00.000Z');
+  assert.equal(new Date(ics.limaInstant('1994-02-01','10:30')).toISOString(),'1994-02-01T14:30:00.000Z');
 });
 
 test('La categoría y el color de cada evento se comparten entre calendarios y el cambio de nombre actualiza la suscripción', () => {

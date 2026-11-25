@@ -9,6 +9,7 @@ body{background:#f4f7f9;color:#203847}main{max-width:790px;margin:32px auto;padd
 h1{font-size:1.85rem;letter-spacing:-.045em;margin:18px 0 12px}h2{font-size:1.16rem;margin:27px 0 10px}
 p,li{font-size:.91rem;line-height:1.65}li+li{margin-top:8px}ol{padding-left:1.4em}
 pre{overflow-x:auto;white-space:pre-wrap;overflow-wrap:anywhere;background:#f1f6f5;padding:12px;border-radius:5px;font-size:.82rem}code{overflow-wrap:anywhere}
+.setup-copy{margin:.45em .5em .25em 0;padding:.4em .8em;border:1px solid #accbc7;border-radius:5px;background:#f4faf9;color:#21554e;cursor:pointer;font:inherit;font-weight:600}.setup-copy:focus-visible{outline:2px solid #126a63;outline-offset:2px}.copy-status{font-size:.85rem;color:#34584e}
 footer{border-top:1px solid #dce5eb;padding-top:10px;margin-top:22px}footer a{margin-right:15px;font-size:.82rem}
 @media(max-width:600px){main{margin:0;border:0}}
 </style>
@@ -18,10 +19,10 @@ footer{border-top:1px solid #dce5eb;padding-top:10px;margin-top:22px}footer a{ma
 <h1>Ver un calendario de Work Hub en Apple</h1>
 <p>La suscripción muestra en Apple los eventos y reuniones del calendario que elijas. Crea o modifica los eventos en Work Hub. Apple consulta el enlace periódicamente, por lo que los cambios pueden tardar en aparecer.</p>
 <h2>1. Activar el servicio en tu proyecto Supabase</h2>
-<p>Completa estos pasos en el proyecto que ya utiliza Work Hub. Si tenías una suscripción anterior, vuelve a ejecutar el SQL y publica el código actualizado en la función <code>workhub-calendar</code> existente para que incluya los avisos y las categorías. Tu enlace sigue siendo el mismo.</p>
+<p>Si ya usas una suscripción, copia primero la actualización en tu repositorio y publícala con GitHub Desktop. En el proyecto de Supabase de Work Hub, ejecuta el SQL actualizado y reemplaza el código de la función <code>workhub-calendar</code> existente. Se conserva tu enlace de calendario completo.</p>
 <ol>
-<li>Abre <strong>SQL Editor → New query</strong> en Supabase. Copia el contenido de <a href="../supabase/apple-calendar.sql"><code>supabase/apple-calendar.sql</code></a>, pégalo en la consulta y pulsa <strong>Run</strong>.</li>
-<li>En <strong>Edge Functions</strong>, abre el editor de <code>workhub-calendar</code>. Si es la primera instalación, selecciona <strong>Deploy a new function → Via Editor</strong> y dale ese nombre. Abre con el Bloc de notas el archivo <a href="../supabase/functions/workhub-calendar/index.ts"><code>supabase/functions/workhub-calendar/index.ts</code></a> del ZIP. Copia todo su contenido y reemplaza el código del editor. Pulsa <strong>Deploy function</strong>.</li>
+<li>Abre <strong>SQL Editor → New query</strong> en Supabase. Pega el contenido de <a href="../supabase/apple-calendar.sql"><code>supabase/apple-calendar.sql</code></a> y pulsa <strong>Run</strong>. Verás una confirmación de éxito.<br><button class="setup-copy" type="button">Copiar SQL</button><span class="copy-status" role="status"></span></li>
+<li>En <strong>Edge Functions</strong>, abre el editor de <code>workhub-calendar</code>. Si es la primera instalación, selecciona <strong>Deploy a new function → Via Editor</strong> y dale ese nombre. Reemplaza todo el contenido de <code>index.ts</code> con el archivo actualizado <a href="../supabase/functions/workhub-calendar/index.ts"><code>supabase/functions/workhub-calendar/index.ts</code></a>. Pulsa <strong>Deploy</strong>.<br><button class="setup-copy" type="button">Copiar función</button><span class="copy-status" role="status"></span></li>
 <li>En el detalle de <strong>workhub-calendar</strong>, desactiva <strong>Verify JWT</strong> (o <strong>Verify JWT with legacy secret</strong>) y guarda. Apple consulta la función mediante un enlace privado. La función verifica su código secreto cada vez que recibe una petición.</li>
 </ol>
 <details><summary>Publicar la función desde la terminal</summary><p>Si usas la <a href="https://supabase.com/docs/guides/local-development/cli/getting-started">CLI de Supabase</a>, puedes publicar la función después de ejecutar el SQL. Desde la carpeta de Work Hub que contiene <code>index.html</code>, reemplaza <code>TU_PROJECT_REF</code> por el identificador de tu proyecto.</p><pre>supabase login
@@ -29,14 +30,47 @@ supabase projects list
 supabase functions deploy workhub-calendar --project-ref TU_PROJECT_REF --no-verify-jwt --use-api</pre></details>
 <h2>2. Suscribirte desde iPhone o Mac</h2>
 <ol>
-<li>En <strong>Work Hub → Calendario</strong>, abre la conexión de Apple del calendario que quieres suscribir. Pulsa <strong>Activar suscripción</strong> y luego <strong>Abrir en Calendario de Apple</strong>.</li>
+<li>En <strong>Work Hub → Calendario → Calendario de Apple</strong>, elige tu calendario de origen, por ejemplo <strong>Trabajo</strong>, y pulsa <strong>Continuar</strong>.</li>
+<li>Usa <strong>Por categoría</strong> si quieres distinguir tus categorías por color en Apple. Elige una categoría, pulsa <strong>Activar suscripción</strong> y después <strong>Abrir en Calendario de Apple</strong>. Repite estos pasos con cada categoría que quieras ver, incluida <strong>Sin categoría</strong> si la usas. Al crear una categoría nueva que quieras ver en Apple, suscríbete una vez a su enlace. Para ver todos los eventos con un solo color, elige <strong>Calendario completo</strong>.</li>
 <li>También puedes elegir <strong>Copiar enlace</strong>. En el iPhone, abre <strong>Calendario → Calendarios → Agregar calendario → Agregar calendario de suscripción</strong> y pega la URL. En la Mac, usa <strong>Archivo → Nueva suscripción a calendario</strong>.</li>
 <li>Elige <strong>iCloud</strong> como cuenta o ubicación si quieres que la suscripción aparezca en los dispositivos conectados a tu cuenta de Apple. Repite la suscripción para cada calendario que quieras ver.</li>
 </ol>
 <p>Quien tenga el enlace puede leer los eventos de ese calendario, incluido su lugar y descripción. <strong>Desactivar enlace</strong> interrumpe las consultas. Al reactivarlo se genera una URL nueva. Para retirar eventos que Apple haya conservado, elimina la suscripción desde Calendario.</p>
+<h2>El color de las categorías</h2>
+<p>En Apple, cada suscripción tiene un color. Work Hub envía el nombre y el color de cada categoría en su enlace. Si Apple muestra otro tono, copia el código de color que aparece en Work Hub. En la Mac, haz clic con la tecla Control sobre el calendario y selecciona el color personalizado. En el iPhone, entra a <strong>Calendario → Calendarios → ⓘ → Color</strong>.</p>
+<p>Si ya tienes el calendario completo, comprueba primero que aparezcan los eventos de tus categorías. Después puedes cancelar la suscripción al calendario completo <strong>en Apple</strong> para evitar eventos y avisos duplicados. Tus eventos originales siguen en Work Hub.</p>
+<h2>La hora en Lima</h2>
+<p>Los eventos con horario se envían con la zona de origen <code>America/Lima</code>. Una reunión registrada a las 09:00 se publica a las 09:00 de Lima. Si tras la actualización todavía ves GMT, revisa en el iPhone <strong>Configuración → Apps → Calendario → Anulación de zona horaria</strong>. Si está activa con otra ciudad, selecciona Lima o desactiva la anulación para usar la ubicación del teléfono.</p>
 <h2>Avisos de los eventos</h2>
 <p>Al crear un evento en Work Hub, elige cuándo quieres el aviso. La suscripción y la descarga incluyen esa antelación, también cuando reutilizas el evento. Para recibir los avisos en la Mac, permite las notificaciones de Calendario y comprueba en la información del calendario que <strong>Ignorar avisos</strong> esté desactivado.</p>
 <h2>Importar una copia puntual</h2>
 <p>En el mismo diálogo, elige <strong>Descargar</strong>. El archivo <code>.ics</code> funciona desde la primera instalación de Work Hub, incluso antes de activar el servicio en Supabase. En la Mac, abre el archivo y elige el calendario de destino. Esta copia contiene los eventos del momento de la descarga.</p>
 <footer><a href="https://support.apple.com/es-la/102301">Suscripciones de iCloud</a><a href="https://support.apple.com/es-us/guide/calendar/icl624fd1912/mac">Avisos en la Mac</a><a href="https://support.apple.com/es-lamr/guide/calendar/icl1023/mac">Importar en la Mac</a><a href="https://supabase.com/docs/guides/functions/deploy">Publicar funciones en Supabase</a></footer>
-</main></body></html>
+</main>
+<script>
+for (const button of document.querySelectorAll('.setup-copy')) {
+  const item = button.closest('li');
+  const source = item.querySelector('a');
+  const status = item.querySelector('[role="status"]');
+  if (location.protocol === 'file:') {
+    button.hidden = true;
+    status.textContent = 'Abre el archivo indicado con el Bloc de notas para copiar su contenido.';
+    continue;
+  }
+  button.addEventListener('click', async () => {
+    button.disabled = true;
+    try {
+      const response = await fetch(source.href, {cache:'no-store'});
+      if (!response.ok) throw new Error('Archivo no disponible');
+      const contents = await response.text();
+      if (!contents.trim() || /^\s*</.test(contents)) throw new Error('Archivo no disponible');
+      await navigator.clipboard.writeText(contents);
+      status.textContent = 'Copiado. Ya puedes pegarlo en Supabase.';
+    } catch {
+      status.textContent = 'Abre el archivo del enlace con un editor de texto y copia su contenido.';
+    } finally {
+      button.disabled = false;
+    }
+  });
+}
+</script></body></html>

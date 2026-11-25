@@ -69,8 +69,24 @@
     requireValue(calendar && typeof calendar.id === 'string' && idPattern.test(calendar.id), 'El identificador del calendario no es válido.');
     checkText(calendar.name, 'Nombre del calendario', limits.name, true);
     requireValue(typeof calendar.color === 'string' && /^#[\da-f]{6}$/i.test(calendar.color), 'Elige un color válido para el calendario.');
-    if (calendar.appleToken !== undefined) {
-      requireValue(typeof calendar.appleToken === 'string' && /^[a-f0-9]{64}$/.test(calendar.appleToken), 'El enlace de suscripción del calendario no es válido.');
+  }
+
+  function checkFeedToken(token, used) {
+    requireValue(typeof token === 'string' && /^[a-f0-9]{64}$/.test(token), 'El enlace de suscripción no es válido.');
+    requireValue(!used.has(token), 'Cada suscripción requiere su propio enlace.');
+    used.add(token);
+  }
+
+  function checkSubscriptions(calendar, categoryIds, used) {
+    if (calendar.appleToken !== undefined) checkFeedToken(calendar.appleToken, used);
+    const entries = calendar.appleCategoryTokens;
+    if (entries === undefined) return;
+    requireValue(entries && typeof entries === 'object' && !Array.isArray(entries),
+      'Los enlaces de suscripción por categoría no son válidos.');
+    for (const [key,token] of Object.entries(entries)) {
+      requireValue(key.startsWith('c:') && (key === 'c:' || categoryIds.has(key.slice(2))),
+        'La categoría del enlace de suscripción ya no existe.');
+      checkFeedToken(token, used);
     }
   }
 
@@ -115,18 +131,15 @@
     if (state.calendars === undefined && state.events === undefined && state.eventCategories === undefined) return state;
     const list = calendars(state);
     requireValue(list.length > 0, 'Conserva al menos un calendario.');
+    const categoryIds = checkCategories(categories(state));
     const calendarIds = new Set(), names = new Set(), tokens = new Set();
     for (const calendar of list) {
       checkCalendar(calendar);
+      checkSubscriptions(calendar,categoryIds,tokens);
       const name = calendar.name.trim().normalize('NFC').toLocaleLowerCase('es-PE');
       requireValue(!calendarIds.has(calendar.id) && !names.has(name), 'Ya existe un calendario con ese nombre o identificador.');
       calendarIds.add(calendar.id); names.add(name);
-      if (calendar.appleToken !== undefined) {
-        requireValue(!tokens.has(calendar.appleToken), 'Cada calendario requiere su propio enlace de suscripción.');
-        tokens.add(calendar.appleToken);
-      }
     }
-    const categoryIds = checkCategories(categories(state));
     const ids = new Set();
     for (const event of events(state)) {
       checkEvent(event, calendarIds, categoryIds);
@@ -147,6 +160,41 @@
     validate({...state, calendars:next});
     state.calendars = next;
     return calendar;
+  }
+
+  function getCategoryToken(calendar, categoryId) {
+    const entries = calendar?.appleCategoryTokens;
+    const key = 'c:' + categoryId;
+    return entries && Object.hasOwn(entries,key) ? entries[key] : undefined;
+  }
+
+  function withCategoryToken(calendar, categoryId, token) {
+    const entries = {...calendar.appleCategoryTokens};
+    const key = 'c:' + categoryId;
+    if (token === null) delete entries[key];
+    else entries[key] = token;
+    const updated = {...calendar};
+    if (Object.keys(entries).length) updated.appleCategoryTokens = entries;
+    else delete updated.appleCategoryTokens;
+    return updated;
+  }
+
+  function setCategoryToken(state, calendarId, categoryId, token) {
+    const list = calendars(state);
+    const previous = list.find(calendar => calendar.id === calendarId);
+    requireValue(previous, 'El calendario ya no está disponible.');
+    const catalog = categories(state);
+    requireValue(categoryId === '' || catalog.some(category => category.id === categoryId), 'La categoría ya no está disponible.');
+    requireValue(token === null || typeof token === 'string', 'El enlace de suscripción no es válido.');
+    const current = getCategoryToken(previous,categoryId);
+    if (current === token || (token === null && current === undefined)) return previous;
+    const updated = withCategoryToken(previous,categoryId,token);
+    const changes = {calendars:list.map(calendar => calendar.id === calendarId ? updated : calendar)};
+    // El servicio puede publicar una categoría aunque todavía no tenga eventos.
+    if (state.eventCategories === undefined && token !== null) changes.eventCategories = catalog;
+    validate({...state,...changes});
+    Object.assign(state,changes);
+    return updated;
   }
 
   function removeCalendar(state, id) {
@@ -179,7 +227,12 @@
     const list = categories(state);
     requireValue(list.some(category => category.id === id), 'La categoría ya no está disponible.');
     requireValue(!events(state).some(event => event.categoryId === id), 'Cambia la categoría de sus eventos antes de eliminarla.');
-    state.eventCategories = list.filter(category => category.id !== id);
+    const changes = {eventCategories:list.filter(category => category.id !== id)};
+    if (state.calendars?.some(calendar => getCategoryToken(calendar,id))) {
+      changes.calendars = state.calendars.map(calendar => getCategoryToken(calendar,id) ? withCategoryToken(calendar,id,null) : calendar);
+    }
+    validate({...state,...changes});
+    Object.assign(state,changes);
   }
 
   function saveEvent(state, input, now = new Date().toISOString()) {
@@ -219,5 +272,5 @@
   }
 
   globalThis.JCalendarModel = Object.freeze({limits, calendars, categories, events, eventCategory, eventColor, reminderOptions,
-    validate, saveCalendar, removeCalendar, saveCategory, removeCategory, saveEvent, removeEvent, occursOn});
+    validate, saveCalendar, removeCalendar, getCategoryToken, setCategoryToken, saveCategory, removeCategory, saveEvent, removeEvent, occursOn});
 })();
