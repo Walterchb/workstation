@@ -13,6 +13,8 @@
   let revision = null;
   let pendingWrite = null;
   let busy = false;
+  let renewal = null;
+  let chatRequest = null;
 
   function failure(code, message, status = 0) {
     return Object.assign(new Error(message), { code, status });
@@ -53,6 +55,7 @@
   }
 
   function forgetSession() {
+    chatRequest?.abort();
     session = null;
     user = null;
     revision = null;
@@ -75,19 +78,23 @@
     catch { /* Sigue en memoria si el navegador impide guardar la sesión. */ }
   }
 
+  async function post(path, body, token, signal) {
+    const headers = { "Content-Type": "application/json", apikey: config.key };
+    if (token) headers.Authorization = "Bearer " + token;
+    const response = await fetch(config.url + path, {
+      method: "POST", headers, body: JSON.stringify(body), signal,
+      cache: "no-store", credentials: "omit", referrerPolicy: "no-referrer"
+    });
+    return { response, raw: await response.text() };
+  }
+
   async function request(path, body, token) {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 12000);
-    const headers = { "Content-Type": "application/json", apikey: config.key };
-    if (token) headers.Authorization = "Bearer " + token;
     let response;
     let raw;
     try {
-      response = await fetch(config.url + path, {
-        method: "POST", headers, body: JSON.stringify(body), signal: controller.signal,
-        cache: "no-store", credentials: "omit", referrerPolicy: "no-referrer"
-      });
-      raw = await response.text();
+      ({ response, raw } = await post(path, body, token, controller.signal));
     } catch {
       throw failure("NETWORK", "No se pudo confirmar la operación. Revisa tu conexión y vuelve a intentarlo.");
     } finally { clearTimeout(timeout); }
@@ -121,19 +128,28 @@
     return data;
   }
 
-  async function refreshSession() {
-    if (!session) throw failure("AUTH", authMessage);
+  async function renewSession(current) {
     try {
-      const updated = await request("/auth/v1/token?grant_type=refresh_token", { refresh_token: session.refresh_token });
-      if (updated?.user?.id !== session.user.id) throw failure("AUTH", authMessage);
+      const updated = await request("/auth/v1/token?grant_type=refresh_token", { refresh_token: current.refresh_token });
+      if (session !== current || updated?.user?.id !== current.user.id) throw failure("AUTH", authMessage);
       setSession(updated);
     } catch (error) {
       if (error.code === "AUTH" || [400, 401, 403].includes(error.status)) {
-        forgetSession();
+        if (session === current) forgetSession();
         throw failure("AUTH", authMessage);
       }
       throw error;
     }
+  }
+
+  async function refreshSession() {
+    if (!session) throw failure("AUTH", authMessage);
+    // El chat puede coincidir con un guardado. El refresh token solo se canjea una vez.
+    if (renewal?.session === session) return renewal.promise;
+    const flight = { session, promise: renewSession(session) };
+    renewal = flight;
+    try { return await flight.promise; }
+    finally { if (renewal === flight) renewal = null; }
   }
 
   async function rpc(name, body) {
@@ -196,11 +212,14 @@
   async function signIn(email, password) {
     config = readConfig();
     const data = await request("/auth/v1/token?grant_type=password", { email: String(email).trim(), password });
+    chatRequest?.abort();
     setSession(data);
     return openCloud();
   }
 
   async function signOut() {
+    mode = "auth";
+    chatRequest?.abort();
     try {
       if (session) {
         if (Date.now() / 1000 >= session.expires_at) await refreshSession();
@@ -209,6 +228,78 @@
     } catch { /* Si se perdió la red, el acceso local también debe terminar. */ }
     finally { forgetSession(); }
     return view();
+  }
+
+  const chatErrors = Object.freeze({
+    CHAT_AUTH: "Vuelve a iniciar sesión en Work Station para consultar el chat.",
+    CHAT_NOT_CONFIGURED: "Revisa la función workhub-chat y el secreto OPENAI_API_KEY en Supabase.",
+    CHAT_ACCESS: "Tu cuenta no tiene permiso para consultar estos registros.",
+    CHAT_LIMIT: "Hay demasiadas consultas en este momento. Espera un momento y vuelve a intentar.",
+    CHAT_QUOTA: "El proyecto de la API de OpenAI agotó su cuota. Revisa su saldo y sus límites de uso.",
+    CHAT_INPUT: "Revisa el mensaje y su extensión antes de enviarlo.",
+    CHAT_DATA: "El chat no pudo leer los registros de tu cuenta en Work Station.",
+    CHAT_PROVIDER: "OpenAI no pudo completar la respuesta. Puedes volver a consultar.",
+    CHAT_TIMEOUT: "La consulta superó el tiempo de espera. Prueba con un período o una pregunta más específicos.",
+    CHAT_NETWORK: "Se interrumpió la conexión con el chat. Puedes volver a enviar tu pregunta."
+  });
+
+  function chatFailure(response, data) {
+    const status = response.status;
+    if (status === 404) return failure("CHAT_NOT_CONFIGURED", "La función workhub-chat todavía no está desplegada en este proyecto de Supabase.", status);
+    const fallback = {400:"CHAT_INPUT", 401:"CHAT_AUTH", 403:"CHAT_ACCESS", 413:"CHAT_INPUT", 429:"CHAT_LIMIT", 504:"CHAT_TIMEOUT"};
+    const code = Object.hasOwn(chatErrors, data?.code) ? data.code : fallback[status] || "CHAT_PROVIDER";
+    return failure(code, chatErrors[code], status);
+  }
+
+  async function askChat(payload, signal) {
+    const owner = user?.id;
+    if (mode !== "cloud" || !owner || session?.user.id !== owner || revision === null) throw failure("CHAT_AUTH", chatErrors.CHAT_AUTH);
+    if (chatRequest && !chatRequest.signal.aborted) throw failure("CHAT_BUSY", "Ya hay una consulta en curso.");
+    const controller = new AbortController();
+    const cancel = () => controller.abort();
+    chatRequest = controller;
+    let timedOut = false;
+    const timeout = setTimeout(() => { timedOut = true; cancel(); }, 100000);
+    signal?.addEventListener("abort", cancel, {once:true});
+    if (signal?.aborted) cancel();
+    function checkSession() {
+      if (timedOut) throw failure("CHAT_TIMEOUT", chatErrors.CHAT_TIMEOUT);
+      if (mode !== "cloud" || session?.user.id !== owner) throw failure("CHAT_AUTH", chatErrors.CHAT_AUTH);
+      if (controller.signal.aborted) {
+        throw Object.assign(failure("CHAT_ABORTED", "Consulta cancelada."), {name:"AbortError"});
+      }
+    }
+    try {
+      checkSession();
+      if (Date.now() / 1000 + 45 >= session.expires_at) await refreshSession();
+      for (let attempt = 0; attempt < 2; attempt++) {
+        checkSession();
+        const token = session.access_token;
+        const {response, raw} = await post("/functions/v1/workhub-chat", payload, token, controller.signal);
+        checkSession();
+        let data;
+        try { data = JSON.parse(raw); } catch { /* Puede ser un error del gateway sin JSON. */ }
+        if (response.ok) {
+          if (typeof data?.answer !== "string" || !data.answer.trim() || !Array.isArray(data.sources)) {
+            throw failure("CHAT_PROVIDER", "El chat devolvió una respuesta incompleta.");
+          }
+          return { answer: data.answer, sources: data.sources };
+        }
+        const error = chatFailure(response, data);
+        // Un 401 de autenticación ocurre antes de llamar a OpenAI. No se repite una consulta facturable.
+        if (response.status !== 401 || error.code !== "CHAT_AUTH" || attempt > 0) throw error;
+        if (token === session.access_token) await refreshSession();
+      }
+    } catch (error) {
+      checkSession();
+      if (error.code === "AUTH") throw failure("CHAT_AUTH", chatErrors.CHAT_AUTH);
+      if (typeof error.code === "string" && error.code.startsWith("CHAT_")) throw error;
+      throw failure("CHAT_NETWORK", chatErrors.CHAT_NETWORK);
+    } finally {
+      clearTimeout(timeout);
+      signal?.removeEventListener("abort", cancel);
+      if (chatRequest === controller) chatRequest = null;
+    }
   }
 
   function operationId() {
@@ -243,6 +334,6 @@
   }
 
   window.JStore = Object.freeze({
-    boot: exclusive(boot), signIn: exclusive(signIn), signOut: exclusive(signOut), save: exclusive(save)
+    boot: exclusive(boot), signIn: exclusive(signIn), signOut: exclusive(signOut), save: exclusive(save), askChat
   });
 })();

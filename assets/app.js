@@ -5,7 +5,7 @@
   const model=window.JModel;
   const store=window.JStore;
   const root=document.getElementById('root');
-  const titles={agenda:'Actividades',calendar:'Calendario',notes:'Notas',goals:'Objetivos',analysis:'Análisis',categories:'Categorías'};
+  const titles={agenda:'Actividades',calendar:'Calendario',notes:'Notas',goals:'Objetivos',analysis:'Análisis',chat:'Chat',categories:'Categorías'};
   let view='agenda', date=model.today(), calendarMonth=date.slice(0,7);
   let session=null, state=null, saving=false, clockHandle;
   const mark='<img src="./assets/icons/mark.svg" width="37" height="37" alt="">';
@@ -81,7 +81,11 @@
       return true;
     } catch(error) {
       if(error.code==='CONFLICT')notify(error.message,{label:'Recargar',run:()=>location.reload()});
-      else if(error.code==='AUTH')notify(error.message,{label:'Ingresar',run:()=>location.reload()});
+      else if(error.code==='AUTH'){
+        window.JChat.reset();
+        if(view==='chat')render();
+        notify(error.message,{label:'Ingresar',run:()=>location.reload()});
+      }
       else notify(error.message||'No se pudo guardar el cambio.');
       return false;
     } finally {saving=false;updateStatus();}
@@ -129,9 +133,35 @@
     window.JWorkCalendar.openEvent(id,getContext());
   }
 
+  function openChatSource(source) {
+    if(!state || !source || typeof source.id!=='string')return;
+    switch(source.type) {
+      case 'task':
+      case 'space': return openSearchTask(source.id);
+      case 'note': return openSearchNote(source.id);
+      case 'event': return openCalendarEvent(source.id);
+      case 'goal':
+        if(!state.goals.some(goal=>goal.id===source.id)) {notify('El objetivo ya no está disponible.');return;}
+        return window.JInsights.openGoal(source.id,getContext());
+    }
+  }
+
+  async function askChat(payload,signal) {
+    const owner=session?.user?.id;
+    try {return await store.askChat(payload,signal);}
+    catch(error) {
+      if(error.code==='CHAT_AUTH' && !signal?.aborted && owner===session?.user?.id) {
+        window.JChat.reset();
+        if(view==='chat')render();
+        notify('Tu sesión venció. Vuelve a ingresar para consultar tus registros.',{label:'Ingresar',run:()=>location.reload()});
+      }
+      throw error;
+    }
+  }
+
   function getContext() {
     const day=date;
-    return {state,user:session?.user,date:day,setDate,mutate,toast:notify,render,icon,navigate,openSearch,openSearchTask,openSearchNote,openCalendarEvent,
+    return {state,user:session?.user,date:day,setDate,mutate,toast:notify,render,icon,navigate,openSearch,openSearchTask,openSearchNote,openCalendarEvent,openChatSource,askChat,
       updateTaskField:(id,field,value)=>updateTaskField(day,id,field,value),
       updateTaskFieldForDate:updateTaskField,
       openTask:(id=null,defaults={})=>window.JEditor.open(id,defaults,getContext())};
@@ -277,6 +307,7 @@
     if(view==='agenda') window.JAgenda.render(el,getContext());
     else if(view==='notes') window.JNotes.render(el,getContext());
     else if(view==='calendar') window.JWorkCalendar.render(el,getContext());
+    else if(view==='chat') window.JChat.render(el,getContext());
     else if(view==='categories') window.JCategories.render(el,getContext());
     else window.JInsights.render(el,getContext(),view);
     updateContext(el); renderCalendar(); updateProfile(); updateStatus(); updateDateTools();
@@ -302,7 +333,7 @@
   function shell() {
     root.innerHTML='<div class="app-shell"><button type="button" class="backdrop" aria-label="Cerrar navegación"></button><aside id="side-menu" class="rail" aria-label="Menú de Work Hub">'+
       '<div class="brandbar">'+mark+'<span>Work Hub</span><button class="close-menu" aria-label="Cerrar menú">'+icon('x')+'</button></div>'+
-      '<nav class="rail-nav" aria-label="Vistas principales">'+[['agenda','calendar-days'],['calendar','calendar'],['notes','notes-board'],['goals','target'],['analysis','bar-chart'],['categories','layers']].map(([v,i])=>'<button data-view="'+v+'">'+icon(i,19)+titles[v]+'</button>').join('')+'</nav>'+
+      '<nav class="rail-nav" aria-label="Vistas principales">'+[['agenda','calendar-days'],['calendar','calendar'],['notes','notes-board'],['goals','target'],['analysis','bar-chart'],['chat','sparkles'],['categories','layers']].map(([v,i])=>'<button data-view="'+v+'">'+icon(i,19)+titles[v]+'</button>').join('')+'</nav>'+
       '<section class="cal-wrap" aria-label="Calendario de jornadas"></section>'+
       '<div class="rail-bottom"><div class="rail-user"><button class="profile-trigger" data-profile type="button" aria-label="Editar perfil" aria-haspopup="dialog"><span class="monogram" aria-hidden="true"></span><span class="usercopy"><b></b><span class="account-mode" role="status"></span></span>'+icon('pencil',13)+'</button>'+
       '<button data-logout aria-label="Cerrar sesión" title="Cerrar sesión">'+icon('logout',18)+'</button></div></div></aside>'+
@@ -328,6 +359,7 @@
     if(logout)logout.onclick=async()=>{
       if(saving){notify('Espera a que termine el guardado.');return;}
       logout.disabled=true;
+      window.JChat.reset();
       try {await store.signOut();location.reload();}
       catch(error){logout.disabled=false;notify(error.message);}
     };
@@ -370,6 +402,7 @@
   }
 
   function accept(opened) {
+    if(!opened.user || opened.user.id!==session?.user?.id) window.JChat.reset();
     session=opened;
     if(session.mode==='auth'){state=null;auth();return;}
     model.validate(session.state);state=session.state;shell();

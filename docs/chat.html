@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="es-PE">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Activar el chat · Work Station</title>
+  <link rel="stylesheet" href="../assets/base.css">
+  <style>
+    body { background:#f3f6f8; color:#203949; }
+    main { max-width:800px; margin:28px auto; padding:clamp(20px,4vw,44px); background:#fff; border:1px solid #d6e1e6; border-radius:5px; }
+    h1 { margin:20px 0 8px; font-size:clamp(1.6rem,4vw,2.1rem); letter-spacing:-.04em; }
+    h2 { margin:28px 0 8px; font-size:1.15rem; }
+    p,li,dt,dd,summary { font-size:.93rem; line-height:1.6; }
+    ol { padding-left:1.4em; } li + li { margin-top:8px; }
+    code { font-size:.9em; overflow-wrap:anywhere; background:#eef4f5; padding:.07em .28em; border-radius:3px; }
+    a { color:#086b64; text-decoration:underline; text-underline-offset:.15em; }
+    nav { display:flex; flex-wrap:wrap; gap:6px 18px; padding-top:6px; font-size:.85rem; }
+    button { background:#08746b; border:1px solid #08746b; border-radius:5px; color:#fff; font:inherit; font-size:.86rem; font-weight:650; padding:.45em .85em; cursor:pointer; }
+    button:disabled { opacity:.6; cursor:wait; }
+    :focus-visible { outline:3px solid #2c817a; outline-offset:3px; }
+    .actions { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin:.65em 0; }
+    .status { font-size:.84rem; }
+    blockquote { margin:.7rem 0; border-left:3px solid #19827b; padding:.6rem .9rem; background:#f1f8f7; }
+    details { margin:1rem 0; padding:.65rem .9rem; border:1px solid #d6e1e6; border-radius:5px; }
+    summary { cursor:pointer; font-weight:650; }
+    dt { margin-top:.7rem; font-weight:700; } dd { margin:0; }
+    footer { margin-top:26px; padding-top:14px; border-top:1px solid #d6e1e6; }
+    @media(max-width:600px) { main { margin:0; border:0; } }
+    @media print { body { background:#fff; } main { max-width:none; border:0; margin:0; padding:0; } nav,.actions { display:none; } }
+  </style>
+</head>
+<body>
+<main>
+  <a href="../index.html">Volver a Work Station</a>
+  <h1>Activar el chat de Work Station</h1>
+  <p>El chat consulta tus registros mediante tu sesión de Work Station. Para activarlo por primera vez, guarda una clave de la API de OpenAI en tu proyecto de Supabase, publica la función <code>workhub-chat</code> y sube la actualización de la web.</p>
+
+  <h2>1. Conseguir la clave de OpenAI</h2>
+  <ol>
+    <li>En la plataforma de OpenAI, elige la organización y el proyecto que usarás para el chat. En <strong>Billing</strong>, comprueba que tienes créditos activos o facturación habilitada. El consumo se calcula según el uso de la API. Algunos planes de ChatGPT permiten activar créditos de API para una organización elegible. <a href="https://platform.openai.com/settings/organization/billing/overview">Abrir Billing</a> · <a href="https://developers.openai.com/api/docs/guides/chatgpt-api-credits">Consultar la elegibilidad</a></li>
+    <li>En <strong>API keys</strong>, elige <strong>Create new secret key</strong>. Ponle un nombre reconocible, por ejemplo <em>Work Station</em>, y copia el valor. Pégalo únicamente en el campo secreto del siguiente paso. <a href="https://platform.openai.com/api-keys">Abrir API keys</a></li>
+  </ol>
+
+  <h2>2. Guardar la clave en Supabase</h2>
+  <ol>
+    <li>Abre el proyecto <strong>Work-Station</strong> que usas para la agenda y entra en <strong>Edge Functions → Secrets</strong>.</li>
+    <li>En <strong>Key</strong> escribe exactamente <code>OPENAI_API_KEY</code>. En <strong>Value</strong> pega la clave de OpenAI y pulsa <strong>Save</strong>. Al terminar, verás el nombre del secreto en el listado. El repositorio, el archivo <code>config.js</code> y los mensajes del chat deben quedar libres de esta clave.</li>
+  </ol>
+  <details><summary>Elegir otro modelo (opcional)</summary><p>El chat usa <code>gpt-5.4-mini</code> de forma predeterminada. Para cambiarlo, crea en el mismo panel un secreto llamado <code>OPENAI_MODEL</code> y usa como valor el identificador de un modelo habilitado en tu proyecto que admita Responses API y llamadas a funciones. <a href="https://developers.openai.com/api/docs/models/gpt-5.4-mini">Ficha del modelo predeterminado</a></p></details>
+
+  <h2>3. Comprobar la función del chat</h2>
+  <p>En <strong>Edge Functions → Functions</strong>, busca <code>workhub-chat</code>. Si figura como <strong>Active</strong>, continúa directamente con el paso 4. Los pasos siguientes permiten instalarla en un proyecto en el que todavía falte.</p>
+  <ol>
+    <li>En <strong>Edge Functions → Functions</strong>, pulsa <strong>Deploy a new function → Via Editor</strong>. El editor abrirá una función nueva con código de ejemplo. La función que debes crear en este paso se llama <code>workhub-chat</code>.</li>
+    <li>Descomprime el ZIP de la actualización y abre <code>instalacion/workhub-chat/index.ts</code> con el Bloc de notas o tu editor de texto. Copia todo su contenido. En el editor de Supabase, selecciona el archivo <strong>index.ts</strong> y reemplaza todo el código de ejemplo por el que acabas de copiar. Este archivo reúne el código completo para el editor.
+      <div class="actions"><button type="button" id="copy-function" hidden>Copiar código de la función</button><a id="source" href="../instalacion/workhub-chat/index.ts">Abrir archivo de instalación</a><span class="status" id="copy-status" role="status"></span></div>
+    </li>
+    <li>En <strong>Function name</strong>, al pie del editor, escribe <code>workhub-chat</code> y pulsa <strong>Deploy function</strong>. Espera el mensaje de éxito. En el listado verás la función nueva junto a <code>workhub-calendar</code>.</li>
+    <li>En los detalles de <strong>workhub-chat</strong>, deja activada la verificación JWT de Supabase. La aplicación enviará el token de la persona que inició sesión y la función comprobará su identidad antes de consultar la agenda.</li>
+  </ol>
+
+  <h2>4. Publicar la web y probarla con un registro tuyo</h2>
+  <ol>
+    <li>Copia el contenido del ZIP en la carpeta de tu repositorio donde está <code>index.html</code>, conservando las subcarpetas. En GitHub Desktop revisa los cambios, escribe <em>Agregar chat a Work Station</em> y pulsa <strong>Commit</strong> y después <strong>Push origin</strong>.</li>
+    <li>Cuando GitHub Pages termine de publicar, abre tu página, recarga e inicia sesión. En la barra lateral elige <strong>Chat</strong>.</li>
+    <li>Busca en tu calendario la fecha de una reunión que ya registraste. En el chat selecciona <strong>Calendario</strong> y sustituye la fecha de esta pregunta por la de tu reunión.
+      <blockquote>¿Qué reuniones tengo el 26 de noviembre? Indica la hora y muéstrame el registro.</blockquote>
+      Abre la referencia de la reunión en la respuesta y compara el título y la hora con el evento original. Si la fecha seleccionada no tiene reuniones, prueba con una fecha que sí las tenga.</li>
+  </ol>
+
+  <h2>Qué información se utiliza</h2>
+  <p>Al enviar una consulta, la función comunica a OpenAI tu pregunta, intervenciones recientes de ese chat y los registros o totales pertinentes del ámbito elegido. Por ejemplo, en Calendario puede enviar el título, el horario y la descripción de un evento. El chat es de solo lectura. La clave de OpenAI queda en Supabase.</p>
+  <p>La conversación se mantiene en memoria durante la sesión de la página. La función solicita a OpenAI que desactive el almacenamiento de la respuesta mediante <code>store: false</code>. El tratamiento de datos y los registros de prevención de abusos se rigen por los controles de datos de tu organización de API. <a href="https://developers.openai.com/api/docs/guides/your-data">Consultar los controles de datos</a></p>
+
+  <details><summary>Resolver problemas de activación</summary>
+    <dl>
+      <dt>Ves la agenda, pero falta Chat en la barra lateral.</dt><dd>Comprueba que GitHub Desktop envió el commit con el archivo <code>index.html</code> actualizado, espera a que termine la publicación de GitHub Pages y recarga la página.</dd>
+      <dt>Work Station indica que falta la función.</dt><dd>Abre el proyecto de Supabase vinculado a tu agenda. En <strong>Edge Functions → Functions</strong>, comprueba que aparece exactamente <code>workhub-chat</code> y que finalizó la publicación.</dd>
+      <dt>El chat pide iniciar sesión.</dt><dd>Vuelve a ingresar con tu cuenta de Work Station y envía la consulta desde la página. Abrir directamente la URL de la función en otra pestaña no inicia una consulta autenticada.</dd>
+      <dt>El chat informa que falta la clave, el modelo no está disponible o se agotaron los créditos.</dt><dd>Revisa <code>OPENAI_API_KEY</code> en los secretos de Supabase, el modelo habilitado para tu proyecto si elegiste uno y los créditos disponibles en <strong>Billing</strong>. Después vuelve a enviar la consulta.</dd>
+    </dl>
+  </details>
+  <footer><nav aria-label="Documentación oficial">
+    <a href="https://supabase.com/docs/guides/functions/quickstart-dashboard">Editor de Supabase</a>
+    <a href="https://supabase.com/docs/guides/functions/secrets">Secretos de funciones</a>
+    <a href="https://supabase.com/docs/guides/functions/auth-headers">Verificación de la sesión</a>
+    <a href="https://help.openai.com/en/articles/9039756-managing-billing-for-chatgpt-and-the-api-platform">Facturación de OpenAI</a>
+  </nav></footer>
+</main>
+<script>
+  const copy = document.getElementById('copy-function');
+  const status = document.getElementById('copy-status');
+  if (location.protocol === 'https:' && navigator.clipboard?.writeText) {
+    copy.hidden = false;
+    copy.addEventListener('click', async () => {
+      copy.disabled = true;
+      try {
+        const response = await fetch(document.getElementById('source').href, {cache:'no-store'});
+        if (!response.ok) throw new Error();
+        const contents = await response.text();
+        if (!contents.trim() || /^\s*</.test(contents)) throw new Error();
+        await navigator.clipboard.writeText(contents);
+        status.textContent = 'Código copiado. Pégalo en index.ts en Supabase.';
+      } catch {
+        status.textContent = 'Abre el archivo de instalación y copia el código con tu editor.';
+      } finally {
+        copy.disabled = false;
+      }
+    });
+  }
+</script>
+</body></html>

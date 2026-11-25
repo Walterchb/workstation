@@ -678,6 +678,7 @@
   }
 
   window.JInsights = {
+    openGoal(id,ctx) { filters.goalId=id; filters.scope='Todos'; ctx.navigate('goals'); },
     makeReport(state, range, period, user, fullHistory = false) {
       return managementReport(summarize(state, range), period, window.JProfile?.display(state, user), fullHistory);
     },
