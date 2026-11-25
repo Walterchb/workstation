@@ -98,7 +98,8 @@ export {};
       'X-WR-CALNAME:' + text(calendar.name),'X-WR-TIMEZONE:America/Lima'];
     if (/^#[0-9a-f]{6}$/i.test(calendar.color)) lines.push('X-APPLE-CALENDAR-COLOR:' + calendar.color.toUpperCase() + 'FF');
     const selected = events.filter(event => event.calendarId === calendar.id);
-    if (selected.some(event => !event.allDay)) {
+    // Un calendario vacío conserva la zona como único componente iCalendar (RFC 5545 §3.4).
+    if (selected.length === 0 || selected.some(event => !event.allDay)) {
       lines.push(...limaZone(selected.some(event => !event.allDay && event.startDate < '1994-04-01')));
     }
     for (const event of selected) {

@@ -110,6 +110,22 @@ test('iCalendar filtra el calendario elegido, usa horas de Lima, identificadores
   assert.match(update,/SUMMARY:Actualizada/);
 });
 
+test('Al borrar el último evento, el calendario vacío conserva un componente de zona horaria válido', () => {
+  const state = empty(), work = calendarModel.calendars(state)[0];
+  const last = calendarModel.saveEvent(state,meeting(),stamp);
+  calendarModel.removeEvent(state,last.id);
+  const emptyCalendar = ics.serialize(work,state.events);
+  calendarModel.saveEvent(state,meeting({id:'personal',calendarId:'personal'}),stamp);
+  assert.equal(ics.serialize(work,state.events),emptyCalendar);
+  const components = physicalLines(emptyCalendar).filter(line => /^(BEGIN|END):/.test(line));
+  assert.deepEqual(components,['BEGIN:VCALENDAR','BEGIN:VTIMEZONE','BEGIN:STANDARD','END:STANDARD','END:VTIMEZONE','END:VCALENDAR']);
+  assert.match(emptyCalendar,/TZID:America\/Lima\r\n/);
+  const standard = emptyCalendar.split('BEGIN:STANDARD\r\n')[1].split('END:STANDARD')[0];
+  assert.match(standard,/^DTSTART:\d{8}T\d{6}\r?$/m);
+  assert.match(standard,/^TZOFFSETFROM:[+-]\d{4,6}\r?$/m);
+  assert.match(standard,/^TZOFFSETTO:-0500\r?$/m);
+});
+
 test('Un evento de una suscripción anterior conserva su UID y publica la revisión siguiente incluso al cambiar de tipo', () => {
   const state = empty(), calendar = calendarModel.calendars(state)[0];
   const original = calendarModel.saveEvent(state,meeting(),stamp);
