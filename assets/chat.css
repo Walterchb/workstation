@@ -157,6 +157,7 @@
 }
 .jchat-copy:hover { color: #23584e; background: var(--chat-soft); }
 .jchat-wait { display: inline-flex; align-items: center; gap: 9px; color: #4f676d; font-size: .84rem; line-height: 1.6; }
+.jchat-partial:not(:empty) { margin-top: 9px; }
 .jchat-wait i {
   width: 13px; height: 13px; border: 2px solid #d4e4de; border-top-color: var(--teal);
   border-radius: 50%; animation: jchat-spin .8s linear infinite;
@@ -197,39 +198,52 @@
 .jchat-widget-launcher {
   position: fixed; z-index: 11; right: max(20px, env(safe-area-inset-right)); bottom: max(18px, env(safe-area-inset-bottom));
   display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 0 16px;
-  border: 1px solid #07584f; border-radius: 24px; color: #fff; background: #096b61;
-  box-shadow: 0 4px 12px #133f392c, 0 0 0 3px #ffffffb3; font-size: .84rem; font-weight: 750;
-  transition: background .15s, box-shadow .15s;
+  border: 1px solid #171b21; border-radius: 24px; color: #fff; background: var(--sidebar-surface);
+  box-shadow: 0 4px 12px #171b212e, 0 0 0 3px #ffffffb3; font-size: .84rem; font-weight: 750;
+  transition: border-color .15s, box-shadow .15s;
 }
-.jchat-widget-launcher:hover { background: #07594f; box-shadow: 0 5px 14px #163b3933, 0 0 0 3px #fff; }
+.jchat-widget-launcher:hover { border-color: #596470; box-shadow: 0 5px 14px #171b2142, 0 0 0 3px #fff; }
 body:has(dialog[open], .rail.is-open) .jchat-widget-launcher { visibility: hidden; }
 body:has([data-jchat-widget]:not([hidden])):not(:has(dialog[open], .rail.is-open)) .notices:not(:empty) { bottom: max(73px, calc(env(safe-area-inset-bottom) + 58px)); }
 .jchat-widget-dialog {
   position: fixed; inset: auto max(18px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) auto;
   width: min(432px, calc(100vw - 32px)); height: min(670px, calc(100dvh - 42px));
   max-width: calc(100vw - 22px); max-height: calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 20px);
-  margin: 0; padding: 0; overflow: hidden; border: 1px solid #a8c6bc; border-radius: 9px;
-  background: #fff; color: var(--ink); box-shadow: 0 16px 55px #173c3b38, 0 2px 8px #1a3c3a18;
+  margin: 0; padding: 0; overflow: hidden; border: 1px solid #aeb7c0; border-radius: 9px;
+  background: #fff; color: var(--ink); box-shadow: 0 16px 55px #171b2138, 0 2px 8px #171b2118;
 }
 .jchat-widget-dialog[open] { display: flex; flex-direction: column; }
-.jchat-widget-dialog::backdrop { background: #15323924; backdrop-filter: none; }
+.jchat-widget-dialog::backdrop { background: #171b2124; backdrop-filter: none; }
 .jchat-widget-head {
   display: flex; flex: none; align-items: center; gap: 10px; min-height: 54px; padding: 9px 12px 9px 15px;
-  color: #f6fffa; background: #15564f;
+  color: white; background: var(--sidebar-surface);
 }
-.jchat-widget-mark { width: 31px; height: 31px; color: #d2f4e7; background: #ffffff15; border: 1px solid #ffffff31; border-radius: 6px; }
+.jchat-widget-mark { width: 31px; height: 31px; color: #eef2f6; background: #ffffff15; border: 1px solid #ffffff31; border-radius: 6px; }
 .jchat-widget-title { display: flex; align-items: center; gap: 8px; min-width: 0; margin: 0; color: inherit; font-size: .93rem; font-weight: 730; letter-spacing: -.02em; }
 .jchat-widget-title :is(h2,h3,strong) { margin: 0; color: inherit; font-size: inherit; }
 .jchat-widget-actions { display: flex; align-items: center; gap: 2px; margin-inline-start: auto; }
 .jchat-widget-icon {
-  display: inline-grid; place-items: center; width: 34px; height: 34px; padding: 0; color: #e4f6ef;
+  display: inline-grid; place-items: center; width: 34px; height: 34px; padding: 0; color: #e5eaf0;
   background: transparent; border: 1px solid transparent; border-radius: 5px;
 }
 .jchat-widget-icon:hover { color: white; background: #ffffff20; border-color: #ffffff22; }
-[data-jchat-widget] .jchat-widget-icon:focus-visible { outline-color: #a2e8d0; }
+[data-jchat-widget] .jchat-widget-icon:focus-visible { outline-color: #d8e9ff; }
 html:has(.jchat-widget-dialog[open]) { overflow: hidden; }
 .jchat-widget-content { flex: 1; min-height: 0; min-width: 0; overflow: hidden; }
-.jchat-compact { --chat-pad: 16px; height: 100%; min-height: 0; gap: 0; }
+.jchat-compact {
+  --chat-pad: 16px; --chat-green: #343e49; --chat-soft: #f1f3f5; --chat-rule: #dce1e5;
+  --teal: #303943; --teal-deep: #242b32;
+  height: 100%; min-height: 0; gap: 0;
+}
+.jchat-compact .jchat-scroll:has([data-chat-empty]:not([hidden])) { background: linear-gradient(155deg,#f5f6f8,white 65%); }
+.jchat-compact .jchat-examples button { --example-tone: #414c57; --example-wash: #eef1f4; }
+.jchat-compact :is(.jchat-scope select,.jchat-source,.jchat-ref,.jchat-user .jchat-text) { color: #34404b; border-color: #d4dbe1; }
+.jchat-compact :is(.jchat-mark,.jchat-speaker-mark,.jchat-source b,.jchat-ref,.jchat-user .jchat-text,.jchat-table-wrap th) { color: #34404b; background: #eef1f4; border-color: #d4dbe1; }
+.jchat-compact .jchat-answer blockquote { background: #f4f5f7; border-color: #a0aab4; }
+.jchat-compact .jchat-examples button:hover, .jchat-compact .jchat-source:hover, .jchat-compact .jchat-ref:hover { background: #e9edf0; border-color: #a4afb9; color: #202931; }
+.jchat-compact .jchat-compose:focus-within { border-color: #747f8a; box-shadow: 0 0 0 2px #363f481a; }
+.jchat-compact .jchat-actions .btn.primary { color: white; background: var(--sidebar-surface); border-color: #23272e; }
+.jchat-compact .jchat-actions .btn.primary:hover:enabled { border-color: #596470; box-shadow: 0 1px 4px #171b2133; }
 .jchat-compact .jchat-panel { height: 100%; border: 0; border-radius: 0; box-shadow: none; }
 .jchat-compact .jchat-toolbar { padding: 6px 11px; }
 .jchat-compact .jchat-scroll { padding-block: 14px; }

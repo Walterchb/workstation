@@ -9,6 +9,9 @@ type RecordData = {type:string, id:string, title:string, date?:string, [key:stri
 type Query = {type:string, text:string, from:string, to:string, status:string, order:string, offset:number, source:number};
 type OutputItem = {type:string, call_id?:string, name?:string, arguments?:string,
   content?:{type:string,text?:string,refusal?:string}[], [key:string]:unknown};
+type Answer = {answer:string, sources:Source[]};
+type ChatEvent = {type:'status',stage:'searching'|'writing'} | {type:'delta',text:string} |
+  {type:'reset'} | ({type:'done'} & Answer);
 type GetEnv = (name:string)=>string|undefined;
 const cors={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'authorization, apikey, content-type, x-client-info',
   'Access-Control-Allow-Methods':'POST, OPTIONS','Cache-Control':'no-store'};
@@ -157,6 +160,101 @@ function citedAnswer(answer:string, available:Source[]) {
   return {answer:clean+(unrecognized?'\n\nUna referencia de la respuesta no se pudo verificar.':''),sources};
 }
 
+// OpenAI usa SSE. Los paquetes de red no coinciden necesariamente con líneas ni caracteres UTF-8.
+async function* openAIEvents(response:Response, signal:AbortSignal) {
+  const reader=response.body?.getReader();
+  if(!reader) throw providerError();
+  const cancelRead=()=>{void reader.cancel().catch(()=>{});};
+  signal.addEventListener('abort',cancelRead,{once:true});
+  const decoder=new TextDecoder();
+  let partial='', data='';
+  try {
+    while(!signal.aborted) {
+      const chunk=await reader.read();
+      if(chunk.done) break;
+      partial+=decoder.decode(chunk.value,{stream:true});
+      const lines=partial.split('\n');
+      partial=lines.pop()!;
+      for(const raw of lines) {
+        const line=raw.endsWith('\r')?raw.slice(0,-1):raw;
+        if(!line && data) {
+          const payload=data.trimEnd();
+          data='';
+          if(payload==='[DONE]') return;
+          yield JSON.parse(payload);
+        } else if(line.startsWith('data:')) {
+          data+=line.slice(5).replace(/^ /,'')+'\n';
+        }
+      }
+      if(partial.length+data.length>1024*1024) throw providerError();
+    }
+    if(signal.aborted) throw timedOut();
+  } finally {
+    signal.removeEventListener('abort',cancelRead);
+    await reader.cancel().catch(()=>{});
+    reader.releaseLock();
+  }
+}
+
+function chatFailure(error:unknown, signal:AbortSignal) {
+  const failure=signal.aborted?timedOut():error instanceof ChatFailure?error:providerError();
+  if(failure.status>=500 || failure.code==='CHAT_QUOTA') console.warn('workhub-chat',failure.code);
+  return failure;
+}
+
+function liveResponse(events:AsyncGenerator<ChatEvent>, signal:AbortSignal, stop:()=>void, cleanup:()=>void) {
+  const encoder=new TextEncoder();
+  let finished=false;
+  let destination:ReadableStreamDefaultController<Uint8Array>;
+  const send=(value:object)=>destination.enqueue(encoder.encode(JSON.stringify(value)+'\n'));
+  function finish() {
+    finished=true;
+    signal.removeEventListener('abort',onAbort);
+    cleanup();
+  }
+  function onAbort() {
+    if(finished) return;
+    finish();
+    const {status,code,message}=timedOut();
+    send({type:'error',status,code,message});
+    destination.close();
+    void events.return(undefined).catch(()=>{});
+  }
+  const body=new ReadableStream<Uint8Array>({
+    start(stream) {
+      destination=stream;
+      signal.addEventListener('abort',onAbort,{once:true});
+      if(signal.aborted) onAbort();
+    },
+    async pull() {
+      try {
+        const next=await events.next();
+        if(finished) return;
+        if(next.done) throw providerError();
+        send(next.value);
+        if(next.value.type==='done') {
+          finish();
+          destination.close();
+          await events.return(undefined);
+        }
+      } catch(error) {
+        if(finished) return;
+        finish();
+        const {status,code,message}=chatFailure(error,signal);
+        send({type:'error',status,code,message});
+        destination.close();
+      }
+    },
+    async cancel() {
+      finish();
+      stop();
+      await events.return(undefined);
+    }
+  });
+  return new Response(body,{headers:{...cors,'Content-Type':'application/x-ndjson; charset=utf-8',
+    'Cache-Control':'no-store, no-transform','X-Accel-Buffering':'no'}});
+}
+
 // Límite de cortesía por cuenta en esta instancia, además de las cuotas del proyecto en OpenAI.
 export function createHandler(options:{env?:GetEnv,fetch?:typeof fetch,now?:()=>Date}={}) {
   const get=options.env || ((name:string)=>Deno.env.get(name));
@@ -176,6 +274,11 @@ export function createHandler(options:{env?:GetEnv,fetch?:typeof fetch,now?:()=>
     const stop=()=>controller.abort();
     const timer=setTimeout(stop,85000);
     request.signal.addEventListener('abort',stop,{once:true});
+    const cleanup=()=>{
+      clearTimeout(timer);
+      request.signal.removeEventListener('abort',stop);
+    };
+    let live=false;
     try {
       if(request.signal.aborted) {stop(); throw timedOut();}
       const token=request.headers.get('Authorization');
@@ -212,8 +315,7 @@ export function createHandler(options:{env?:GetEnv,fetch?:typeof fetch,now?:()=>
         else throw dataError();
         return workspace;
       }
-      async function consult(call:OutputItem) {
-        const q=call.name==='consultar' && parseQuery(call.arguments||'');
+      async function consult(q:Query|null) {
         if(!q) return {error:'Consulta inválida. Revisa filtros y fechas.'};
         if(q.type==='none') return {sinConsulta:true};
         const {source,...query}=q;
@@ -234,46 +336,87 @@ export function createHandler(options:{env?:GetEnv,fetch?:typeof fetch,now?:()=>
         });
         return {...result,records};
       }
-      const input:unknown[]=[...history,{role:'user',content:message}];
-      for(let round=0;round<maxRounds;round++) {
-        const res=await http('https://api.openai.com/v1/responses',{method:'POST',
-          headers:{Authorization:'Bearer '+aiKey,'Content-Type':'application/json'},signal,redirect:'error',
-          body:JSON.stringify({model,store:false,include:['reasoning.encrypted_content'],input,
-            instructions:instructions(scope,today),tools:[searchTool],parallel_tool_calls:false,
-            tool_choice:round===0?'required':round===maxRounds-1?'none':'auto',max_output_tokens:1800})
-        }).catch(()=>{throw providerError();});
-        const result=await res.json().catch(()=>null);
-        if(!res.ok) throw openAIError(res.status,result?.error?.code,result?.error?.type);
-        if(result?.status==='incomplete' || !Array.isArray(result?.output)) throw providerError();
-        const output:OutputItem[]=result.output;
-        const calls=output.filter(i=>i.type==='function_call');
-        if(!calls.length) {
-          const answer=output.filter(i=>i.type==='message').flatMap(i=>i.content||[])
-            .map(p=>p.type==='output_text'?p.text:p.type==='refusal'?p.refusal:'').filter(Boolean).join('\n').trim();
-          if(!answer) throw providerError();
-          return json(citedAnswer(answer,sourceList));
-        }
-        if(round===maxRounds-1 || calls.length!==1 || !calls[0].call_id) throw providerError();
-        for(const item of output) {
-          if(item.type==='reasoning' && item.encrypted_content) {
-            input.push(item);
-          } else if(item.type==='function_call') {
-            input.push({type:item.type,name:item.name,call_id:item.call_id,arguments:item.arguments});
-          } else if(item.type==='message') {
-            const contents=(item.content||[]).filter(p=>p.type==='output_text').map(p=>p.text).join('\n');
-            if(contents) input.push({role:'assistant',content:contents,...(item.phase?{phase:item.phase}:{})});
+      async function* answerEvents():AsyncGenerator<ChatEvent> {
+        const input:unknown[]=[...history,{role:'user',content:message}];
+        for(let round=0;round<maxRounds;round++) {
+          const streamRound=live && round>0;
+          const res=await http('https://api.openai.com/v1/responses',{method:'POST',
+            headers:{Authorization:'Bearer '+aiKey,'Content-Type':'application/json'},signal,redirect:'error',
+            body:JSON.stringify({model,...(streamRound?{stream:true}:{}),store:false,include:['reasoning.encrypted_content'],input,
+              instructions:instructions(scope,today),tools:[searchTool],parallel_tool_calls:false,
+              tool_choice:round===0?'required':round===maxRounds-1?'none':'auto',max_output_tokens:1800})
+          }).catch(()=>{throw providerError();});
+          if(!res.ok) {
+            const failure=await res.json().catch(()=>null);
+            throw openAIError(res.status,failure?.error?.code,failure?.error?.type);
           }
+          let result, beganWriting=false;
+          if(!streamRound || res.headers.get('content-type')?.includes('application/json')) {
+            result=await res.json().catch(()=>null);
+          } else {
+            const visibleItems=new Set<number>();
+            let bracketTail='';
+            for await (const event of openAIEvents(res,signal)) {
+              if(event.type==='response.completed') { result=event.response; break; }
+              if(event.type==='response.failed' || event.type==='error') {
+                const failure=event.response?.error || event.error || event;
+                throw openAIError(502,failure.code,failure.type);
+              }
+              if(event.type==='response.incomplete') throw providerError();
+              if(event.type==='response.output_item.added' && event.item?.type==='message' &&
+                  event.item.role==='assistant' && event.item.phase!=='commentary') visibleItems.add(event.output_index);
+              if(!visibleItems.has(event.output_index) || typeof event.delta!=='string' ||
+                  !['response.output_text.delta','response.refusal.delta'].includes(event.type)) continue;
+              // Solo el resultado final muestra números de cita verificados, incluso si «[12]» llega en partes.
+              const text=bracketTail+event.delta;
+              bracketTail=text.match(/\[[\d,;\s]*$/)?.[0] || '';
+              const preview=text.slice(0,text.length-bracketTail.length).replace(/\[\d+(?:\s*[,;]\s*\d+)*\]/g,'');
+              if(!preview) continue;
+              if(!beganWriting) { yield {type:'status',stage:'writing'}; beganWriting=true; }
+              yield {type:'delta',text:preview};
+            }
+          }
+          if(result?.status==='incomplete' || !Array.isArray(result?.output)) throw providerError();
+          const output:OutputItem[]=result.output;
+          const calls=output.filter(i=>i.type==='function_call');
+          if(!calls.length) {
+            const answer=output.filter(i=>i.type==='message' && (!live || i.phase!=='commentary')).flatMap(i=>i.content||[])
+              .map(p=>p.type==='output_text'?p.text:p.type==='refusal'?p.refusal:'').filter(Boolean).join('\n').trim();
+            if(!answer) throw providerError();
+            yield {type:'done',...citedAnswer(answer,sourceList)};
+            return;
+          }
+          if(beganWriting) yield {type:'reset'};
+          if(round===maxRounds-1 || calls.length!==1 || !calls[0].call_id) throw providerError();
+          for(const item of output) {
+            if(item.type==='reasoning' && item.encrypted_content) {
+              input.push(item);
+            } else if(item.type==='function_call') {
+              input.push({type:item.type,name:item.name,call_id:item.call_id,arguments:item.arguments});
+            } else if(item.type==='message') {
+              const contents=(item.content||[]).filter(p=>p.type==='output_text').map(p=>p.text).join('\n');
+              if(contents) input.push({role:'assistant',content:contents,...(item.phase?{phase:item.phase}:{})});
+            }
+          }
+          const query=calls[0].name==='consultar'?parseQuery(calls[0].arguments || ''):null;
+          if(live && query && query.type!=='none') yield {type:'status',stage:'searching'};
+          input.push({type:'function_call_output',call_id:calls[0].call_id,output:JSON.stringify(await consult(query))});
         }
-        input.push({type:'function_call_output',call_id:calls[0].call_id,output:JSON.stringify(await consult(calls[0]))});
+        throw providerError();
+      }
+      live=(request.headers.get('accept') || '').split(',').some(item=>
+        item.trim().toLowerCase().split(';')[0]==='application/x-ndjson' && !/;\s*q=0(?:\.0*)?(?:\s*;|\s*$)/i.test(item));
+      const events=answerEvents();
+      if(live) return liveResponse(events,signal,stop,cleanup);
+      for await (const event of events) {
+        if(event.type==='done') return json({answer:event.answer,sources:event.sources});
       }
       throw providerError();
     } catch(error) {
-      const failure=signal.aborted?timedOut():error instanceof ChatFailure?error:providerError();
-      if(failure.status>=500 || failure.code==='CHAT_QUOTA') console.warn('workhub-chat',failure.code);
+      const failure=chatFailure(error,signal);
       return json({code:failure.code,message:failure.message},failure.status);
     } finally {
-      clearTimeout(timer);
-      request.signal.removeEventListener('abort',stop);
+      if(!live) cleanup();
     }
   };
 }

@@ -152,9 +152,9 @@
     }
   }
 
-  async function askChat(payload,signal) {
+  async function askChat(payload,signal,onUpdate) {
     const owner=session?.user?.id;
-    try {return await store.askChat(payload,signal);}
+    try {return await store.askChat(payload,signal,onUpdate);}
     catch(error) {
       if(error.code==='CHAT_AUTH' && !signal?.aborted && owner===session?.user?.id) {
         session.mode='auth';

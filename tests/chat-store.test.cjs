@@ -33,7 +33,7 @@ function workSession() {
     expires_at:Math.floor(clock/1000)+100
   });
   const runtime = {
-    window:null, Date:Clock, URL, fetch, crypto:webcrypto, setTimeout,clearTimeout,AbortController,atob,
+    window:null, Date:Clock, URL, fetch, crypto:webcrypto, setTimeout,clearTimeout,AbortController,TextDecoder,atob,
     location:{pathname:'/workstation/'},JORNADA_CONFIG:config,JModel:{empty,validate(){}},
     sessionStorage:{setItem:(k,v)=>credentials.set(k,v),getItem:k=>credentials.get(k),removeItem:k=>credentials.delete(k)}
   };
@@ -71,6 +71,7 @@ test('El chat requiere sesión y envía solo la consulta a la función autentica
   assert.deepEqual(body,payload);
   assert.equal(options.headers.apikey,config.supabasePublishableKey);
   assert.equal(options.headers.Authorization,'Bearer access-maria-0');
+  assert.equal(options.headers.Accept,undefined);
   assert.equal(options.cache,'no-store');
   assert.equal(options.credentials,'omit');
   assert.ok(![...credentials.values()].join('').includes(payload.message));
@@ -83,6 +84,11 @@ test('Una respuesta perdida no duplica el consumo del chat; los diagnósticos di
     [()=>{throw Error('red cortada');},'CHAT_NETWORK'],
     [()=>response(404,{code:'NOT_FOUND'}),'CHAT_NOT_CONFIGURED'],
     [()=>response(503,{code:'CHAT_NOT_CONFIGURED'}),'CHAT_NOT_CONFIGURED'],
+    [()=>response(503,{code:'CHAT_SUPABASE_CONFIG'}),'CHAT_SUPABASE_CONFIG'],
+    [()=>response(503,{code:'CHAT_KEY_MISSING'}),'CHAT_KEY_MISSING'],
+    [()=>response(401,{code:'CHAT_KEY_INVALID'}),'CHAT_KEY_INVALID'],
+    [()=>response(403,{code:'CHAT_KEY_PERMISSION'}),'CHAT_KEY_PERMISSION'],
+    [()=>response(404,{code:'CHAT_MODEL'}),'CHAT_MODEL'],
     [()=>response(429,{code:'CHAT_QUOTA'}),'CHAT_QUOTA'],
     [()=>response(429,{code:'CHAT_LIMIT'}),'CHAT_LIMIT'],
     [()=>response(403,{code:'CHAT_ACCESS'}),'CHAT_ACCESS'],
@@ -172,4 +178,88 @@ test('Una renovación tardía del chat no puede reemplazar ni revocar las creden
   assert.equal(api.requests.filter(r=>r.route.endsWith('/workhub-chat')).length,0);
   await store.askChat(payload);
   assert.equal(api.requests.at(-1).options.headers.Authorization,'Bearer access-sofia-0');
+});
+
+function streamFixture() {
+  let source, cancelled = false;
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream({
+    start(controller) {source=controller;},
+    cancel() {cancelled=true;}
+  });
+  return {
+    response:new Response(stream,{headers:{'Content-Type':'application/x-ndjson; charset=utf-8'}}),
+    bytes:bytes=>source.enqueue(bytes),
+    write:text=>source.enqueue(encoder.encode(text)),
+    close:()=>source.close(),
+    get cancelled(){return cancelled;}
+  };
+}
+
+test('La respuesta llega por partes antes de terminar, preserva UTF-8 fragmentado y usa las citas finales',async()=>{
+  const {store,api}=workSession();
+  await store.signIn('maria','ejemplo');
+  const fixture=streamFixture(), updates=[];
+  api.chat=()=>fixture.response;
+  const result=store.askChat(payload,null,event=>updates.push(snapshot(event)));
+  const delta={type:'delta',text:'Revisión 📅'};
+  const bytes=new TextEncoder().encode(JSON.stringify(delta)+'\r\n');
+  fixture.write('{"type":"status","stage":"searching"}\n');
+  fixture.write('{"type":"status","stage":"writing"}\n');
+  for(const byte of bytes) fixture.bytes(Uint8Array.of(byte));
+  await waitForFetch();
+  assert.deepEqual(updates,[{type:'status',stage:'searching'},{type:'status',stage:'writing'},delta]);
+  fixture.write('{"type":"reset"}\n{"type":"delta","text":"Confirmado"}\n');
+  fixture.write(JSON.stringify({type:'done',...answer})+'\n');
+  assert.deepEqual(snapshot(await result),answer);
+  assert.deepEqual(updates.slice(-2),[{type:'reset'},{type:'delta',text:'Confirmado'}]);
+  assert.equal(api.requests.at(-1).options.headers.Accept,'application/x-ndjson');
+  assert.equal(fixture.cancelled,true);
+});
+
+test('Una función anterior puede responder JSON al cliente en vivo sin una segunda consulta',async()=>{
+  const {store,api}=workSession();
+  await store.signIn('maria','ejemplo');
+  api.chat=()=>Response.json(answer);
+  assert.deepEqual(snapshot(await store.askChat(payload,null,()=>assert.fail('JSON sin avances'))),answer);
+  assert.equal(api.requests.filter(r=>r.route.endsWith('/workhub-chat')).length,1);
+});
+
+test('Un flujo cortado, excesivo o fallido nunca se confirma ni se vuelve a enviar automáticamente',async()=>{
+  const {store,api}=workSession();
+  await store.signIn('maria','ejemplo');
+  for(const [tail,code] of [
+    ['', 'CHAT_NETWORK'],
+    ['{"type":"done","sources":[]}', 'CHAT_PROVIDER'],
+    ['{texto inválido}\n', 'CHAT_PROVIDER'],
+    ['{"type":"error","code":"CHAT_AUTH","status":401}\n','CHAT_AUTH'],
+    ['{"type":"error","code":"CHAT_QUOTA","status":429}\n','CHAT_QUOTA'],
+    ['x'.repeat(1024*1024+1),'CHAT_PROVIDER']
+  ]) {
+    api.chat=()=>new Response('{"type":"delta","text":"Parcial"}\n'+tail,{headers:{'Content-Type':'application/x-ndjson'}});
+    const before=api.requests.length;
+    await assert.rejects(store.askChat(payload,null,()=>{}),hasCode(code));
+    assert.equal(api.requests.length-before,1);
+  }
+});
+
+test('Detener la lectura o salir de la cuenta interrumpe incluso un flujo inactivo y libera la siguiente consulta',async()=>{
+  const {store,api}=workSession();
+  await store.signIn('maria','ejemplo');
+  for(const stop of ['cancel','logout']) {
+    const controller=new AbortController(), fixture=streamFixture(), updates=[];
+    api.chat=()=>fixture.response;
+    const promise=store.askChat(payload,controller.signal,evt=>updates.push(evt.text));
+    const ended=assert.rejects(promise,hasCode(stop==='cancel'?'CHAT_ABORTED':'CHAT_AUTH'));
+    fixture.write('{"type":"delta","text":"Inicio"}\n');
+    await waitForFetch();
+    if(stop==='cancel') controller.abort();
+    else await store.signOut();
+    await ended;
+    assert.deepEqual(updates,['Inicio']);
+    assert.equal(fixture.cancelled,true);
+  }
+  await store.signIn('sofia','ejemplo');
+  api.chat=()=>Response.json(answer);
+  assert.deepEqual(snapshot(await store.askChat(payload,null,()=>{})),answer);
 });

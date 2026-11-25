@@ -3,6 +3,7 @@
   color-scheme:light;
   --navy:#0b2c40;--teal:#007a70;--teal-deep:#00655f;--blue:#155cbb;--muted:#566b79;
   --line:#dce5eb;--bg:#f4f7f9;--ink:#172f40;--paper:#fff;--sidebar-w:230px;
+  --sidebar-surface:linear-gradient(165deg,#23272e 0%,#1c2027 55%,#171b21 100%);
   --font:Manrope,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
 }
 *{box-sizing:border-box}
@@ -39,7 +40,7 @@ select:not([multiple]){appearance:none;background-image:url("data:image/svg+xml,
 .boot{min-height:100dvh;display:grid;place-content:center;justify-items:center;gap:8px}.boot p{color:var(--muted)}
 .boot h1{font-size:2.15rem;margin:.4rem 0}.boot button{justify-self:center}
 .app-shell{min-height:100vh}
-.rail{position:fixed;z-index:16;inset:0 auto 0 0;display:flex;flex-direction:column;width:var(--sidebar-w);color:#deeaed;background:linear-gradient(165deg,#23272e 0%,#1c2027 55%,#171b21 100%);overflow-y:auto;scrollbar-width:thin;scrollbar-color:#ffffff29 transparent}
+.rail{position:fixed;z-index:16;inset:0 auto 0 0;display:flex;flex-direction:column;width:var(--sidebar-w);color:#deeaed;background:var(--sidebar-surface);overflow-y:auto;scrollbar-width:thin;scrollbar-color:#ffffff29 transparent}
 .rail button{border-radius:0}
 .brandbar{display:flex;align-items:center;gap:12px;padding:32px 23px 30px}
 .brandbar span{font-size:1.75rem;font-weight:800;letter-spacing:-.075em;line-height:1.15;color:#fff}

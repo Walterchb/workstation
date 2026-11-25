@@ -37,11 +37,15 @@
   ]);
   const esc = value => window.JUI.esc(value);
   const maxQuestion = 3000;
+  const progressText = {
+    sending:'Enviando tu consulta…', searching:'Consultando tus registros…', writing:'Redactando la respuesta…',
+    stopped:'Respuesta parcial · Detenida', interrupted:'Respuesta parcial · Se interrumpió la consulta'
+  };
   const threads = new Map();
   let owner, scope = 'all', view;
 
   function thread() {
-    if (!threads.has(scope)) threads.set(scope, {turns:[], draft:'', pending:null, error:null});
+    if (!threads.has(scope)) threads.set(scope, {turns:[], draft:'', pending:null, incomplete:null, error:null});
     return threads.get(scope);
   }
 
@@ -49,6 +53,8 @@
     if (!t.pending) return;
     const request = t.pending;
     t.pending = null;
+    request.stage = 'stopped';
+    t.incomplete = request.text ? request : null;
     t.draft = request.question;
     request.controller.abort();
   }
@@ -209,6 +215,19 @@
         '<span class="jchat-example-arrow">'+icon('arrow-up-right',15)+'</span></button>').join('')+'</div></div>';
   }
 
+  function renderPartial(container, text) {
+    // La numeración definitiva llega con las fuentes verificadas al terminar la respuesta.
+    const markup = window.JChatFormat.render(text.replace(/\[\d*$/,''), {citation:()=> ' '});
+    const template = document.createElement('template');
+    template.innerHTML = markup;
+    const existing = [...container.children], next = [...template.content.children];
+    let at = 0;
+    while (at < existing.length && at < next.length && existing[at].isEqualNode(next[at])) at++;
+    // Mantener en su sitio los bloques ya leídos y actualizar únicamente el tramo que crece.
+    for (const block of existing.slice(at)) block.remove();
+    container.append(...next.slice(at));
+  }
+
   function paint() {
     if (!view?.page.isConnected) return;
     const t = thread(), v = view, icon = v.ctx.icon;
@@ -216,17 +235,19 @@
     const previousTop = v.scroll.scrollTop;
     const atEnd = v.scroll.scrollHeight - v.scroll.clientHeight - previousTop < 60;
     let latestAnswer;
+    const reply = t.pending || t.incomplete;
+    const hadLiveText = !!v.shownText && !fresh;
     if (fresh) {
       v.thread = t;
-      v.seen = 0; v.interim = null;
+      v.seen = 0; v.interim = null; v.shownText = '';
       v.log.replaceChildren();
       v.empty.innerHTML = examplesHTML(icon);
       v.scroll.scrollTop = 0;
     }
-    const added = v.seen < t.turns.length || !!t.pending && v.interim !== t.pending;
-    if (v.interim !== t.pending && v.interim) {
+    const added = v.seen < t.turns.length || !!reply && (v.interim !== reply || v.shownText !== reply.text);
+    if (v.interim !== reply && v.interim) {
       for (const node of v.log.querySelectorAll('[data-chat-interim]')) node.remove();
-      v.interim = null;
+      v.interim = null; v.shownText = '';
     }
     while (v.seen < t.turns.length) {
       const turn = t.turns[v.seen];
@@ -234,14 +255,28 @@
       v.log.append(row('Tú','<div class="jchat-text">'+esc(turn.question)+'</div>'),latestAnswer);
       v.seen++;
     }
-    if (t.pending && !v.interim) {
-      const question = row('Tú','<div class="jchat-text">'+esc(t.pending.question)+'</div>');
-      const waiting = row('Asistente','<div class="jchat-wait"><i aria-hidden="true"></i>Consultando tus registros…</div>',icon);
+    if (reply && !v.interim) {
+      const question = row('Tú','<div class="jchat-text">'+esc(reply.question)+'</div>');
+      const waiting = row('Asistente','<div class="jchat-wait" data-chat-progress><i aria-hidden="true"></i>'+
+        '<span></span></div><div class="jchat-answer jchat-partial" data-chat-partial></div>',icon);
+      waiting.setAttribute('aria-live','off');
       question.setAttribute('data-chat-interim',''); waiting.setAttribute('data-chat-interim','');
       v.log.append(question,waiting);
-      v.interim = t.pending;
+      v.interim = reply;
+      v.partial = waiting.querySelector('[data-chat-partial]');
+      v.progress = waiting.querySelector('[data-chat-progress]');
     }
-    v.empty.hidden = !!(t.turns.length || t.pending);
+    const status = reply ? progressText[reply.stage] : '';
+    if (v.activity.textContent !== status) v.activity.textContent = status;
+    if (reply) {
+      if (v.progress.lastElementChild.textContent !== status) v.progress.lastElementChild.textContent = status;
+      v.progress.firstElementChild.hidden = !t.pending;
+      if (v.shownText !== reply.text) {
+        renderPartial(v.partial,reply.text);
+        v.shownText = reply.text;
+      }
+    }
+    v.empty.hidden = !!(t.turns.length || reply);
     v.log.hidden = !v.empty.hidden;
     v.select.value = scope;
     if (v.input.value !== t.draft) v.input.value = t.draft;
@@ -249,7 +284,7 @@
     v.send.hidden = !!t.pending;
     v.send.disabled = !t.draft.trim() || !!t.pending;
     v.stop.hidden = !t.pending;
-    v.clear.disabled = !(t.turns.length || t.pending || t.draft || t.error);
+    v.clear.disabled = !(t.turns.length || reply || t.draft || t.error);
     v.error.hidden = !t.error;
     if (t.error) {
       v.error.querySelector('[data-chat-error-text]').textContent = t.error.message;
@@ -261,7 +296,9 @@
     if (v.log.hidden || (!fresh && !added)) return;
     if (!fresh && !atEnd) {
       v.scroll.scrollTop = previousTop;
-    } else if (latestAnswer && !t.pending) {
+    } else if (latestAnswer && hadLiveText) {
+      v.scroll.scrollTop = previousTop;
+    } else if (latestAnswer && !reply) {
       const top = latestAnswer.getBoundingClientRect().top - v.scroll.getBoundingClientRect().top;
       // El navegador limita el desplazamiento al final si la respuesta entera cabe.
       v.scroll.scrollTop = Math.max(0, v.scroll.scrollTop + top - 10);
@@ -274,12 +311,27 @@
     const t = thread(), question = t.draft.trim();
     if (t.pending || !question || question.length > maxQuestion) return;
     const payload = {scope, message:question, history:contextHistory(t)};
-    const request = {question, controller:new AbortController()};
+    const request = {question, controller:new AbortController(), text:'', stage:'sending'};
     t.pending = request;
-    t.draft = ''; t.error = null;
+    t.incomplete = null; t.draft = ''; t.error = null;
     paint();
+    let scheduled = false;
+    function update(event) {
+      if (t.pending !== request) return;
+      if (event.type === 'status') request.stage = event.stage;
+      else if (event.type === 'reset') { request.text = ''; request.stage = 'searching'; }
+      else if (event.type === 'delta') { request.text += event.text; request.stage = 'writing'; }
+      else return;
+      if (!scheduled && view?.thread === t && view.page.isConnected) {
+        scheduled = true;
+        requestAnimationFrame(()=>{
+          scheduled = false;
+          if (t.pending === request && view?.thread === t) paint();
+        });
+      }
+    }
     try {
-      const result = await view.ctx.askChat(payload, request.controller.signal);
+      const result = await view.ctx.askChat(payload, request.controller.signal, update);
       if (t.pending !== request) return;
       if (typeof result?.answer !== 'string' || !result.answer.trim())
         throw new Error('La consulta no devolvió una respuesta. Puedes volver a enviarla.');
@@ -287,8 +339,11 @@
     } catch (err) {
       if (t.pending !== request) return;
       t.draft = question;
-      if (!request.controller.signal.aborted)
+      if (!request.controller.signal.aborted) {
+        request.stage = 'interrupted';
+        t.incomplete = request.text ? request : null;
         t.error = {code:err?.code, message:err?.message || 'No se pudo completar la consulta.'};
+      }
     } finally {
       if (t.pending === request) {
         t.pending = null;
@@ -318,7 +373,8 @@
       icon('plus',15)+'<span>Nueva conversación</span></button></div>'+
       '<div class="jchat-scroll" data-chat-scroll><div data-chat-empty></div>'+
       '<div class="jchat-log" role="log" aria-label="Mensajes de la conversación" aria-live="polite" aria-relevant="additions" data-chat-log></div></div>'+
-      '<div class="jchat-footer"><div class="jchat-error" data-chat-error role="alert" hidden>'+
+      '<div class="jchat-footer"><span class="jchat-sr" role="status" data-chat-activity></span>'+
+      '<div class="jchat-error" data-chat-error role="alert" hidden>'+
       '<span data-chat-error-text></span><a href="./docs/chat.html" target="_blank" rel="noopener" data-chat-setup hidden>Ver configuración</a>'+
       '<button type="button" data-chat-retry hidden>Reintentar</button></div>'+
       '<form class="jchat-compose" data-chat-form><label class="jchat-sr" for="'+id+'-question">Tu consulta</label>'+
@@ -333,7 +389,7 @@
     const page = el.querySelector('.jchat');
     const get = selector => page.querySelector(selector);
     const v = {page,ctx,compact,log:get('[data-chat-log]'),scroll:get('[data-chat-scroll]'),empty:get('[data-chat-empty]'),
-      error:get('[data-chat-error]'),input:get('textarea'),select:get('[data-chat-scope]'),clear:get('[data-chat-new]'),
+      error:get('[data-chat-error]'),activity:get('[data-chat-activity]'),input:get('textarea'),select:get('[data-chat-scope]'),clear:get('[data-chat-new]'),
       send:get('[data-chat-send]'),stop:get('[data-chat-stop]'),thread:null,seen:0,interim:null};
     view = v;
     v.select.addEventListener('change',()=>{
@@ -346,7 +402,7 @@
       const t = thread(); t.draft = v.input.value;
       if (t.error) { t.error = null; v.error.hidden = true; }
       v.send.disabled = !t.draft.trim() || !!t.pending;
-      v.clear.disabled = !(t.turns.length || t.pending || t.draft);
+      v.clear.disabled = !(t.turns.length || t.pending || t.incomplete || t.draft);
     });
     v.input.addEventListener('keydown',event=>{
       if (event.key === 'Enter' && !event.shiftKey && !event.isComposing && event.keyCode !== 229) {

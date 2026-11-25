@@ -78,14 +78,14 @@
     catch { /* Sigue en memoria si el navegador impide guardar la sesión. */ }
   }
 
-  async function post(path, body, token, signal) {
+  function post(path, body, token, signal, accept) {
     const headers = { "Content-Type": "application/json", apikey: config.key };
     if (token) headers.Authorization = "Bearer " + token;
-    const response = await fetch(config.url + path, {
+    if (accept) headers.Accept = accept;
+    return fetch(config.url + path, {
       method: "POST", headers, body: JSON.stringify(body), signal,
       cache: "no-store", credentials: "omit", referrerPolicy: "no-referrer"
     });
-    return { response, raw: await response.text() };
   }
 
   async function request(path, body, token) {
@@ -94,7 +94,8 @@
     let response;
     let raw;
     try {
-      ({ response, raw } = await post(path, body, token, controller.signal));
+      response = await post(path, body, token, controller.signal);
+      raw = await response.text();
     } catch {
       throw failure("NETWORK", "No se pudo confirmar la operación. Revisa tu conexión y vuelve a intentarlo.");
     } finally { clearTimeout(timeout); }
@@ -232,7 +233,12 @@
 
   const chatErrors = Object.freeze({
     CHAT_AUTH: "Vuelve a iniciar sesión en Work Station para consultar el chat.",
-    CHAT_NOT_CONFIGURED: "Revisa la función workhub-chat y el secreto OPENAI_API_KEY en Supabase.",
+    CHAT_NOT_CONFIGURED: "La configuración del chat está incompleta. Consulta los registros de workhub-chat en Supabase para identificar la causa.",
+    CHAT_SUPABASE_CONFIG: "La función workhub-chat no pudo identificar la URL o la clave pública de su proyecto de Supabase. Revisa la configuración de la función.",
+    CHAT_KEY_MISSING: "La función workhub-chat no encuentra OPENAI_API_KEY. En Supabase, abre Edge Functions → Secrets y comprueba que guardaste el secreto con ese nombre en este proyecto.",
+    CHAT_KEY_INVALID: "OpenAI rechazó la clave de la API. Comprueba que sigue activa y actualiza su valor en Supabase → Edge Functions → Secrets → OPENAI_API_KEY.",
+    CHAT_KEY_PERMISSION: "OpenAI denegó el acceso al chat. Revisa los permisos del proyecto y de la clave de la API para usar Responses.",
+    CHAT_MODEL: "El modelo configurado para el chat no está disponible para este proyecto de OpenAI. Revisa su acceso o elige un modelo habilitado en el secreto OPENAI_MODEL de Supabase.",
     CHAT_ACCESS: "Tu cuenta no tiene permiso para consultar estos registros.",
     CHAT_LIMIT: "Hay demasiadas consultas en este momento. Espera un momento y vuelve a intentar.",
     CHAT_QUOTA: "El proyecto de la API de OpenAI agotó su cuota. Revisa su saldo y sus límites de uso.",
@@ -245,13 +251,94 @@
 
   function chatFailure(response, data) {
     const status = response.status;
+    if (Object.hasOwn(chatErrors, data?.code)) return failure(data.code, chatErrors[data.code], status);
     if (status === 404) return failure("CHAT_NOT_CONFIGURED", "La función workhub-chat todavía no está desplegada en este proyecto de Supabase.", status);
     const fallback = {400:"CHAT_INPUT", 401:"CHAT_AUTH", 403:"CHAT_ACCESS", 413:"CHAT_INPUT", 429:"CHAT_LIMIT", 504:"CHAT_TIMEOUT"};
-    const code = Object.hasOwn(chatErrors, data?.code) ? data.code : fallback[status] || "CHAT_PROVIDER";
+    const code = fallback[status] || "CHAT_PROVIDER";
     return failure(code, chatErrors[code], status);
   }
 
-  async function askChat(payload, signal) {
+  const streamType = "application/x-ndjson";
+  const maxChatBytes = 1024 * 1024;
+  const invalidReply = () => failure("CHAT_PROVIDER", "El chat devolvió una respuesta incompleta.");
+
+  async function* chatChunks(response, signal) {
+    if (!response.body?.getReader) {
+      const text = await response.text();
+      if (text.length > maxChatBytes) throw invalidReply();
+      yield text;
+      return;
+    }
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder("utf-8", {fatal:true});
+    const cancel = () => { reader.cancel().catch(()=>{}); };
+    let received = 0, closed = false;
+    signal.addEventListener("abort", cancel, {once:true});
+    try {
+      if (signal.aborted) cancel();
+      while (true) {
+        const {value, done} = await reader.read();
+        if (done) { closed = true; break; }
+        received += value.byteLength;
+        if (received > maxChatBytes) throw invalidReply();
+        yield decoder.decode(value, {stream:true});
+      }
+      yield decoder.decode();
+    } finally {
+      signal.removeEventListener("abort", cancel);
+      if (!closed) cancel();
+      reader.releaseLock();
+    }
+  }
+
+  function chatAnswer(data) {
+    if (typeof data?.answer !== "string" || !data.answer.trim() || !Array.isArray(data.sources)) throw invalidReply();
+    return {answer:data.answer, sources:data.sources};
+  }
+
+  async function readChatStream(chunks, onUpdate, checkSession) {
+    let buffer = "";
+    function consume(line) {
+      checkSession();
+      if (!line.trim()) return;
+      let event;
+      try { event = JSON.parse(line); } catch { throw invalidReply(); }
+      switch (event?.type) {
+        case "status":
+          if (!["searching","writing"].includes(event.stage)) throw invalidReply();
+          onUpdate?.({type:"status",stage:event.stage});
+          break;
+        case "delta":
+          if (typeof event.text !== "string") throw invalidReply();
+          onUpdate?.({type:"delta",text:event.text});
+          break;
+        case "reset":
+          onUpdate?.({type:"reset"});
+          break;
+        case "done":
+          return chatAnswer(event);
+        case "error":
+          throw chatFailure({status:Number.isInteger(event.status) ? event.status : 502}, event);
+        default:
+          throw invalidReply();
+      }
+    }
+    for await (const chunk of chunks) {
+      const lines = chunk.split("\n");
+      if (lines.length === 1) { buffer += chunk; continue; }
+      lines[0] = buffer + lines[0];
+      buffer = lines.pop();
+      for (const line of lines) {
+        const answer = consume(line);
+        if (answer) return answer;
+      }
+    }
+    const answer = consume(buffer);
+    if (answer) return answer;
+    throw failure("CHAT_NETWORK", chatErrors.CHAT_NETWORK);
+  }
+
+  async function askChat(payload, signal, onUpdate) {
     const owner = user?.id;
     if (mode !== "cloud" || !owner || session?.user.id !== owner || revision === null) throw failure("CHAT_AUTH", chatErrors.CHAT_AUTH);
     if (chatRequest && !chatRequest.signal.aborted) throw failure("CHAT_BUSY", "Ya hay una consulta en curso.");
@@ -264,7 +351,7 @@
     if (signal?.aborted) cancel();
     function checkSession() {
       if (timedOut) throw failure("CHAT_TIMEOUT", chatErrors.CHAT_TIMEOUT);
-      if (mode !== "cloud" || session?.user.id !== owner) throw failure("CHAT_AUTH", chatErrors.CHAT_AUTH);
+      if (mode !== "cloud" || session?.user.id !== owner || revision === null) throw failure("CHAT_AUTH", chatErrors.CHAT_AUTH);
       if (controller.signal.aborted) {
         throw Object.assign(failure("CHAT_ABORTED", "Consulta cancelada."), {name:"AbortError"});
       }
@@ -275,16 +362,22 @@
       for (let attempt = 0; attempt < 2; attempt++) {
         checkSession();
         const token = session.access_token;
-        const {response, raw} = await post("/functions/v1/workhub-chat", payload, token, controller.signal);
+        const callback = typeof onUpdate === "function" ? onUpdate : undefined;
+        const response = await post("/functions/v1/workhub-chat", payload, token, controller.signal, callback ? streamType : undefined);
+        checkSession();
+        const chunks = chatChunks(response, controller.signal);
+        const mediaType = response.headers?.get?.("Content-Type")?.split(";")[0].trim().toLowerCase();
+        if (response.ok && mediaType === streamType) {
+          const answer = await readChatStream(chunks, callback, checkSession);
+          checkSession();
+          return answer;
+        }
+        let raw = "";
+        for await (const chunk of chunks) { checkSession(); raw += chunk; }
         checkSession();
         let data;
         try { data = JSON.parse(raw); } catch { /* Puede ser un error del gateway sin JSON. */ }
-        if (response.ok) {
-          if (typeof data?.answer !== "string" || !data.answer.trim() || !Array.isArray(data.sources)) {
-            throw failure("CHAT_PROVIDER", "El chat devolvió una respuesta incompleta.");
-          }
-          return { answer: data.answer, sources: data.sources };
-        }
+        if (response.ok) return chatAnswer(data);
         const error = chatFailure(response, data);
         // Un 401 de autenticación ocurre antes de llamar a OpenAI. No se repite una consulta facturable.
         if (response.status !== 401 || error.code !== "CHAT_AUTH" || attempt > 0) throw error;
