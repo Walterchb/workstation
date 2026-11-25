@@ -52,14 +52,6 @@
     return model.formatDate(day,format).replace(/\./g,'');
   }
 
-  function row(type, id, symbol, title, detail, label, hint) {
-    return '<li><button type="button" data-review-'+type+'="'+esc(id)+'">'+
-      '<span class="wr-row-icon">'+icon(symbol,16)+'</span>'+
-      '<span class="wr-row-copy"><b>'+esc(title)+'</b><small>'+esc(detail)+'</small></span>'+
-      '<span class="wr-time"'+(hint?' title="'+esc(hint)+'"':'')+'>'+esc(label)+'</span>'+
-      icon('chevron-right',13)+'</button></li>';
-  }
-
   function group(kind, title, rows) {
     if (!rows.length) return '';
     return '<section class="wr-group wr-'+kind+'"><h3><i aria-hidden="true"></i>'+title+
@@ -68,28 +60,57 @@
 
   function noteRow(note, today) {
     const detail = [note.topic, model.noteLanes[note.lane]].filter(Boolean).join(' · ');
-    return row('note',note.id,'file-text',note.title,detail,shortDate(note.reviewDate,today),model.formatDate(note.reviewDate));
+    return '<li><button type="button" data-review-note="'+esc(note.id)+'">'+
+      '<span class="wr-row-icon">'+icon('file-text',16)+'</span>'+
+      '<span class="wr-row-copy"><b>'+esc(note.title)+'</b><small>'+esc(detail)+'</small></span>'+
+      '<span class="wr-time" title="'+esc(model.formatDate(note.reviewDate))+'">'+esc(shortDate(note.reviewDate,today))+'</span>'+
+      icon('chevron-right',13)+'</button></li>';
   }
 
-  function eventRow(alarm, state, time, future) {
-    const event = alarm.event;
-    const name = calendar.calendars(state).find(item=>item.id===event.calendarId)?.name;
-    const date = shortDate(event.startDate,time.today);
-    const when = event.allDay ? date+' · Todo el día' : date+' · '+event.startTime;
+  function dayLabel(day, today) {
+    if (day === today) return 'Hoy';
+    if (day === model.shiftDate(today,1)) return 'Mañana';
+    return shortDate(day,today);
+  }
+
+  function eventCard(alarm, state, time, future = false) {
+    const {event} = alarm;
+    const name = calendar.calendars(state).find(item=>item.id===event.calendarId)?.name || '';
+    const category = calendar.eventCategory(state,event);
+    const source = [name,category?.name].filter(Boolean).join(' · ');
+    const month = model.formatDate(event.startDate,{month:'short'}).replace(/\./g,'');
+    const startDay = dayLabel(event.startDate,time.today);
+    const endDay = dayLabel(event.endDate,time.today);
+    let when;
+    if (event.allDay) {
+      when = (event.startDate===event.endDate ? startDay : startDay+' – '+endDay)+' · Todo el día';
+    } else {
+      const until = event.startDate===event.endDate ? event.endTime : endDay+' '+event.endTime;
+      when = startDay+' · '+event.startTime+' – '+until;
+    }
     const remaining = Math.ceil((alarm.start-time.now)/minute);
     let label;
     if (future) {
       const triggerDate = new Date(alarm.trigger);
-      const day = model.today(triggerDate);
-      const dayLabel = day===time.today ? 'hoy' : shortDate(day,time.today);
-      label = 'Aviso '+dayLabel+' · '+model.timeNow(triggerDate);
+      const triggerDay = dayLabel(model.today(triggerDate),time.today).toLocaleLowerCase('es-PE');
+      label = 'Aviso '+triggerDay+' · '+model.timeNow(triggerDate);
     } else if (remaining > 0) {
       label = 'En '+model.duration(remaining);
     } else {
       label = remaining === 0 ? 'Ahora' : 'En curso';
     }
-    const detail = [name,when].filter(Boolean).join(' · ');
-    return row('event',event.id,'calendar',event.title,detail,label);
+    const details = event.location ? when+' · '+event.location : when;
+    return '<span class="wr-card-content">'+
+      '<span class="wr-date-tile" aria-hidden="true"><span>'+esc(month)+'</span><b>'+Number(event.startDate.slice(8))+'</b></span>'+
+      '<span class="wr-event-copy"><span class="wr-event-head"><span class="wr-event-source">'+esc(source)+'</span>'+
+      '<span class="wr-time">'+esc(label)+'</span></span><strong>'+esc(event.title)+'</strong>'+
+      '<span class="wr-event-details">'+esc(details)+'</span></span></span>';
+  }
+
+  function eventRow(alarm, state, time, future) {
+    const {event} = alarm;
+    return '<li><button type="button" class="wr-event-card" data-review-event="'+esc(event.id)+
+      '" style="--wr-event-color:'+esc(calendar.eventColor(state,event))+'">'+eventCard(alarm,state,time,future)+'</button></li>';
   }
 
   function paint(state, time, data) {
@@ -134,26 +155,62 @@
     panel.state = state;
   }
 
-  function announce(button, alarms, time, notify) {
-    if (!notify || document.hidden) return;
+  function showBanner(button, fresh, state, time, openEvent) {
+    const alarm = fresh[0];
+    const dialog = [...document.querySelectorAll('dialog[open]')].at(-1);
+    const returnFocus = dialog?.contains(document.activeElement) ? document.activeElement : button;
+    const host = dialog || document.getElementById('notices');
+    const banner = document.createElement('div');
+    banner.className = 'wr-banner';
+    banner.dataset.alarmKey = alarm.event.id+'@'+alarm.trigger;
+    banner.style.setProperty('--wr-event-color',calendar.eventColor(state,alarm.event));
+    const card = eventCard(alarm,state,time);
+    const additional = fresh.length>1 ? 'Ver los '+fresh.length+' avisos' : '';
+    // En un editor abierto el aviso se puede cerrar sin interrumpir lo que se está escribiendo.
+    if (dialog) banner.setAttribute('role','status');
+    banner.innerHTML = (dialog ? card : '<button type="button" class="wr-open-event" data-wr-open-event="'+esc(alarm.event.id)+'">'+card+'</button>') +
+      '<button type="button" class="wr-dismiss" data-wr-dismiss aria-label="Cerrar aviso">'+icon('x',14)+'</button>'+
+      (additional && !dialog ? '<button type="button" class="wr-extra" data-wr-more>'+additional+'</button>' : '');
+    host.append(banner);
+    let timer;
+    function close(restoreFocus = false) {
+      clearTimeout(timer);
+      banner.remove();
+      if (restoreFocus && returnFocus.isConnected) returnFocus.focus({preventScroll:true});
+    }
+    function expire() {
+      clearTimeout(timer);
+      timer = setTimeout(()=>{ if (!banner.contains(document.activeElement)) close(); },11000);
+    }
+    banner.onclick = e=>{
+      if (e.target.closest('[data-wr-dismiss]')) { close(true); return; }
+      if (e.target.closest('[data-wr-more]')) { close(); button.click(); return; }
+      if (e.target.closest('[data-wr-open-event]')) { close(); openEvent(alarm.event.id); }
+    };
+    banner.addEventListener('pointerenter',()=>clearTimeout(timer));
+    banner.addEventListener('pointerleave',expire);
+    banner.addEventListener('focusin',()=>clearTimeout(timer));
+    banner.addEventListener('focusout',expire);
+    expire();
+  }
+
+  function announce(button, alarms, state, time, openEvent) {
+    if (!openEvent || document.hidden) return;
     const previous = announced.get(button) || new Set();
     const current = new Set();
     const fresh = [];
     for (const alarm of alarms) {
       const key = alarm.event.id+'@'+alarm.trigger;
       current.add(key);
-      if (!previous.has(key) && time.now < alarm.trigger + 5*minute) fresh.push(alarm.event);
+      if (!previous.has(key) && time.now < alarm.trigger + 5*minute) fresh.push(alarm);
     }
     announced.set(button,current);
-    if (!fresh.length || panel?.dialog.open) return;
-    if (fresh.length>1) notify(fresh.length+' eventos tienen un aviso de calendario.');
-    else {
-      const event = fresh[0];
-      notify('Aviso de calendario · '+event.title+' · '+(event.allDay?'Todo el día':event.startTime));
-    }
+    const visible = document.querySelector('.wr-banner');
+    if (visible && (!current.has(visible.dataset.alarmKey) || fresh.length)) visible.remove();
+    if (fresh.length && !panel?.dialog.open) showBanner(button,fresh,state,time,openEvent);
   }
 
-  function update(button, state, notify) {
+  function update(button, state, openEvent) {
     if (!state || !button) return;
     const time = clock();
     const dirty = panel?.dialog.open && (panel.now!==time.now || panel.today!==time.today || panel.state!==state);
@@ -165,7 +222,7 @@
     button.setAttribute('aria-label',label);
     button.title = label;
     if (dirty) paint(state,time,data);
-    announce(button,data.notices,time,notify);
+    announce(button,data.notices,state,time,openEvent);
   }
 
   function position(dialog, button) {
@@ -180,6 +237,7 @@
 
   function open(button, ctx) {
     if (document.querySelector('dialog[open]')) return;
+    document.querySelector('.wr-banner')?.remove();
     const dialog = document.createElement('dialog');
     panel = {dialog,filter:'all'};
     dialog.className = 'wr-panel';

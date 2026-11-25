@@ -280,7 +280,7 @@
     else if(view==='categories') window.JCategories.render(el,getContext());
     else window.JInsights.render(el,getContext(),view);
     updateContext(el); renderCalendar(); updateProfile(); updateStatus(); updateDateTools();
-    window.JReviews.update(root.querySelector('[data-reviews]'),state,notify);
+    window.JReviews.update(root.querySelector('[data-reviews]'),state,openCalendarEvent);
   }
 
   function updateProfile() {
@@ -335,7 +335,7 @@
     clearTimeout(clockHandle);
     function tick() {
       clockHandle=setTimeout(tick,60000-Date.now()%60000);
-      window.JReviews.update(reviews,state,notify);
+      window.JReviews.update(reviews,state,openCalendarEvent);
       if(saving||view!=='agenda'||document.querySelector('dialog[open]'))return;
       const today=model.today();
       const visible=weeklyAgenda()?window.JWeek.days(state,date).includes(today):date===today;
@@ -393,7 +393,7 @@
   });
   document.addEventListener('visibilitychange',()=>{
     const button=root.querySelector('[data-reviews]');
-    if(!document.hidden && button && state) window.JReviews.update(button,state,notify);
+    if(!document.hidden && button && state) window.JReviews.update(button,state,openCalendarEvent);
   });
   boot();
 })();

@@ -7,7 +7,8 @@
   const calendars = window.JCalendarModel;
   const dayMinutes = 1440;
   const step = 30;
-  const minCardMinutes = 19;
+  // Media hora en la escala compacta reserva un área pulsable de 24 px.
+  const minCardMinutes = step;
   let lastPosition;
   let clockTimer;
 
@@ -70,10 +71,11 @@
     const times = '<time>'+esc(range)+'</time>';
     const title = '<strong>'+esc(event.title)+'</strong>';
     const meta = classification ? '<span class="wd-meta">'+esc(classification)+'</span>' : '';
+    const details = duration>=60 && meta ? '<span class="wd-details">'+times+meta+'</span>' : times;
     const position = 'top:'+item.top/dayMinutes*100+'%;height:'+((item.bottom-item.top)/dayMinutes)*100+'%;'+
       'left:'+item.column/item.columns*100+'%;width:'+100/item.columns+'%;';
-    return '<div class="wd-block" style="'+position+color+'"><button'+common+' class="wd-event'+(duration<42?' wd-compact':'')+'">'+
-      title+times+(duration>=60?meta:'')+'</button></div>';
+    return '<div class="wd-block" style="'+position+color+'"><button'+common+' class="wd-event'+(duration<52?' wd-compact':'')+'">'+
+      title+details+'</button></div>';
   }
 
   function slotDefaults(date, start) {
@@ -113,7 +115,7 @@
     const ruler = mount.querySelector('.wd-ruler');
     const key = String(restoreKey ?? '')+'|'+date;
     // Un guardado repinta la vista. Conservar la hora que la persona estaba consultando.
-    const initialHour = ruler.firstElementChild.offsetHeight || 70;
+    const initialHour = ruler.firstElementChild.offsetHeight || 48;
     const position = lastPosition?.key===key ? lastPosition : {key,top:Math.max(0,firstMinute/60*initialHour-13),left:0};
     lastPosition=position;
     scroll.scrollTop=position.top;

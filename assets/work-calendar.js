@@ -166,20 +166,6 @@
     return Math.round((civilDate(event.endDate)-civilDate(event.startDate))/86400000);
   }
 
-  function moveToDate(source,date,time) {
-    const span=daySpan(source);
-    if(source.allDay || !time) {
-      const endDate=shiftDay(date,span);
-      return endDate ? {...source,reminderMinutes:source.reminderMinutes??null,startDate:date,endDate} : null;
-    }
-    const minute=hhmm=>Number(hhmm.slice(0,2))*60+Number(hhmm.slice(3));
-    const duration=span*1440+minute(source.endTime)-minute(source.startTime);
-    const end=minute(time)+duration;
-    const endDate=shiftDay(date,Math.floor(end/1440));
-    const endTime=String(Math.floor(end/60)%24).padStart(2,'0')+':'+String(end%60).padStart(2,'0');
-    return endDate ? {...source,reminderMinutes:source.reminderMinutes??null,startDate:date,startTime:time,endDate,endTime} : null;
-  }
-
   function reminderLabel(minutes) {
     if(minutes==null)return 'Sin aviso';
     if(minutes===0)return 'Al comenzar';
@@ -188,38 +174,110 @@
     return minutes+' minutos antes';
   }
 
-  function reuseChooser(ctx,origin,onChoose) {
-    const calendars=new Map(C.calendars(ctx.state).map(c=>[c.id,c.name]));
-    const sorted=C.events(ctx.state).slice().sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt)||b.startDate.localeCompare(a.startDate));
-    const seen=new Set();
-    const records=sorted.filter(e=>{
-      const signature=JSON.stringify([e.title,e.calendarId,e.categoryId||'',e.kind,e.allDay,e.startTime,e.endTime,daySpan(e),e.location,e.description,e.reminderMinutes??null]);
-      if(seen.has(signature)) return false;
-      seen.add(signature);return true;
+  function searchKey(text) {
+    return text.normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim().toLocaleLowerCase('es-PE');
+  }
+
+  function titleHistory(state) {
+    const unique = new Set();
+    const history = C.events(state).slice().sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt));
+    return history.filter(event=>{
+      const key = JSON.stringify([searchKey(event.title),event.categoryId||'',event.kind,event.reminderMinutes??null]);
+      if(unique.has(key)) return false;
+      unique.add(key);
+      return true;
+    }).map(event=>{
+      const category = C.eventCategory(state,event);
+      const detail = [category?.name||'Sin categoría',event.kind==='meeting'?'Reunión':'Evento',reminderLabel(event.reminderMinutes)].join(' · ');
+      return {event, name:event.title, color:C.eventColor(state,event), detail, key:searchKey(event.title)};
     });
-    const {dialog,form}=mountDialog('Reutilizar evento','<div class="wc-form-body wc-reuse-picker"><label>Buscar evento<input type="search" name="search" placeholder="Título, calendario o categoría" autocomplete="off"></label><div data-wc-matches></div></div>',origin);
-    const results=form.querySelector('[data-wc-matches]');
-    const normalize=value=>value.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLocaleLowerCase('es');
-    function filter() {
-      const query=normalize(form.elements.search.value.trim());
-      const choices=records.filter(e=>normalize([e.title,calendars.get(e.calendarId),C.eventCategory(ctx.state,e)?.name,e.location].join(' ')).includes(query));
-      results.innerHTML=choices.length?'<ul>'+choices.map(e=>{
-        const cat=C.eventCategory(ctx.state,e);
-        const span=daySpan(e);
-        const hours=e.allDay?'Todo el día':e.startTime+' – '+e.endTime;
-        const range=span?' · '+(span+1)+' días':'';
-        const meta=[shortDate.format(civilDate(e.startDate)),calendars.get(e.calendarId),cat?.name,hours+range].filter(Boolean).join(' · ');
-        return '<li><button type="button" data-wc-reuse-id="'+esc(e.id)+'" style="--wc-color:'+esc(C.eventColor(ctx.state,e))+'"><span><strong>'+esc(e.title)+'</strong><small>'+esc(meta)+'</small></span>'+icon('chevron-right',15)+'</button></li>';
-      }).join('')+'</ul>':'<p class="wc-empty">'+(records.length?'Ningún evento coincide con tu búsqueda.':'Los eventos que guardes aparecerán aquí para volver a usarlos.')+'</p>';
+  }
+
+  function swatch(color) {
+    return '<span class="wc-field-swatch" aria-hidden="true" style="--wc-color:'+esc(color)+'"></span>';
+  }
+
+  // Mantiene el foco en el campo mientras el teclado recorre las opciones.
+  function bindOptions(control, list, choices, onPick, selectedId) {
+    const editable = !selectedId;
+    let options = [], active = -1;
+    function close() {
+      list.hidden = true;
+      active = -1;
+      control.setAttribute('aria-expanded','false');
+      control.removeAttribute('aria-activedescendant');
     }
-    form.onsubmit=e=>e.preventDefault();
-    form.elements.search.oninput=filter;
-    results.onclick=e=>{
-      const option=e.target.closest('[data-wc-reuse-id]');
-      const item=option&&records.find(record=>record.id===option.dataset.wcReuseId);
-      if(item){dialog.close();onChoose(item);}
+    function highlight(index) {
+      const previous = list.children[active];
+      previous?.removeAttribute('data-active');
+      if(editable) previous?.setAttribute('aria-selected','false');
+      active = index;
+      const option = list.children[active];
+      if(!option) return;
+      option.setAttribute('data-active','');
+      if(editable) option.setAttribute('aria-selected','true');
+      control.setAttribute('aria-activedescendant',option.id);
+      option.scrollIntoView({block:'nearest'});
+    }
+    function open() {
+      options = choices();
+      close();
+      if(!options.length) return;
+      const selected = selectedId?.();
+      list.innerHTML = options.map((item,index)=>
+        '<li role="option" data-wc-option="'+index+'" id="'+list.id+'-'+index+'" aria-selected="'+(!editable && item.id===selected)+'">'+
+        swatch(item.color)+'<span class="wc-option-copy"><span>'+esc(item.name)+'</span>'+
+        (item.detail?'<small>'+esc(item.detail)+'</small>':'')+'</span>'+
+        (!editable && item.id===selected?icon('check',14):'')+'</li>').join('');
+      list.hidden = false;
+      control.setAttribute('aria-expanded','true');
+      if(!editable) highlight(Math.max(0,options.findIndex(item=>item.id===selected)));
+    }
+    function pick(index) {
+      if(!options[index]) return;
+      onPick(options[index]);
+      close();
+      control.focus({preventScroll:true});
+    }
+    control.onclick = ()=>{ if(editable || list.hidden) open(); else close(); };
+    if(editable) control.oninput = open;
+    control.addEventListener('keydown',event=>{
+      if(event.isComposing) return;
+      const key = event.key;
+      if(key==='Escape' && !list.hidden) {
+        event.preventDefault();event.stopPropagation();close();return;
+      }
+      if(key==='Tab') { close();return; }
+      if(key==='ArrowDown' || key==='ArrowUp') {
+        event.preventDefault();
+        if(list.hidden) { open(); if(!editable || list.hidden) return; }
+        const index = key==='ArrowDown'?Math.min(active+1,options.length-1):(active<0?options.length-1:Math.max(0,active-1));
+        highlight(index);return;
+      }
+      if(!list.hidden && (key==='Enter' || (!editable && key===' '))) {
+        if(active>=0) { event.preventDefault();pick(active); }
+        return;
+      }
+      if(!editable && !list.hidden && (key==='Home' || key==='End')) {
+        event.preventDefault();highlight(key==='Home'?0:options.length-1);return;
+      }
+      if(!editable && key.length===1 && key.trim() && !event.ctrlKey && !event.metaKey && !event.altKey) {
+        if(list.hidden) open();
+        const index = options.findIndex(item=>searchKey(item.name).startsWith(searchKey(key)));
+        if(index>=0) { event.preventDefault();highlight(index); }
+      }
+    });
+    list.onmousedown = event=>{ if(event.target.closest('[data-wc-option]')) event.preventDefault(); };
+    list.onclick = event=>{
+      const option = event.target.closest('[data-wc-option]');
+      if(option) pick(Number(option.dataset.wcOption));
     };
-    filter();form.elements.search.focus();
+    control.addEventListener('blur',event=>{
+      if(event.relatedTarget && !list.contains(event.relatedTarget)) close();
+    });
+    control.closest('dialog').addEventListener('pointerdown',event=>{
+      if(!control.contains(event.target) && !list.contains(event.target)) close();
+    });
   }
 
   function eventEditor(ctx,record,origin,defaults={}) {
@@ -231,18 +289,20 @@
     const start=initial.startDate||ctx.date;
     const end=initial.endDate||start;
     const id=record?.id||M.id();
-    const isExistingOrReused=!!record || Object.hasOwn(defaults,'reminderMinutes');
     const categoryId=initial.categoryId||'';
-    const reminder=isExistingOrReused ? initial.reminderMinutes??null : 5;
-    function categoryChoices(id) {
-      return '<option value=""'+(!id?' selected':'')+'>Sin categoría</option>'+categories.map(c=>'<option value="'+esc(c.id)+'"'+(c.id===id?' selected':'')+'>'+esc(c.name)+'</option>').join('');
-    }
+    const reminder=record ? initial.reminderMinutes??null : 5;
+    const fieldId='wc-editor-'+(dialogNumber+1);
+    const history=record?[]:titleHistory(ctx.state);
+    const titlePopup=history.length?' role="combobox" aria-expanded="false" aria-autocomplete="list" aria-controls="'+fieldId+'-titles"':'';
     const reminderChoices=[null,...C.reminderOptions].map(value=>'<option value="'+(value??'')+'"'+(value===reminder?' selected':'')+'>'+reminderLabel(value)+'</option>').join('');
     const {form,commit}=mountDialog(record?'Editar evento':'Nuevo evento','<div class="wc-form-body">'+
-      (!record && C.events(ctx.state).length ? '<button class="wc-import" type="button" data-wc-reuse-here>'+icon('clipboard',15)+'Usar un evento anterior</button>' : '')+
-      '<label>Título<input name="title" maxlength="180" autocomplete="off" required placeholder="Ej. Reunión de coordinación" value="'+esc(initial.title)+'"></label>'+
+      '<div class="wc-picker"><label>Título<input name="title" maxlength="180" autocomplete="off" required'+titlePopup+' placeholder="'+(history.length?'Escribe o busca un evento anterior':'Ej. Reunión de coordinación')+'" value="'+esc(initial.title)+'"></label>'+
+      (history.length?'<ul class="wc-options wc-title-options" id="'+fieldId+'-titles" role="listbox" aria-label="Eventos anteriores" hidden></ul>':'')+'</div>'+
       '<div class="wc-field-pair"><label>Calendario<select name="calendarId">'+choices+'</select></label><label>Tipo<select name="kind"><option value="event">Evento</option><option value="meeting"'+(initial.kind==='meeting'?' selected':'')+'>Reunión</option></select></label></div>'+
-      '<div class="wc-field-pair"><div class="wc-category-field"><label>Categoría<select name="categoryId">'+categoryChoices(categoryId)+'</select></label><button type="button" data-wc-add-category class="wc-icon" aria-label="Nueva categoría" title="Nueva categoría">'+icon('plus',15)+'</button></div>'+
+      '<div class="wc-field-pair"><div class="wc-category-field"><div class="wc-picker"><label id="'+fieldId+'-category-label" for="'+fieldId+'-category">Categoría</label>'+
+      '<input type="hidden" name="categoryId"><button type="button" role="combobox" id="'+fieldId+'-category" class="wc-category-select" aria-labelledby="'+fieldId+'-category-label '+fieldId+'-value" aria-expanded="false" aria-controls="'+fieldId+'-categories"><span id="'+fieldId+'-value"></span>'+icon('chevron-down',14)+'</button>'+
+      '<ul class="wc-options" id="'+fieldId+'-categories" role="listbox" aria-label="Categorías" hidden></ul></div>'+
+      '<button type="button" data-wc-add-category class="wc-icon" aria-label="Nueva categoría" title="Nueva categoría">'+icon('plus',15)+'</button></div>'+
       '<label>Aviso<select name="reminderMinutes">'+reminderChoices+'</select></label></div>'+
       '<label class="wc-check"><input type="checkbox" name="allDay"'+(initial.allDay?' checked':'')+'>Todo el día</label>'+
       '<div class="wc-field-pair"><label>Fecha de inicio<input required name="startDate" type="date" min="0001-01-01" max="9999-12-31" value="'+esc(start)+'"></label><label data-wc-time>Hora de inicio<input required name="startTime" type="time" value="'+esc(initial.startTime||'09:00')+'"></label></div>'+
@@ -264,24 +324,37 @@
       f.startTime.disabled=f.endTime.disabled=f.allDay.checked;
       checkDates();
     }
+    const categoryButton=form.querySelector('.wc-category-select');
+    const categoryValue=categoryButton.querySelector('span');
+    const unassigned={id:'',name:'Sin categoría',color:C.eventColor(ctx.state,{})};
+    function setCategory(id) {
+      const choice=categories.find(category=>category.id===id)||unassigned;
+      f.categoryId.value=choice.id;
+      categoryValue.innerHTML=swatch(choice.color)+'<span>'+esc(choice.name)+'</span>';
+    }
+    setCategory(categoryId);
+    bindOptions(categoryButton,form.querySelector('#'+fieldId+'-categories'),()=>[unassigned,...categories],
+      item=>setCategory(item.id),()=>f.categoryId.value);
     const addCategory=form.querySelector('[data-wc-add-category]');
     addCategory.onclick=()=>collectionEditor(ctx,null,addCategory,true,value=>{
       categories.push(value);
-      f.categoryId.innerHTML=categoryChoices(value.id);
-      f.categoryId.focus();
+      setCategory(value.id);
+      categoryButton.focus();
     });
-    const useExisting=form.querySelector('[data-wc-reuse-here]');
-    if(useExisting) useExisting.onclick=()=>reuseChooser(ctx,useExisting,source=>{
-      const copy=moveToDate(source,f.startDate.value||ctx.date,defaults.startTime && !f.allDay.checked ? f.startTime.value : '');
-      if(!copy){ctx.toast('El evento excede el rango de fechas.');return;}
-      for(const field of ['title','kind','calendarId','location','description','startDate','endDate']) f[field].value=copy[field];
-      f.categoryId.value=copy.categoryId||'';
-      f.reminderMinutes.value=String(copy.reminderMinutes??'');
-      f.startTime.value=copy.startTime||'09:00'; f.endTime.value=copy.endTime||'10:00';
-      f.allDay.checked=copy.allDay;
-      previousStart=copy.startDate;
-      setAllDay();f.title.focus();
-    });
+    if(history.length) {
+      bindOptions(f.title,form.querySelector('#'+fieldId+'-titles'),()=>{
+        const query=searchKey(f.title.value);
+        if(!query) return [];
+        const words=query.split(/\s+/);
+        const matches=history.filter(item=>words.every(word=>item.key.includes(word)));
+        return matches.sort((a,b)=>Number(b.key.startsWith(query))-Number(a.key.startsWith(query)));
+      },({event})=>{
+        f.title.value=event.title;
+        setCategory(event.categoryId);
+        f.kind.value=event.kind;
+        f.reminderMinutes.value=String(event.reminderMinutes??'');
+      });
+    }
     f.startDate.oninput=()=>{
       if(f.startDate.value && previousStart && f.endDate.value && f.endDate.value>=previousStart) {
         const span=daySpan({startDate:previousStart,endDate:f.endDate.value});
@@ -338,7 +411,36 @@
   }
 
   function fullDateRange(event) {
-    return shortDate.format(civilDate(event.startDate))+' – '+shortDate.format(civilDate(event.endDate));
+    return shortDate.formatRange(civilDate(event.startDate),civilDate(event.endDate));
+  }
+
+  function monthAgenda(ctx,weekday,events,byCalendar) {
+    const startOnDay = event => event.startDate < ctx.date ? '00:00' : event.startTime;
+    const endOnDay = event => event.endDate > ctx.date ? '24:00' : event.endTime;
+    const allDay = events.filter(event=>event.allDay);
+    const scheduled = events.filter(event=>!event.allDay).sort((a,b)=>
+      startOnDay(a).localeCompare(startOnDay(b)) || endOnDay(a).localeCompare(endOnDay(b)) || a.title.localeCompare(b.title,'es'));
+
+    function group(label,records) {
+      if(!records.length) return '';
+      const rows=records.map(event=>{
+        const category=C.eventCategory(ctx.state,event);
+        const calendar=byCalendar.get(event.calendarId);
+        const meta=[category?.name,calendar?.name,event.kind==='meeting'?'Reunión':''].filter(Boolean).join(' · ');
+        const times=event.allDay?'':'<span class="wc-agenda-times"><b>'+esc(startOnDay(event))+'</b><span> – '+esc(endOnDay(event))+'</span></span>';
+        return '<li><button type="button" class="wc-agenda-entry" data-wc-event="'+esc(event.id)+'" style="--wc-color:'+esc(C.eventColor(ctx.state,event))+'">'+
+          times+'<span class="wc-agenda-detail"><strong>'+esc(event.title)+'</strong><span class="wc-agenda-meta">'+esc(meta)+'</span>'+
+          (event.startDate!==event.endDate?'<small>'+esc(fullDateRange(event))+'</small>':'')+
+          (event.location?'<small>'+esc(event.location)+'</small>':'')+'</span></button></li>';
+      }).join('');
+      return '<div class="wc-agenda-group"><h3>'+label+'</h3><ul>'+rows+'</ul></div>';
+    }
+
+    const count=events.length+' '+(events.length===1?'evento':'eventos');
+    const empty=[...byCalendar.keys()].every(id=>hidden.has(id))?'Activa un calendario para ver sus eventos.':'Sin eventos para este día.';
+    return '<section class="wc-day wc-month-agenda panel" aria-label="Agenda del día"><header><div class="wc-agenda-heading"><span>Agenda del día</span>'+
+      (events.length?'<small>'+count+'</small>':'')+'</div><h2>'+esc(weekday)+'</h2></header>'+
+      (events.length?group('Todo el día',allDay)+group('Con horario',scheduled):'<p class="wc-empty">'+empty+'</p>')+'</section>';
   }
 
   function render(stage,ctx) {
@@ -368,14 +470,6 @@
         '<button type="button" class="wc-number" data-wc-number="'+date+'" tabindex="'+(date===ctx.date?'0':'-1')+'" aria-label="'+esc(label)+'" aria-pressed="'+(date===ctx.date)+'"'+(date===today?' aria-current="date"':'')+'>'+Number(date.slice(8))+'</button>'+
         '<div class="wc-chips">'+chips+'</div></div>';
     }
-    const dailyEvents=selected.map(event=>{
-      const cal=byId.get(event.calendarId), category=C.eventCategory(ctx.state,event);
-      return '<li><button type="button" class="wc-day-event" data-wc-event="'+esc(event.id)+'" style="--wc-color:'+esc(C.eventColor(ctx.state,event))+'">'+
-        '<span class="wc-day-time">'+icon('clock',13)+esc(timeLabel(event,ctx.date))+'</span><strong>'+esc(event.title)+'</strong>'+
-        '<span class="wc-event-meta"><i></i>'+esc([category?.name,cal.name].filter(Boolean).join(' · '))+(event.kind==='meeting'?' · Reunión':'')+'</span>'+
-        (event.startDate!==event.endDate?'<small>'+esc(fullDateRange(event))+'</small>':'')+
-        (event.location?'<small>'+esc(event.location)+'</small>':'')+'</button></li>';
-    }).join('');
     const movePage=dayMode?shiftDay:changeMonth;
     const label=dayMode?weekday:month;
     const picker=dayMode?'<input type="date" data-wc-date aria-label="Elegir fecha" min="0001-01-01" max="9999-12-31" value="'+ctx.date+'">':
@@ -384,10 +478,9 @@
       '<button type="button" data-wc-mode="'+key+'" aria-pressed="'+(activeView===key)+'">'+name+'</button>').join('')+'</div>';
     const body=dayMode?'<div data-wc-day-body></div>':
       '<div class="wc-weekdays" aria-hidden="true">'+weekdays.map((short,i)=>'<span title="'+weekNames[i]+'">'+short+'</span>').join('')+'</div><div class="wc-grid">'+dates.map(dayBox).join('')+'</div>';
-    const dayAgenda=dayMode?'':'<section class="wc-day panel" aria-label="Agenda del día"><header><span>Agenda del día</span><h2>'+esc(weekday)+'</h2></header>'+
-      (dailyEvents?'<ul>'+dailyEvents+'</ul>':'<p class="wc-empty">'+(calendars.every(cal=>hidden.has(cal.id))?'Activa un calendario para ver sus eventos.':'Sin eventos para este día.')+'</p>')+'</section>';
+    const dayAgenda=dayMode?'':monthAgenda(ctx,weekday,selected,byId);
     stage.innerHTML='<section class="wc-view"><header class="wc-heading"><h1>Calendario</h1><div class="wc-actions"><button type="button" class="btn" data-wc-apple>'+icon('calendar',16)+'Calendario de Apple</button>'+
-      '<button type="button" class="btn" data-wc-reuse>'+icon('clipboard',16)+'Reutilizar evento</button><button type="button" class="btn primary" data-wc-new>'+icon('plus',16)+'Nuevo evento</button></div></header>'+
+      '<button type="button" class="btn primary" data-wc-new>'+icon('plus',16)+'Nuevo evento</button></div></header>'+
       '<div class="wc-layout"><section class="wc-month panel" aria-label="'+(dayMode?'Vista de día':'Vista mensual')+'"><header class="wc-month-head"><h2><label class="wc-month-picker"><span>'+esc(label)+'</span>'+icon('chevron-down',14)+picker+'</label></h2>'+
       '<div class="wc-month-controls">'+modePicker+'<div class="wc-month-nav"><button type="button" class="wc-today" data-wc-today>Hoy</button>'+
       '<button class="wc-icon" type="button" data-wc-step="-1" aria-label="'+(dayMode?'Día anterior':'Mes anterior')+'"'+(!movePage(ctx.date,-1)?' disabled':'')+'>'+icon('chevron-left',16)+'</button><button class="wc-icon" type="button" data-wc-step="1" aria-label="'+(dayMode?'Día siguiente':'Mes siguiente')+'"'+(!movePage(ctx.date,1)?' disabled':'')+'>'+icon('chevron-right',16)+'</button></div></div></header>'+body+'</section>'+
@@ -450,11 +543,6 @@
       } else if(button?.hasAttribute('data-wc-mode')){
         activeView=button.dataset.wcMode;ctx.render();focusControl(stage,'[data-wc-mode]','wcMode',activeView);
       } else if(button?.hasAttribute('data-wc-new')) eventEditor(ctx,null,button);
-      else if(button?.hasAttribute('data-wc-reuse')) reuseChooser(ctx,button,source=>{
-        const defaults=moveToDate(source,ctx.date);
-        if(defaults)eventEditor(ctx,null,button,defaults);
-        else ctx.toast('El evento excede el rango de fechas.');
-      });
       else if(button?.hasAttribute('data-wc-cal-new')) collectionEditor(ctx,null,button);
       else if(button?.hasAttribute('data-wc-cal-edit')) collectionEditor(ctx,byId.get(button.dataset.wcCalEdit),button);
       else if(button?.hasAttribute('data-wc-category-new')) collectionEditor(ctx,null,button,true);
