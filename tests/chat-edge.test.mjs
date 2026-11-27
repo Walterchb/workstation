@@ -118,10 +118,16 @@ test('la consulta elegida limita el ámbito; saludo y aclaración no leen la age
 });
 test('errores fijos distinguen acceso, configuración, cuota y proveedor sin filtrar respuestas de upstream',async()=>{
   const fixtures=[
-    [{settings:{...env,OPENAI_API_KEY:''}},503,'CHAT_NOT_CONFIGURED'],
-    [{settings:{...env,SUPABASE_PUBLISHABLE_KEY:'sb_secret_no'}},503,'CHAT_NOT_CONFIGURED'],
-    [{openai:()=>new Response('detalle proveedor',{status:401})},503,'CHAT_NOT_CONFIGURED'],
+    [{settings:{...env,OPENAI_API_KEY:' '}},503,'CHAT_KEY_MISSING'],
+    [{settings:{...env,OPENAI_API_KEY:'Bearer fixture-provider'}},503,'CHAT_KEY_INVALID'],
+    [{settings:{...env,SUPABASE_PUBLISHABLE_KEY:'sb_secret_no'}},503,'CHAT_SUPABASE_CONFIG'],
+    [{openai:()=>new Response('detalle proveedor',{status:401})},503,'CHAT_KEY_INVALID'],
+    [{openai:()=>new Response('detalle proveedor',{status:403})},503,'CHAT_KEY_PERMISSION'],
+    [{openai:()=>Response.json({error:{code:'missing_scope',message:'detalle proveedor'}},{status:401})},503,'CHAT_KEY_PERMISSION'],
+    [{openai:()=>Response.json({error:{code:'model_not_found',message:'detalle proveedor'}},{status:403})},503,'CHAT_MODEL'],
+    [{openai:()=>Response.json({error:{code:'model_not_found',message:'detalle proveedor'}},{status:404})},503,'CHAT_MODEL'],
     [{openai:()=>Response.json({error:{code:'insufficient_quota',message:'detalle proveedor'}},{status:429})},429,'CHAT_QUOTA'],
+    [{openai:()=>Response.json({error:{type:'insufficient_quota',message:'detalle proveedor'}},{status:429})},429,'CHAT_QUOTA'],
     [{openai:()=>new Response('detalle proveedor',{status:429})},429,'CHAT_LIMIT'],
     [{openai:()=>new Response('detalle proveedor',{status:500})},502,'CHAT_PROVIDER'],
     [{rpc:()=>new Response('detalle proveedor',{status:403}),openai:()=>result([call(query)])},403,'CHAT_ACCESS'],

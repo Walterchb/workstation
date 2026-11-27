@@ -251,11 +251,11 @@
 
   function chatFailure(response, data) {
     const status = response.status;
-    if (Object.hasOwn(chatErrors, data?.code)) return failure(data.code, chatErrors[data.code], status);
-    if (status === 404) return failure("CHAT_NOT_CONFIGURED", "La función workhub-chat todavía no está desplegada en este proyecto de Supabase.", status);
+    if (Object.hasOwn(chatErrors, data?.code)) return withMetering(failure(data.code, chatErrors[data.code], status), data);
+    if (status === 404) return withMetering(failure("CHAT_NOT_CONFIGURED", "La función workhub-chat todavía no está desplegada en este proyecto de Supabase.", status), data);
     const fallback = {400:"CHAT_INPUT", 401:"CHAT_AUTH", 403:"CHAT_ACCESS", 413:"CHAT_INPUT", 429:"CHAT_LIMIT", 504:"CHAT_TIMEOUT"};
     const code = fallback[status] || "CHAT_PROVIDER";
-    return failure(code, chatErrors[code], status);
+    return withMetering(failure(code, chatErrors[code], status), data);
   }
 
   const streamType = "application/x-ndjson";
@@ -291,9 +291,16 @@
     }
   }
 
+  function withMetering(target, data) {
+    if (data?.usage && typeof data.usage === "object") target.usage = data.usage;
+    if (typeof data?.requestId === "string") target.requestId = data.requestId;
+    return target;
+  }
+
   function chatAnswer(data) {
-    if (typeof data?.answer !== "string" || !data.answer.trim() || !Array.isArray(data.sources)) throw invalidReply();
-    return {answer:data.answer, sources:data.sources};
+    if (typeof data?.answer !== "string" || !data.answer.trim() || !Array.isArray(data.sources))
+      throw withMetering(invalidReply(),data);
+    return withMetering({answer:data.answer, sources:data.sources}, data);
   }
 
   async function readChatStream(chunks, onUpdate, checkSession) {
@@ -345,7 +352,8 @@
     const controller = new AbortController();
     const cancel = () => controller.abort();
     chatRequest = controller;
-    let timedOut = false;
+    const attemptId = operationId();
+    let timedOut = false, dispatched = false;
     const timeout = setTimeout(() => { timedOut = true; cancel(); }, 100000);
     signal?.addEventListener("abort", cancel, {once:true});
     if (signal?.aborted) cancel();
@@ -356,6 +364,15 @@
         throw Object.assign(failure("CHAT_ABORTED", "Consulta cancelada."), {name:"AbortError"});
       }
     }
+    function measure(result, outcome, uncertain) {
+      const ledger = window.WorkStationChatBudget;
+      if (!ledger) return;
+      try {
+        const update = result?.usage ? ledger.record(owner,attemptId,result.usage,outcome)
+          : uncertain ? ledger.markUnknown(owner,attemptId) : undefined;
+        update?.catch?.(()=>{});
+      } catch { /* El estado del indicador no interrumpe el chat. */ }
+    }
     try {
       checkSession();
       if (Date.now() / 1000 + 45 >= session.expires_at) await refreshSession();
@@ -363,6 +380,7 @@
         checkSession();
         const token = session.access_token;
         const callback = typeof onUpdate === "function" ? onUpdate : undefined;
+        dispatched = true;
         const response = await post("/functions/v1/workhub-chat", payload, token, controller.signal, callback ? streamType : undefined);
         checkSession();
         const chunks = chatChunks(response, controller.signal);
@@ -370,6 +388,7 @@
         if (response.ok && mediaType === streamType) {
           const answer = await readChatStream(chunks, callback, checkSession);
           checkSession();
+          measure(answer,"success",true);
           return answer;
         }
         let raw = "";
@@ -377,13 +396,20 @@
         checkSession();
         let data;
         try { data = JSON.parse(raw); } catch { /* Puede ser un error del gateway sin JSON. */ }
-        if (response.ok) return chatAnswer(data);
+        if (response.ok) {
+          const answer = chatAnswer(data);
+          measure(answer,"success",true);
+          return answer;
+        }
         const error = chatFailure(response, data);
-        // Un 401 de autenticación ocurre antes de llamar a OpenAI. No se repite una consulta facturable.
-        if (response.status !== 401 || error.code !== "CHAT_AUTH" || attempt > 0) throw error;
+        // Si la sesión venció al leer una fuente, el modelo ya pudo haber consumido tokens.
+        if (response.status !== 401 || error.code !== "CHAT_AUTH" || error.usage?.rounds > 0 || attempt > 0) throw error;
+        dispatched = false;
         if (token === session.access_token) await refreshSession();
       }
     } catch (error) {
+      const uncertain = !error.code || ["CHAT_PROVIDER","CHAT_NETWORK","CHAT_TIMEOUT","CHAT_ABORTED"].includes(error.code);
+      measure(error,"error",dispatched && (uncertain || controller.signal.aborted));
       checkSession();
       if (error.code === "AUTH") throw failure("CHAT_AUTH", chatErrors.CHAT_AUTH);
       if (typeof error.code === "string" && error.code.startsWith("CHAT_")) throw error;

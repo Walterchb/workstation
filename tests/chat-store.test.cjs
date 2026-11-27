@@ -24,8 +24,8 @@ function workSession() {
   let clock = Date.now(), renewed = 0;
   class Clock extends Date { static now() {return clock;} }
   const credentials = new Map();
-  const requests = [];
-  const api = {chat:()=>response(200,answer),beforeRefresh:()=>{},requests};
+  const requests = [], metering = [];
+  const api = {chat:()=>response(200,answer),beforeRefresh:()=>{},requests,metering};
   const empty = ()=>({version:1,goals:[],tasks:[]});
   const login = name => response(200,{
     user:{id:name,email:name+'@prueba.invalid'},
@@ -38,6 +38,10 @@ function workSession() {
     sessionStorage:{setItem:(k,v)=>credentials.set(k,v),getItem:k=>credentials.get(k),removeItem:k=>credentials.delete(k)}
   };
   runtime.window=runtime;
+  runtime.WorkStationChatBudget={
+    record:(...args)=>metering.push(['record',...args]),
+    markUnknown:(...args)=>metering.push(['unknown',...args])
+  };
   runtime.fetch=async(url,opts)=>{
     const endpoint=new URL(url);
     assert.equal(endpoint.origin,config.supabaseUrl);
@@ -114,6 +118,11 @@ test('Solo una denegación de sesión permite repetir antes de consultar al mode
   const before=api.requests.length;
   await assert.rejects(store.askChat(payload),hasCode('CHAT_PROVIDER'));
   assert.equal(api.requests.length-before,1);
+  api.chat=()=>response(401,{code:'CHAT_AUTH',usage:{rounds:1,complete:false}});
+  const after=api.requests.length;
+  await assert.rejects(store.askChat(payload),hasCode('CHAT_AUTH'));
+  assert.equal(api.requests.length-after,1,'Sin reenvío tras una llamada facturable');
+  assert.equal(api.metering.at(-1)[3].rounds,1);
 });
 
 test('El guardado simultáneo al chat comparte la renovación y deja la agenda editable',async()=>{
@@ -223,6 +232,46 @@ test('Una función anterior puede responder JSON al cliente en vivo sin una segu
   api.chat=()=>Response.json(answer);
   assert.deepEqual(snapshot(await store.askChat(payload,null,()=>assert.fail('JSON sin avances'))),answer);
   assert.equal(api.requests.filter(r=>r.route.endsWith('/workhub-chat')).length,1);
+});
+
+test('El indicador registra una sola vez las rondas agregadas de cada pregunta o error, con JSON o transmisión',async()=>{
+  const {store,api}=workSession();
+  await store.signIn('ana','ejemplo');
+  const usage={rounds:3,measuredRounds:3,model:'prueba',complete:true,knownCostUsd:0.014,costUsd:0.014};
+  for (const stream of [false,true]) {
+    for (const success of [true,false]) {
+      const result=success ? {...answer,requestId:'server',usage} : {code:'CHAT_PROVIDER',requestId:'server',usage};
+      api.chat=()=>stream ? new Response(JSON.stringify({type:success?'done':'error',...result})+'\n',{headers:{'Content-Type':'application/x-ndjson'}})
+        : response(success?200:502,result);
+      const delivered=store.askChat(payload,null,()=>{});
+      if (success) assert.deepEqual(snapshot(await delivered),result);
+      else await assert.rejects(delivered,error=>error.code==='CHAT_PROVIDER' && error.usage.costUsd===usage.costUsd);
+      const [verb,user,id,value,outcome]=api.metering.at(-1);
+      assert.equal(verb,'record'); assert.equal(user,'ana'); assert.ok(id);
+      assert.deepEqual(snapshot(value),usage); assert.equal(outcome,success?'success':'error');
+    }
+  }
+  assert.equal(api.metering.length,4);
+  assert.equal(new Set(api.metering.map(row=>row[2])).size,4);
+});
+
+test('Interrupciones reales dejan consumo incierto; un rechazo antes del modelo no crea consumos',async()=>{
+  const {store,api}=workSession();
+  await store.signIn('ana','ejemplo');
+  api.chat=()=>response(400,{code:'CHAT_INPUT'});
+  await assert.rejects(store.askChat(payload),hasCode('CHAT_INPUT'));
+  assert.equal(api.metering.length,0);
+  const stopped=new AbortController();stopped.abort();
+  await assert.rejects(store.askChat(payload,stopped.signal),hasCode('CHAT_ABORTED'));
+  assert.equal(api.metering.length,0);
+  const fixture=streamFixture();
+  api.chat=()=>fixture.response;
+  const stop=new AbortController();
+  const query=store.askChat(payload,stop.signal,()=>{});
+  fixture.write('{"type":"status","stage":"searching"}\n');
+  await waitForFetch(); stop.abort();
+  await assert.rejects(query,hasCode('CHAT_ABORTED'));
+  assert.deepEqual(api.metering.map(row=>row.slice(0,2)),[['unknown','ana']]);
 });
 
 test('Un flujo cortado, excesivo o fallido nunca se confirma ni se vuelve a enviar automáticamente',async()=>{

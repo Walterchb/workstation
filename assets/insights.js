@@ -671,6 +671,8 @@
   }
 
   window.JInsights = {
+    chatPeriod: getRange,
+    chatGoal: () => filters.goalId,
     reportPaper(report) {
       const template=document.createElement('template');
       template.innerHTML=reportHTML(report);

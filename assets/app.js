@@ -11,8 +11,16 @@
   let session=null, state=null, saving=false, clockHandle;
   const mark='<img src="./assets/icons/mark.svg" width="37" height="37" alt="">';
   const brand='<div class="brandbar">'+mark+'<span>Work Hub</span></div>';
+  let lastChatView = {};
+
+  function chatView() {
+    if (session?.mode !== 'cloud' || !session.user?.id) return {};
+    return view === 'chat' ? lastChatView : window.JChatView.read(view,date,root.querySelector('.stage'));
+  }
+  window.WorkStationChatContext = Object.freeze({get:chatView});
 
   function resetChat() {
+    lastChatView = {};
     window.JChatWidget.reset();
     window.JChat.reset();
   }
@@ -57,6 +65,7 @@
 
   function navigate(next) {
     if(!titles[next])return;
+    if(next==='chat' && view!=='chat') lastChatView=chatView();
     const wasOpen=!!root.querySelector('.rail.is-open');
     if(wasOpen) toggleMenu(false);
     view=next;

@@ -35,6 +35,11 @@
   const sourceTypes = new Map([
     ['task','Actividad'], ['space','Espacio'], ['note','Nota'], ['goal','Objetivo'], ['event','Evento']
   ]);
+  const followups = [
+    ['Revisar pendientes','De estos asuntos, ¿qué me queda por hacer y qué está pendiente de respuesta?'],
+    ['Ver evolución','¿Cómo evolucionaron estos asuntos entre el primer y el último registro del período?'],
+    ['Preparar un correo','Con los avances documentados que acabamos de revisar, redacta un correo breve para mi gerencia.']
+  ];
   const esc = value => window.JUI.esc(value);
   const maxQuestion = 3000;
   const progressText = {
@@ -64,6 +69,7 @@
     threads.clear();
     scope = 'all';
     owner = undefined;
+    window.WorkStationChatBudget?.setUser(null);
     if (view) view.page.remove();
     view = null;
   }
@@ -111,6 +117,70 @@
       budget -= pairSize;
     }
     return history;
+  }
+
+  function referenceCaption(context) {
+    const first = readableDate(context.from), last = readableDate(context.to);
+    const period = first && last && first !== last ? first+' – '+last : first || last;
+    return [context.view,period,...(context.filters || [])].filter(Boolean).join(' · ');
+  }
+
+  // Los IDs apuntan al registro original aunque haya cambiado su texto. El servidor
+  // vuelve a comprobar el acceso y consulta el contenido vigente cuando corresponde.
+  function conversationMemory(t, history) {
+    const topics = [], sources = [], seen = new Set();
+    const compacted = t.turns.slice(0,t.turns.length - history.length / 2).slice(-4);
+    const recent = t.turns.slice(compacted.length ? -2 : -6);
+    for (const turn of new Set([...compacted,...recent])) {
+      const context = turn.viewContext || {};
+      const reference = [context.view,context.from,context.to !== context.from ? context.to : ''].filter(Boolean).join(' · ');
+      topics.push(((reference ? '('+reference+') ' : '')+turn.question).slice(0,240));
+    }
+    for (let index = t.turns.length - 1; index >= 0 && sources.length < 12; index--) {
+      const turn = t.turns[index];
+      for (const match of turn.answer.matchAll(/\[(\d+)\]/g)) {
+        const source = turn.sources.get(Number(match[1]));
+        if (!source || source.id.length > 160) continue;
+        const key = source.type+'/'+source.id;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        sources.push({type:source.type,id:source.id,title:source.title.slice(0,240)});
+        if (sources.length === 12) break;
+      }
+    }
+    return {topics,sources};
+  }
+
+  function exampleItems(context) {
+    if (!context.from && !context.to) return examples[scope];
+    const periodItems = {
+      all:[
+        ['file-text','Qué cambió','¿Qué avances y decisiones documenté en el período visible?'],
+        ['clipboard','Por atender','De los asuntos del período visible, ¿qué me quedó por hacer y qué esperaba de otras personas?'],
+        examples.all[2]
+      ],
+      tasks:[
+        ['activity','Evolución','¿Qué cambió según los comentarios de las actividades del período visible?'],
+        ['timer','Tiempo registrado','¿Cuántas horas registré en actividades y en espacios en el período visible?'],
+        ['clipboard','Por atender','¿Qué actividades quedaron pendientes al cierre del período visible?']
+      ],
+      calendar:[
+        ['calendar','Reuniones','¿Qué reuniones tengo en el período visible?'],
+        ['calendar-days','Agenda del período','¿Cómo se organiza mi agenda en el período visible?'],
+        ['layers','Categorías','¿Cómo se distribuyen los eventos del período visible por categoría?']
+      ]
+    };
+    return periodItems[scope] || examples[scope];
+  }
+
+  function refreshContext(v) {
+    const context = window.WorkStationChatContext?.get() || {};
+    const caption = referenceCaption(context);
+    v.context.hidden = !caption;
+    v.context.textContent = caption ? 'Vista de referencia · '+caption : '';
+    v.viewContext = context;
+    v.examples = exampleItems(context);
+    if (v.thread && !v.thread.turns.length) v.empty.innerHTML = examplesHTML(v.ctx.icon,v.examples);
   }
 
   function row(speaker, content, icon) {
@@ -205,11 +275,11 @@
     }
   }
 
-  function examplesHTML(icon) {
+  function examplesHTML(icon,items) {
     return '<div class="jchat-welcome"><span class="jchat-mark" aria-hidden="true">'+icon('sparkles',25)+'</span>'+
       '<div class="jchat-welcome-copy"><h2>¿Qué quieres revisar?</h2>'+
       '<p>Puedes abrir los registros citados en cada respuesta.</p></div>'+
-      '<div class="jchat-examples">'+examples[scope].map(([glyph,title,question],i)=>
+      '<div class="jchat-examples">'+items.map(([glyph,title,question],i)=>
         '<button type="button" data-chat-example="'+i+'"><span class="jchat-example-icon">'+icon(glyph,18)+
         '</span><span class="jchat-example-copy"><strong>'+esc(title)+'</strong><span>'+esc(question)+'</span></span>'+
         '<span class="jchat-example-arrow">'+icon('arrow-up-right',15)+'</span></button>').join('')+'</div></div>';
@@ -286,7 +356,8 @@
       v.thread = t;
       v.seen = 0; v.interim = null; v.shownText = '';
       v.log.replaceChildren();
-      v.empty.innerHTML = examplesHTML(icon);
+      v.examples = exampleItems(v.viewContext);
+      v.empty.innerHTML = examplesHTML(icon,v.examples);
       v.scroll.scrollTop = 0;
     }
     const added = v.seen < t.turns.length || !!reply && (v.interim !== reply || v.shownText !== reply.text);
@@ -346,6 +417,7 @@
     v.send.hidden = !!t.pending;
     v.send.disabled = !t.draft.trim() || !!t.pending;
     v.stop.hidden = !t.pending;
+    v.followups.hidden = !!reply || !!t.error || !!t.draft || !t.turns.at(-1)?.sources.size;
     v.clear.disabled = !(t.turns.length || reply || t.draft || t.error);
     v.error.hidden = !t.error;
     if (t.error) {
@@ -372,7 +444,9 @@
   async function submit() {
     const t = thread(), question = t.draft.trim();
     if (t.pending || !question || question.length > maxQuestion) return;
-    const payload = {scope, message:question, history:contextHistory(t)};
+    const viewContext = window.WorkStationChatContext?.get() || {};
+    const history = contextHistory(t);
+    const payload = {scope,message:question,history,viewContext,memory:conversationMemory(t,history)};
     const request = {question, controller:new AbortController(), text:'', stage:'sending'};
     t.pending = request;
     t.incomplete = null; t.draft = ''; t.error = null;
@@ -397,7 +471,7 @@
       if (t.pending !== request) return;
       if (typeof result?.answer !== 'string' || !result.answer.trim())
         throw new Error('La consulta no devolvió una respuesta. Puedes volver a enviarla.');
-      t.turns.push({question, answer:result.answer, sources:verifiedSources(result.sources)});
+      t.turns.push({question,viewContext,answer:result.answer,sources:verifiedSources(result.sources)});
     } catch (err) {
       if (t.pending !== request) return;
       t.draft = question;
@@ -420,12 +494,16 @@
     const userId = ctx.user?.id;
     if (owner !== undefined && owner !== userId) reset();
     owner = userId;
-    if (view?.page.parentNode === el && view.compact === compact) { view.ctx = ctx; paint(); return; }
+    window.WorkStationChatBudget?.setUser(owner);
+    if (view?.page.parentNode === el && view.compact === compact) {
+      view.ctx = ctx; refreshContext(view); paint(); return;
+    }
     if (view) view.page.remove();
     const icon = ctx.icon, id = compact ? 'jchat-quick' : 'jchat';
     const header = compact ? '' : '<header class="jchat-head"><div class="jchat-heading">'+
       '<span class="jchat-brand-icon">'+icon('sparkles',20)+'</span><div><h1 id="'+id+'-title">Chat de Work Station</h1>'+
-      '<p>Consulta tus actividades, notas, objetivos y calendario con ChatGPT.</p></div></div></header>';
+      '<p>Consulta tus actividades, notas, objetivos y calendario con ChatGPT.</p></div></div>'+
+      (window.WorkStationChatBudget?.header() || '')+'</header>';
     el.innerHTML = '<section class="jchat'+(compact ? ' jchat-compact' : '')+'" '+
       (compact ? 'aria-label="Conversación"' : 'aria-labelledby="'+id+'-title"')+'>'+header+
       '<div class="panel jchat-panel"><div class="jchat-tools jchat-toolbar">'+
@@ -433,12 +511,15 @@
       [...scopes].map(([key,label])=>'<option value="'+key+'">'+label+'</option>').join('')+'</select></label>'+
       '<button type="button" class="btn ghost" data-chat-new title="Empezar de nuevo en el ámbito seleccionado" disabled>'+
       icon('plus',15)+'<span>Nueva conversación</span></button></div>'+
+      '<p class="jchat-view-context" data-chat-context hidden></p>'+
       '<div class="jchat-scroll" data-chat-scroll><div data-chat-empty></div>'+
       '<div class="jchat-log" role="log" aria-label="Mensajes de la conversación" aria-live="polite" aria-relevant="additions" data-chat-log></div></div>'+
       '<div class="jchat-footer"><span class="jchat-sr" role="status" data-chat-activity></span>'+
       '<div class="jchat-error" data-chat-error role="alert" hidden>'+
       '<span data-chat-error-text></span><a href="./docs/chat.html" target="_blank" rel="noopener" data-chat-setup hidden>Ver configuración</a>'+
       '<button type="button" data-chat-retry hidden>Reintentar</button></div>'+
+      '<div class="jchat-followups" data-chat-followups role="group" aria-label="Continuar la conversación" hidden>'+
+      followups.map(([label],i)=>'<button type="button" data-chat-followup="'+i+'">'+esc(label)+'</button>').join('')+'</div>'+
       '<form class="jchat-compose" data-chat-form><label class="jchat-sr" for="'+id+'-question">Tu consulta</label>'+
       '<textarea id="'+id+'-question" name="message" rows="2" maxlength="'+maxQuestion+
       '" placeholder="Pregunta sobre tus registros…" enterkeyhint="send" required></textarea>'+
@@ -450,8 +531,10 @@
     const get = selector => page.querySelector(selector);
     const v = {page,ctx,compact,log:get('[data-chat-log]'),scroll:get('[data-chat-scroll]'),empty:get('[data-chat-empty]'),
       error:get('[data-chat-error]'),activity:get('[data-chat-activity]'),input:get('textarea'),select:get('[data-chat-scope]'),clear:get('[data-chat-new]'),
-      send:get('[data-chat-send]'),stop:get('[data-chat-stop]'),thread:null,seen:0,interim:null};
+      send:get('[data-chat-send]'),stop:get('[data-chat-stop]'),context:get('[data-chat-context]'),
+      followups:get('[data-chat-followups]'),thread:null,seen:0,interim:null};
     view = v;
+    refreshContext(v);
     v.select.addEventListener('change',()=>{
       if (!scopes.has(v.select.value) || scope === v.select.value) return;
       cancel(thread());
@@ -463,6 +546,7 @@
       if (t.error) { t.error = null; v.error.hidden = true; }
       v.send.disabled = !t.draft.trim() || !!t.pending;
       v.clear.disabled = !(t.turns.length || t.pending || t.incomplete || t.draft);
+      v.followups.hidden = !!t.pending || !!t.incomplete || !!t.draft || !t.turns.at(-1)?.sources.size;
     });
     v.input.addEventListener('keydown',event=>{
       if (event.key === 'Enter' && !event.shiftKey && !event.isComposing && event.keyCode !== 229) {
@@ -486,8 +570,15 @@
       const button = event.target.closest?.('button');
       if (!button) return;
       if (button.hasAttribute('data-chat-example')) {
-        const item = examples[scope][Number(button.dataset.chatExample)];
+        const item = v.examples[Number(button.dataset.chatExample)];
         if (item && !thread().pending) { thread().draft = item[2]; submit(); v.input.focus({preventScroll:true}); }
+      } else if (button.hasAttribute('data-chat-followup')) {
+        const item = followups[Number(button.dataset.chatFollowup)];
+        if (item && !thread().pending) {
+          thread().draft = item[1];
+          paint();
+          v.input.focus({preventScroll:true});
+        }
       } else if (button.hasAttribute('data-chat-copy')) {
         const turn = thread().turns[Number(button.dataset.turn)];
         if (turn) copyAnswer(button,turn,icon);
