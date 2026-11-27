@@ -62,8 +62,7 @@
     const classification = [category?.name,calendar?.name].filter(Boolean).join(' · ');
     let range = 'Todo el día';
     if (!event.allDay) {
-      if (!event.startTime) range = 'Sin horario';
-      else if (!event.endTime) range = event.startTime+' · sin hora de fin';
+      if (!event.endTime) range = event.startTime+' · sin hora de fin';
       else range = timeText(item.start)+' – '+timeText(item.end);
     }
     const continuation = !event.allDay && event.startDate<date ? 'Viene del día anterior' : '';
@@ -72,7 +71,7 @@
     const label = [event.title,range,context,classification,continuation,continues].filter(Boolean).join(' · ');
     const common = ' type="button" data-wd-event="'+esc(event.id)+'" aria-label="'+esc(label)+'" title="'+esc(label)+'"';
     const color = '--wd-color:'+esc(calendars.eventColor(state,event))+';';
-    if (event.allDay || !event.startTime) return '<button'+common+' class="wd-full-event" style="'+color+'">'+esc(event.title)+'</button>';
+    if (event.allDay) return '<button'+common+' class="wd-full-event" style="'+color+'">'+esc(event.title)+'</button>';
     const duration = item.end-item.start;
     const times = '<time>'+esc(range)+'</time>';
     const title = '<strong>'+esc(event.title)+'</strong>';
@@ -99,7 +98,6 @@
     const records = new Map(onDate.map(event => [event.id,event]));
     const byCalendar = new Map([...calendars.calendars(state),calendars.activityCalendar].map(cal => [cal.id,cal]));
     const allDay = onDate.filter(event => event.allDay);
-    const unscheduled = onDate.filter(event => !event.allDay && !event.startTime);
     const timed = placeEvents(onDate.filter(event => !event.allDay && event.startTime),date);
     const peak = timed.reduce((highest,item) => Math.max(highest,item.columns),1);
     const firstMinute = timed.filter(item => item.event.startDate===date)
@@ -116,8 +114,6 @@
     mount.innerHTML='<div class="wd-all"><span class="wd-all-label">Todo el día</span><div class="wd-all-list">'+
       allDay.map(event=>eventButton({event},date,state,byCalendar)).join('')+
       (onCreate?'<button type="button" class="wd-add-all" data-wd-all title="Crear evento de día completo" aria-label="Crear evento de día completo">'+icon('plus',14)+'</button>':'')+'</div></div>'+
-      (unscheduled.length?'<div class="wd-all"><span class="wd-all-label">Sin horario</span><div class="wd-all-list">'+
-        unscheduled.map(event=>eventButton({event},date,state,byCalendar)).join('')+'</div></div>':'')+
       '<div class="wd-scroll" role="region" aria-label="Horario del día en hora de Lima"><div class="wd-timeline" style="--wd-track-min:'+peak*68+'px">'+
       '<div class="wd-ruler" aria-hidden="true">'+hourLabels+'</div><div class="wd-track">'+buttons+
       '<div class="wd-events">'+timed.map(item=>eventButton(item,date,state,byCalendar)).join('')+'</div><div class="wd-now" hidden></div></div></div></div>';
@@ -176,5 +172,5 @@
     updateNow();
   }
 
-  window.JCalendarDay = {render};
+  window.JCalendarDay = {render, placeEvents, eventButton, slotDefaults, timeText};
 })();

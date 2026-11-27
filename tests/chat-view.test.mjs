@@ -59,3 +59,20 @@ test('la referencia del chat en Mes sigue el calendario Workhub efectivo incluso
   assert.deepEqual([...empty.selection.ids],[]);
   assert.equal(getInfo([virtual],'day').selection.kind,'agenda');
 });
+
+test('Calendario · Semana comunica sus fechas y el objetivo activo aunque cruce el año',()=>{
+  const virtual='source:activities';
+  window.JCalendarWeek={range:()=>({start:'2026-12-28',end:'2027-01-03'})};
+  window.JCalendarModel={activityCalendar:{id:virtual}};
+  window.JWorkCalendar={
+    visibleCalendarIds:(state,mode)=>state[mode],
+    selectedCategory:()=>({id:'goal:g',kind:'goal',name:'Informe'})
+  };
+  const fields={'[data-wc-mode][aria-pressed="true"]':{dataset:{wcMode:'week'}}};
+  const info=window.JChatView.read('calendar','2027-01-01',stage(fields,[calendar(virtual,true)]),{week:[virtual]});
+  assert.equal(info.view,'Calendario · Semana');
+  assert.equal(info.from,'2026-12-28');
+  assert.equal(info.to,'2027-01-03');
+  assert.equal(info.selection.goalId,'g');
+  assert.ok(info.filters.includes('Objetivo visible: Informe'));
+});

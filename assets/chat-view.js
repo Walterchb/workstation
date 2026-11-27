@@ -41,34 +41,46 @@
       const goalId = objective && window.JInsights.chatGoal();
       result.selection = {kind:'goals', ...(goalId ? {goalId} : status && status !== 'Todos' ? {status} : {})};
     } else if (view === 'calendar') {
-      const day = find('[data-wc-mode][aria-pressed="true"]')?.dataset.wcMode === 'day';
-      addMode(day ? 'Día' : 'Mes');
-      result.from = day ? date : date.slice(0,7) + '-01';
-      const lastDay = new Date(result.from + 'T12:00:00Z');
-      lastDay.setUTCMonth(lastDay.getUTCMonth()+1,0);
-      result.to = day ? date : lastDay.toISOString().slice(0,10);
+      const mode = find('[data-wc-mode][aria-pressed="true"]')?.dataset.wcMode || 'month';
+      const month = mode === 'month';
+      addMode(({day:'Día',week:'Semana',month:'Mes'})[mode]);
+      if (mode === 'week') {
+        const {start,end} = window.JCalendarWeek.range(date);
+        result.from = start;
+        result.to = end;
+      } else if (month) {
+        result.from = date.slice(0,7) + '-01';
+        const lastDay = new Date(result.from + 'T12:00:00Z');
+        lastDay.setUTCMonth(lastDay.getUTCMonth()+1,0);
+        result.to = lastDay.toISOString().slice(0,10);
+      } else {
+        result.from = result.to = date;
+      }
       const inputs = Array.from(stage.querySelectorAll('[data-wc-visible]'));
       const all = inputs.map(input => input.dataset.wcVisible);
-      const visible = state ? window.JWorkCalendar.visibleCalendarIds(state,day ? 'day' : 'month')
+      const visible = state ? window.JWorkCalendar.visibleCalendarIds(state,mode)
         : inputs.filter(input => input.checked).map(input => input.dataset.wcVisible);
       const activityId = window.JCalendarModel?.activityCalendar.id;
-      const activities = !!activityId && visible.includes(activityId);
-      const visibleEvents = visible.filter(id => id !== activityId);
+      const category = state && window.JWorkCalendar.selectedCategory?.(state);
+      if (category) addFilter(category.kind === 'goal' ? 'Objetivo visible: ' : 'Categoría visible: ',category.name);
+      const activities = category?.kind !== 'event' && !!activityId && visible.includes(activityId);
+      const visibleEvents = category?.kind === 'goal' ? [] : visible.filter(id => id !== activityId);
       const hiddenEvents = all.filter(id => id !== activityId && !visibleEvents.includes(id));
-      if (activities) addFilter('', 'Actividades y espacios de la agenda visibles');
+      if (activities) addFilter('', 'Solo actividades y espacios con hora de inicio');
       if (activities && !visibleEvents.length) {
-        result.selection = {kind:'agenda'};
+        result.selection = category?.kind === 'goal' ? {kind:'agenda',goalId:category.id.slice('goal:'.length)} : {kind:'agenda'};
       } else if (!activities || hiddenEvents.length) {
         result.selection = {kind:'calendar'};
-        if (!day || hiddenEvents.length || !visibleEvents.length) {
-          const useVisible = !day || visibleEvents.length <= hiddenEvents.length;
+        if (month || hiddenEvents.length || !visibleEvents.length) {
+          const useVisible = month || visibleEvents.length <= hiddenEvents.length;
           const ids = useVisible ? visibleEvents : hiddenEvents;
           result.selection.mode = ids.length <= 120 ? (useVisible ? 'include' : 'exclude') : 'partial';
           if (result.selection.mode !== 'partial') result.selection.ids = ids;
           if (!visibleEvents.length) addFilter('', 'Ningún calendario visible');
           else {
             const subset = inputs.filter(input => ids.includes(input.dataset.wcVisible));
-            const limit = subset.length > 8 ? 7 : 8;
+            const available = 8 - filters.length;
+            const limit = subset.length > available ? available - 1 : available;
             for (const input of subset.slice(0,limit)) addFilter(useVisible ? 'Calendario visible: ' : 'Calendario oculto: ',input.closest('label')?.textContent.trim());
             if (subset.length > limit) filters.push('Hay ' + (subset.length-limit) + ' calendarios adicionales en la selección.');
           }

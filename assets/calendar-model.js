@@ -61,9 +61,9 @@
       const entry = {calendarId:activityCalendar.id, kind:task.kind === 'space' ? 'space' : 'activity',
         sourceTaskId:task.id, title:task.title, description:task.context, categoryId:task.goalId ? 'goal:'+task.goalId : '',
         startDate:task.date, endDate:task.date, allDay:false};
-      for (const segment of task.segments.length ? task.segments : [null]) {
-        const startTime = segment?.start || '';
-        items.push({...entry, id:'task:'+task.id+':'+(startTime || 'unscheduled'), startTime, endTime:segment?.end || ''});
+      for (const {start, end} of task.segments || []) {
+        if (!start) continue;
+        items.push({...entry, id:'task:'+task.id+':'+start, startTime:start, endTime:end || ''});
       }
     }
     return items;

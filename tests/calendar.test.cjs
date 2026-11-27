@@ -12,24 +12,25 @@ const meeting = (more = {}) => ({id:'meet-1', title:'Revisión de cierre', calen
 const physicalLines = file => file.split('\r\n');
 const unfolded = file => file.replace(/\r\n /g,'');
 
-test('Actividades proyecta cada tramo, los abiertos y los registros sin horario, sin guardarlos como eventos', () => {
+test('Calendario proyecta solo tramos con inicio, incluidos los abiertos, sin alterar actividades ni espacios', () => {
   const state=empty(), date='2026-11-24', goal={id:'gestion',title:'Atención',color:'#918273'};
   state.goals=[goal];
   const task={id:'a:1',date,title:'Visita',context:'Sede norte',goalId:goal.id,
     segments:[{start:'09:00',end:'10:00'},{start:'16:00',end:''}]};
   state.tasks=[task,{...task,id:'a:2',kind:'space',goalId:'',title:'Almuerzo',segments:[]},
-    {...task,id:'a:3',date:'2026-11-25',segments:[]}];
+    {...task,id:'a:3',date:'2026-11-25',segments:[]},
+    {...task,id:'a:4',kind:'space',goalId:'',title:'Pausa programada',segments:[{start:'13:00',end:'14:00'}]}];
   const original=structuredClone(state);
   const project=()=>calendarModel.activityItems(state,date,date);
-  const [first,open,unplaced]=project();
+  const [first,open,scheduledSpace]=project();
   assert.deepEqual(project().map(e=>[e.title,e.startTime,e.endTime,e.allDay]),[
-    ['Visita','09:00','10:00',false],['Visita','16:00','',false],['Almuerzo','','',false]]);
+    ['Visita','09:00','10:00',false],['Visita','16:00','',false],['Pausa programada','13:00','14:00',false]]);
   assert.equal(first.description,task.context);
   assert.notEqual(first.id,open.id);
   assert.equal(first.calendarId,calendarModel.activityCalendar.id);
   assert.equal(calendarModel.eventCategory(state,first).name,goal.title);
   assert.equal(calendarModel.eventColor(state,first),goal.color);
-  assert.equal(calendarModel.eventCategory(state,unplaced),null);
+  assert.equal(calendarModel.eventCategory(state,scheduledSpace),null);
   assert.deepEqual(calendarModel.events(state),[]);
   assert.ok(!calendarModel.calendars(state).some(c=>c.id===first.calendarId));
   assert.ok(!calendarModel.categories(state).some(c=>c.id===first.categoryId));
@@ -44,7 +45,12 @@ test('Actividades proyecta cada tramo, los abiertos y los registros sin horario,
   assert.equal(calendarModel.eventCategory(state,project()[0]).name,goal.title);
   assert.equal(calendarModel.eventColor(state,project()[0]),goal.color);
   task.date='2026-11-23';
-  assert.deepEqual(project().map(e=>e.id),[unplaced.id]);
+  assert.deepEqual(project().map(e=>e.id),[scheduledSpace.id]);
+  const formerlyUnscheduled = state.tasks[1];
+  formerlyUnscheduled.segments=[{start:'12:00',end:'12:45'}];
+  assert.ok(project().some(e=>e.sourceTaskId===formerlyUnscheduled.id));
+  formerlyUnscheduled.segments=[];
+  assert.ok(!project().some(e=>e.sourceTaskId===formerlyUnscheduled.id));
   state.tasks=[];
   assert.deepEqual(project(),[]);
 });

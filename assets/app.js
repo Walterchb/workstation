@@ -264,7 +264,7 @@
     const daysInMonth=new Date(Date.UTC(firstDay.getUTCFullYear(),firstDay.getUTCMonth()+1,0)).getUTCDate();
     const inCalendar=view==='calendar';
     const last=calendarMonth+'-'+String(daysInMonth);
-    const events=inCalendar?window.JWorkCalendar.visibleEvents(state,'month',first,last):[];
+    const events=inCalendar?window.JWorkCalendar.visibleEvents(state,undefined,first,last):[];
     const marked=new Set(inCalendar?[]:state.tasks.map(x=>x.date));
     let body=['L','M','M','J','V','S','D'].map(x=>'<span class="cal-weekday" aria-hidden="true">'+x+'</span>').join('')+'<span></span>'.repeat(blanks);
     const today=model.today();
