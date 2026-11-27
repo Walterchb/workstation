@@ -26,7 +26,7 @@
       '<dialog id="jchat-widget-dialog" class="jchat-widget-dialog" data-chat-widget-dialog aria-labelledby="jchat-widget-heading">'+
       '<header class="jchat-widget-head"><span class="jchat-widget-mark" aria-hidden="true">'+ctx.icon('sparkles',19)+'</span>'+
       '<h2 class="jchat-widget-title" id="jchat-widget-heading" tabindex="-1">Chat de Work Station</h2>'+
-      (window.WorkStationChatBudget?.header() || '')+
+      (window.WorkStationChatBudget?.header('widget') || '')+
       '<div class="jchat-widget-actions"><button class="jchat-widget-icon" type="button" data-chat-widget-expand aria-label="Abrir chat a página completa" title="Abrir a página completa">'+ctx.icon('arrow-up-right',18)+'</button>'+
       '<button class="jchat-widget-icon" type="button" data-chat-widget-close aria-label="Cerrar chat" title="Cerrar chat">'+ctx.icon('x',18)+'</button></div></header>'+
       '<div class="jchat-widget-content" data-chat-widget-content></div></dialog>';

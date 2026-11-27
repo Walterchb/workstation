@@ -97,23 +97,42 @@
     if (!s.ref) return 'Saldo del chat';
     if (s.missing) return 'Revisar saldo';
     if (s.count === null) return 'Calculando…';
-    return '≈ '+number(s.count)+' '+(s.count === 1 ? 'consulta' : 'consultas');
+    return number(s.count)+' '+(s.count === 1 ? 'crédito' : 'créditos');
   }
-  function header() {
+  function ringState(s) {
+    if (s.balance === null || !s.ref) {
+      return {level:'unknown',remaining:0,description:s.ref ? 'Saldo por confirmar' : 'Configurar saldo de referencia'};
+    }
+    // Redondea sólo el ruido de coma flotante al comparar los umbrales.
+    const remaining = s.ref.usd > 0 ? Number((Math.min(1,s.balance/s.ref.usd)*100).toFixed(10)) : 0;
+    const level = remaining > 50 ? 'high' : remaining >= 15 ? 'medium' : 'low';
+    const percent = new Intl.NumberFormat('es-PE',{maximumFractionDigits:2}).format(remaining);
+    return {level,remaining,description:percent+' % del saldo de referencia disponible'};
+  }
+  function header(surface) {
     if (!owner) return '';
-    return '<button type="button" class="jchat-budget-button" data-chat-budget-open aria-haspopup="dialog" title="Ver estimación de consultas y saldo">'+icon+
-      '<span data-chat-budget-label>'+label(tracker.state(owner))+'</span></button>';
+    const state = tracker.state(owner);
+    if (surface === 'widget') {
+      const ring = ringState(state);
+      const name = ring.description+'. Ver saldo y créditos estimados';
+      return '<button type="button" class="jchat-budget-button" data-chat-budget-open data-chat-budget-ring '+
+        'data-level="'+ring.level+'" data-empty="'+(ring.remaining===0 && ring.level==='low')+'" style="--remaining:'+ring.remaining+'%" '+
+        'aria-haspopup="dialog" aria-label="'+name+'" title="'+name+'"><span class="jchat-budget-ring" aria-hidden="true"></span></button>';
+    }
+    return '<button type="button" class="jchat-budget-button" data-chat-budget-open aria-haspopup="dialog" title="Ver créditos estimados y saldo">'+icon+
+      '<span data-chat-budget-label>'+label(state)+'</span></button>';
   }
   function stats(s) {
     const scope = dialog;
     if (!scope) return;
     const put = (key,value) => scope.querySelector('[data-budget-'+key+']').textContent = value;
     put('count',s.count === null ? s.ref ? s.missing ? 'Saldo por actualizar' : 'Calculando estimación' : 'Configura tu saldo' : label(s));
-    put('help',!s.ref ? 'Ingresa el Credit balance que ves en OpenAI para estimar cuántas consultas puedes hacer.' :
+    put('help',!s.ref ? 'Ingresa el Credit balance que ves en OpenAI para calcular tus créditos disponibles.' :
       s.missing ? 'Hay consumo sin medir desde el último saldo. Actualiza la referencia con el monto que muestra OpenAI.' :
       s.sample < minimumSample && s.count !== 0 ? 'La estimación aparece al reunir '+minimumSample+' consultas completas del mismo modelo ('+s.sample+' de '+minimumSample+').' :
-      'La cantidad puede variar según el contexto y la extensión de las respuestas.');
+      'Un crédito equivale al costo medio de una consulta. La cantidad estimada varía con el contexto y la extensión de las respuestas.');
     put('balance',s.balance !== null ? money(s.balance) : 'Por confirmar');
+    put('remaining',ringState(s).description);
     put('avg',s.average ? money(s.average,Math.min(8,Math.max(4,1-Math.floor(Math.log10(s.average))))) : 'Sin muestra');
     put('sample',s.sample ? number(s.sample)+' '+(s.sample === 1 ? 'consulta medida' : 'consultas medidas') : 'Sin consultas medidas');
     put('model',s.model || 'Por identificar');
@@ -127,6 +146,14 @@
   function refresh() {
     const state = tracker.state(owner);
     doc.querySelectorAll('[data-chat-budget-label]').forEach(el => { el.textContent = label(state); });
+    const ring = ringState(state);
+    doc.querySelectorAll('[data-chat-budget-ring]').forEach(button => {
+      button.dataset.level = ring.level;
+      button.dataset.empty = String(ring.level === 'low' && ring.remaining === 0);
+      button.style.setProperty('--remaining',ring.remaining+'%');
+      button.title = ring.description+'. Ver saldo y créditos estimados';
+      button.setAttribute('aria-label',button.title);
+    });
     stats(state);
   }
   function open(trigger) {
@@ -136,7 +163,7 @@
     active.setAttribute('aria-labelledby','jchat-budget-title');
     active.innerHTML = '<header><h2 id="jchat-budget-title">Saldo del chat</h2><button type="button" class="jchat-budget-close" aria-label="Cerrar" autofocus>×</button></header>'+
       '<section class="jchat-budget-estimate"><strong data-budget-count></strong><p data-budget-help></p></section>'+
-      '<dl><div><dt>Saldo estimado</dt><dd data-budget-balance></dd></div><div><dt>Costo medio por consulta</dt><dd data-budget-avg></dd></div>'+
+      '<dl><div><dt>Saldo estimado</dt><dd data-budget-balance></dd></div><div><dt>Porcentaje disponible</dt><dd data-budget-remaining></dd></div><div><dt>Costo medio por consulta</dt><dd data-budget-avg></dd></div>'+
       '<div><dt>Muestra reciente</dt><dd data-budget-sample></dd></div><div><dt>Último modelo</dt><dd data-budget-model></dd></div>'+
       '<div><dt>Saldo de referencia</dt><dd data-budget-stamp></dd></div></dl><p class="jchat-budget-location" data-budget-location></p>'+
       '<div class="jchat-budget-actions"><button type="button" class="btn" data-budget-edit>Actualizar saldo</button><a href="https://platform.openai.com/settings/organization/billing/overview" target="_blank" rel="noopener noreferrer">Ver Billing de OpenAI ↗</a></div>'+

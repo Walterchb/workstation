@@ -6,8 +6,29 @@
 .jchat-budget-button:hover { background: #edf1f4; border-color: #aebdc6; }
 .jchat-head { flex-wrap: wrap; }
 .jchat-head > .jchat-budget-button { margin-inline-start: auto; }
-.jchat-widget-head .jchat-budget-button { margin-inline-start: auto; color: #e1e7ed; background: #ffffff0b; border-color: #ffffff33; font-size: .68rem; }
-.jchat-widget-head .jchat-budget-button:hover { background: #ffffff19; }
+.jchat-widget-head [data-chat-budget-ring] {
+  display: inline-grid; place-items: center; width: 36px; height: 36px; padding: 0;
+  margin-inline-start: auto; border: 0; border-radius: 50%; background: transparent;
+}
+.jchat-widget-head [data-chat-budget-ring]:hover { background: #ffffff18; }
+[data-chat-budget-ring]:focus-visible { outline: 2px solid #d8e9ff; outline-offset: 1px; }
+[data-chat-budget-ring][data-level="high"] { --arc: #56d79a; }
+[data-chat-budget-ring][data-level="medium"] { --arc: #ffd253; }
+[data-chat-budget-ring][data-level="low"] { --arc: #ff7c7c; }
+.jchat-budget-ring {
+  width: 22px; height: 22px; box-sizing: border-box; border-radius: 50%;
+  background: conic-gradient(var(--arc) 0 var(--remaining), #ffffff38 var(--remaining) 100%);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3.5px), #000 calc(100% - 3px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 3.5px), #000 calc(100% - 3px));
+}
+[data-chat-budget-ring][data-empty="true"] .jchat-budget-ring,
+[data-chat-budget-ring][data-level="unknown"] .jchat-budget-ring {
+  background: none; -webkit-mask: none; mask: none; border: 1px solid var(--arc);
+}
+[data-chat-budget-ring][data-level="unknown"] .jchat-budget-ring { border: 2px dashed #a9b4c0; }
+@media (forced-colors: active) {
+  [data-chat-budget-ring] .jchat-budget-ring { --arc: ButtonText; forced-color-adjust: none; }
+}
 .jchat-widget-head > .jchat-budget-button + .jchat-widget-actions { margin-inline-start: 0; }
 .jchat-budget-dialog {
   width: min(388px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); overflow: auto;
@@ -40,6 +61,5 @@
 @media (max-width: 405px) {
   .jchat-widget-head { gap: 6px; padding-inline: 9px; }
   .jchat-widget-head:has(.jchat-budget-button) .jchat-widget-mark { display: none; }
-  .jchat-widget-head .jchat-budget-button { padding-inline: 5px; }
 }
 @media print { .jchat-budget-dialog, .jchat-budget-button { display: none !important; } }
