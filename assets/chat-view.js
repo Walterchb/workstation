@@ -3,7 +3,7 @@
   'use strict';
   const names = {agenda:'Actividades', analysis:'Análisis', calendar:'Calendario', notes:'Notas', goals:'Objetivos', categories:'Categorías'};
 
-  function read(view, date, stage) {
+  function read(view, date, stage, state) {
     if (!names[view] || !stage) return {};
     const result = {view:names[view]};
     const filters = [];
@@ -47,27 +47,34 @@
       const lastDay = new Date(result.from + 'T12:00:00Z');
       lastDay.setUTCMonth(lastDay.getUTCMonth()+1,0);
       result.to = day ? date : lastDay.toISOString().slice(0,10);
-      const calendars = Array.from(stage.querySelectorAll('[data-wc-visible]'));
-      const hidden = calendars.filter(input => !input.checked);
-      result.selection = {kind:'calendar'};
-      if (hidden.length) {
-        const visible = calendars.filter(input => input.checked);
-        const useVisible = visible.length <= hidden.length;
-        const subset = useVisible ? visible : hidden;
-        if (subset.length <= 120) {
-          result.selection.mode = useVisible ? 'include' : 'exclude';
-          result.selection.ids = subset.map(input => input.dataset.wcVisible);
-        } else {
-          // El servidor debe pedir un filtro más breve antes de presentar totales.
-          result.selection.mode = 'partial';
+      const inputs = Array.from(stage.querySelectorAll('[data-wc-visible]'));
+      const all = inputs.map(input => input.dataset.wcVisible);
+      const visible = state ? window.JWorkCalendar.visibleCalendarIds(state,day ? 'day' : 'month')
+        : inputs.filter(input => input.checked).map(input => input.dataset.wcVisible);
+      const activityId = window.JCalendarModel?.activityCalendar.id;
+      const activities = !!activityId && visible.includes(activityId);
+      const visibleEvents = visible.filter(id => id !== activityId);
+      const hiddenEvents = all.filter(id => id !== activityId && !visibleEvents.includes(id));
+      if (activities) addFilter('', 'Actividades y espacios de la agenda visibles');
+      if (activities && !visibleEvents.length) {
+        result.selection = {kind:'agenda'};
+      } else if (!activities || hiddenEvents.length) {
+        result.selection = {kind:'calendar'};
+        if (!day || hiddenEvents.length || !visibleEvents.length) {
+          const useVisible = !day || visibleEvents.length <= hiddenEvents.length;
+          const ids = useVisible ? visibleEvents : hiddenEvents;
+          result.selection.mode = ids.length <= 120 ? (useVisible ? 'include' : 'exclude') : 'partial';
+          if (result.selection.mode !== 'partial') result.selection.ids = ids;
+          if (!visibleEvents.length) addFilter('', 'Ningún calendario visible');
+          else {
+            const subset = inputs.filter(input => ids.includes(input.dataset.wcVisible));
+            const limit = subset.length > 8 ? 7 : 8;
+            for (const input of subset.slice(0,limit)) addFilter(useVisible ? 'Calendario visible: ' : 'Calendario oculto: ',input.closest('label')?.textContent.trim());
+            if (subset.length > limit) filters.push('Hay ' + (subset.length-limit) + ' calendarios adicionales en la selección.');
+          }
         }
-        if (!visible.length) addFilter('', 'Ningún calendario visible');
-        else {
-          const label = useVisible ? 'Calendario visible: ' : 'Calendario oculto: ';
-          const limit = subset.length > 8 ? 7 : 8;
-          for (const input of subset.slice(0,limit)) addFilter(label,input.closest('label')?.textContent.trim());
-          if (subset.length > limit) filters.push('Hay ' + (subset.length-limit) + ' calendarios adicionales en la selección.');
-        }
+      } else {
+        addFilter('', 'Todos los calendarios de eventos visibles');
       }
     }
     if (filters.length) result.filters = filters;

@@ -129,6 +129,13 @@
         (existing ? 'Editar actividad' : 'Nueva actividad');
       if (!existing) saveButton.textContent = space ? 'Crear espacio' : 'Crear actividad';
     }
+    if (!existing) {
+      window.JActivitySuggest.bind(dialog,ctx.state,
+        field => field === fields.title && fields.kind.value !== 'space' && !busy && ctx.canEdit?.() !== false,
+        (_, details) => {
+          for (const [key,value] of Object.entries(details)) fields[key].value = value;
+        });
+    }
     fields.kind.value = activity.kind || 'activity';
     fields.kind.addEventListener('change',showKind);
     showKind();

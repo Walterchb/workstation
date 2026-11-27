@@ -295,3 +295,16 @@ html:has(dialog.jsheet[open]) { overflow: hidden; }
   .jsheet-tip { display: none; }
   .jsheet-foot, .jsheet-confirm { padding-block: 5px; }
 }
+
+.activity-suggestions {
+  position:fixed; z-index:20; box-sizing:border-box; overflow-y:auto; overscroll-behavior:contain;
+  padding:3px; border:1px solid #b5c9d1; border-radius:6px; background:#fff;
+  box-shadow:0 6px 20px #18384929; color:#183849; text-align:left;
+}
+.activity-suggestions[hidden] {display:none}
+.activity-suggestions [role="option"] {padding:7px 9px; border-radius:3px; cursor:pointer; overflow-wrap:anywhere;}
+.activity-suggestions [role="option"] + [role="option"] {border-top:1px solid #edf1f3;}
+.activity-suggestions [role="option"]:hover, .activity-suggestions [aria-selected="true"] {background:#e8f5f3;}
+.activity-suggestions strong, .activity-suggestions small {display:block; line-height:1.35;}
+.activity-suggestions strong {font-size:.84rem; font-weight:650;}
+.activity-suggestions small {margin-top:2px; font-size:.72rem; color:#49616f;}

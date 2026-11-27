@@ -204,3 +204,33 @@ test('El perfil opcional se conserva con el historial en Supabase y jamás pasa 
   assert.equal(api.records.get('ana').document.profile.photo,'');
   assert.deepEqual(api.records.get('ana').document.tasks,dateSnapshot.tasks);
 });
+
+test('El saldo se solicita con la sesión de su titular y no se reintenta para otra cuenta',async()=>{
+  const api=service(), bodies=[];
+  let release, mode='ok';
+  const summary={ref:null,model:'',sample:0,average:null,spent:0,missing:0,balance:null,count:null};
+  const app=openTab(async(url,options)=>{
+    if (!url.endsWith('/workhub_chat_budget_sync')) return api.fetch(url,options);
+    bodies.push([options.headers.Authorization,JSON.parse(options.body)]);
+    if (mode==='wait') await new Promise(resolve=>{release=resolve;});
+    if (mode==='disconnect') throw new Error('offline');
+    if (mode==='missing') return {status:404,ok:false,text:async()=>'{}'};
+    return {status:200,ok:true,text:async()=>JSON.stringify(summary)};
+  });
+  await app.store.signIn('ana','pass');
+  await assert.rejects(app.store.syncChatBudget('id-otra'),matchesCode('AUTH'));
+  assert.equal(bodies.length,0);
+  assert.deepEqual(copy(await app.store.syncChatBudget('id-ana')),summary);
+  assert.deepEqual(bodies[0],['Bearer jwt:ana',{p_reference:null,p_entries:[]}]);
+  mode='missing';
+  await assert.rejects(app.store.syncChatBudget('id-ana'),e=>e.code==='CONFIG' && e.message.includes('chat-budget.sql'));
+  mode='wait';
+  const inFlight=app.store.syncChatBudget('id-ana',{reference:{usd:6,at:10,changedAt:11}});
+  await app.store.signOut(); await app.store.signIn('otra','pass');
+  mode='disconnect'; release();
+  await assert.rejects(inFlight,matchesCode('AUTH'));
+  assert.equal(bodies.length,3);
+  assert.deepEqual(bodies.at(-1),['Bearer jwt:ana',{p_reference:{usd:6,at:10,changedAt:11},p_entries:[]}]);
+  mode='ok';
+  assert.deepEqual(copy(await app.store.syncChatBudget('id-otra')),summary);
+});

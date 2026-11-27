@@ -15,7 +15,7 @@
 
   function chatView() {
     if (session?.mode !== 'cloud' || !session.user?.id) return {};
-    return view === 'chat' ? lastChatView : window.JChatView.read(view,date,root.querySelector('.stage'));
+    return view === 'chat' ? lastChatView : window.JChatView.read(view,date,root.querySelector('.stage'),state);
   }
   window.WorkStationChatContext = Object.freeze({get:chatView});
 
@@ -263,7 +263,8 @@
     const blanks=(firstDay.getUTCDay()+6)%7;
     const daysInMonth=new Date(Date.UTC(firstDay.getUTCFullYear(),firstDay.getUTCMonth()+1,0)).getUTCDate();
     const inCalendar=view==='calendar';
-    const events=inCalendar?window.JWorkCalendar.visibleEvents(state).filter(event=>event.startDate.slice(0,7)<=calendarMonth && event.endDate.slice(0,7)>=calendarMonth):[];
+    const last=calendarMonth+'-'+String(daysInMonth);
+    const events=inCalendar?window.JWorkCalendar.visibleEvents(state,'month',first,last):[];
     const marked=new Set(inCalendar?[]:state.tasks.map(x=>x.date));
     let body=['L','M','M','J','V','S','D'].map(x=>'<span class="cal-weekday" aria-hidden="true">'+x+'</span>').join('')+'<span></span>'.repeat(blanks);
     const today=model.today();
@@ -365,7 +366,7 @@
   function shell() {
     root.innerHTML='<div class="app-shell"><button type="button" class="backdrop" aria-label="Cerrar navegación"></button><aside id="side-menu" class="rail" aria-label="Menú de Work Hub">'+
       '<div class="brandbar">'+mark+'<span>Work Hub</span><button class="close-menu" aria-label="Cerrar menú">'+icon('x')+'</button></div>'+
-      '<nav class="rail-nav" aria-label="Vistas principales">'+[['agenda','calendar-days'],['calendar','calendar'],['notes','notes-board'],['goals','target'],['analysis','bar-chart'],['chat','sparkles'],['categories','layers']].map(([v,i])=>'<button data-view="'+v+'">'+icon(i,19)+titles[v]+'</button>').join('')+'</nav>'+
+      '<nav class="rail-nav" aria-label="Vistas principales">'+[['agenda','clipboard'],['calendar','calendar'],['notes','notes-board'],['goals','target'],['analysis','bar-chart'],['chat','sparkles'],['categories','layers']].map(([v,i])=>'<button data-view="'+v+'">'+icon(i,19)+titles[v]+'</button>').join('')+'</nav>'+
       '<section class="cal-wrap" aria-label="Calendario de jornadas"></section>'+
       '<div class="rail-bottom"><div class="rail-user"><button class="profile-trigger" data-profile type="button" aria-label="Editar perfil" aria-haspopup="dialog"><span class="monogram" aria-hidden="true"></span><span class="usercopy"><b></b><span class="account-mode" role="status"></span></span>'+icon('pencil',13)+'</button>'+
       '<button data-logout aria-label="Cerrar sesión" title="Cerrar sesión">'+icon('logout',18)+'</button></div></div></aside>'+

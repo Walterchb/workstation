@@ -112,6 +112,9 @@
       if (status === 429) throw failure("RATE_LIMIT", "Demasiados intentos. Espera un momento y vuelve a ingresar.", status);
       if (status >= 500 || status === 408) throw failure("NETWORK", "Supabase no pudo confirmar la operación. Intenta nuevamente.", status);
       if (path.startsWith("/rest/") && (data?.code === "PGRST202" || status === 404)) {
+        if (path.endsWith("/workhub_chat_budget_sync")) {
+          throw failure("CONFIG", "Para sincronizar el saldo, ejecuta supabase/chat-budget.sql en el SQL Editor de tu proyecto.", status);
+        }
         throw failure("CONFIG", "Supabase no encuentra la función de Work Hub. Ejecuta supabase/schema.sql en el proyecto configurado.", status);
       }
       if (data?.code === "42501" || status === 403) {
@@ -153,25 +156,48 @@
     finally { if (renewal === flight) renewal = null; }
   }
 
-  async function rpc(name, body) {
-    if (!session) throw failure("AUTH", authMessage);
+  async function rpc(name, body, expectedUser) {
+    function checkSession() {
+      if (!session || (expectedUser !== undefined &&
+          (mode !== "cloud" || session.user.id !== expectedUser || user?.id !== expectedUser))) {
+        throw failure("AUTH", authMessage);
+      }
+    }
+    checkSession();
     if (Date.now() / 1000 + 45 >= session.expires_at) await refreshSession();
     const path = "/rest/v1/rpc/" + name;
+    const send = () => {
+      checkSession();
+      return request(path, body, session.access_token);
+    };
     try {
-      return await request(path, body, session.access_token);
+      return await send();
     } catch (error) {
+      checkSession();
       if (error.status === 401) {
         await refreshSession();
-        try { return await request(path, body, session.access_token); }
+        try { return await send(); }
         catch (retryError) {
+          checkSession();
           if (retryError.status === 401) { forgetSession(); throw failure("AUTH", authMessage); }
           throw retryError;
         }
       }
       // Los RPC son de solo lectura o idempotentes por identificador de operación.
-      if (error.code === "NETWORK") return request(path, body, session.access_token);
+      if (error.code === "NETWORK") return send();
       throw error;
     }
+  }
+
+  async function syncChatBudget(owner, {reference = null, entries = []} = {}) {
+    if (!owner) throw failure("AUTH", authMessage);
+    const summary = await rpc("workhub_chat_budget_sync", {p_reference:reference, p_entries:entries}, owner);
+    if (session?.user.id !== owner || user?.id !== owner) throw failure("AUTH", authMessage);
+    if (!summary || !Number.isSafeInteger(summary.missing) || !Number.isSafeInteger(summary.sample) ||
+        typeof summary.spent !== "number") {
+      throw failure("DATA", "No se pudo leer el saldo de la cuenta.");
+    }
+    return summary;
   }
 
   async function openCloud() {
@@ -353,7 +379,7 @@
     const cancel = () => controller.abort();
     chatRequest = controller;
     const attemptId = operationId();
-    let timedOut = false, dispatched = false;
+    let timedOut = false, dispatched = false, started = false;
     const timeout = setTimeout(() => { timedOut = true; cancel(); }, 100000);
     signal?.addEventListener("abort", cancel, {once:true});
     if (signal?.aborted) cancel();
@@ -364,14 +390,19 @@
         throw Object.assign(failure("CHAT_ABORTED", "Consulta cancelada."), {name:"AbortError"});
       }
     }
-    function measure(result, outcome, uncertain) {
+    function updateLedger(method, ...args) {
       const ledger = window.WorkStationChatBudget;
-      if (!ledger) return;
       try {
-        const update = result?.usage ? ledger.record(owner,attemptId,result.usage,outcome)
-          : uncertain ? ledger.markUnknown(owner,attemptId) : undefined;
+        const update = ledger?.[method]?.(owner,attemptId,...args);
         update?.catch?.(()=>{});
       } catch { /* El estado del indicador no interrumpe el chat. */ }
+    }
+    function measure(result, outcome, uncertain) {
+      if (!started) return;
+      if (result?.usage?.rounds === 0) updateLedger("settleUnbilled");
+      else if (result?.usage) updateLedger("record",result.usage,outcome);
+      else if (uncertain) updateLedger("markUnknown");
+      else updateLedger("settleUnbilled");
     }
     try {
       checkSession();
@@ -380,6 +411,11 @@
         checkSession();
         const token = session.access_token;
         const callback = typeof onUpdate === "function" ? onUpdate : undefined;
+        if (!started) {
+          // Conserva el intento aunque se cierre la pestaña mientras responde el modelo.
+          started = true;
+          updateLedger("beginAttempt");
+        }
         dispatched = true;
         const response = await post("/functions/v1/workhub-chat", payload, token, controller.signal, callback ? streamType : undefined);
         checkSession();
@@ -453,6 +489,6 @@
   }
 
   window.JStore = Object.freeze({
-    boot: exclusive(boot), signIn: exclusive(signIn), signOut: exclusive(signOut), save: exclusive(save), askChat
+    boot: exclusive(boot), signIn: exclusive(signIn), signOut: exclusive(signOut), save: exclusive(save), askChat, syncChatBudget
   });
 })();

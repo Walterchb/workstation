@@ -54,10 +54,21 @@
     return threads.get(scope);
   }
 
+  function showElapsed(request) {
+    const elapsed = Math.max(0, Date.now() - request.startedAt);
+    if (view?.interim === request && view.page.isConnected) {
+      const seconds = Math.floor(elapsed / 1000);
+      const label = Math.floor(seconds / 60)+':'+String(seconds % 60).padStart(2,'0');
+      if (view.elapsed.textContent !== label) view.elapsed.textContent = label;
+    }
+    return 1000 - elapsed % 1000;
+  }
+
   function cancel(t) {
     if (!t.pending) return;
     const request = t.pending;
     t.pending = null;
+    clearTimeout(request.clock);
     request.stage = 'stopped';
     t.incomplete = request.text ? request : null;
     t.draft = request.question;
@@ -382,18 +393,23 @@
     if (reply && !v.interim) {
       const question = row('Tú','<div class="jchat-text">'+esc(reply.question)+'</div>');
       const waiting = row('Asistente','<div class="jchat-wait" data-chat-progress><i aria-hidden="true"></i>'+
-        '<span></span></div><div class="jchat-answer jchat-partial" data-chat-partial></div>',icon);
+        '<span data-chat-stage></span><span class="jchat-elapsed" data-chat-elapsed role="timer" aria-label="Tiempo de respuesta" aria-live="off"></span></div>'+
+        '<div class="jchat-answer jchat-partial" data-chat-partial></div>',icon);
       waiting.setAttribute('aria-live','off');
       question.setAttribute('data-chat-interim',''); waiting.setAttribute('data-chat-interim','');
       v.log.append(question,waiting);
       v.interim = reply;
       v.partial = waiting.querySelector('[data-chat-partial]');
       v.progress = waiting.querySelector('[data-chat-progress]');
+      v.stage = waiting.querySelector('[data-chat-stage]');
+      v.elapsed = waiting.querySelector('[data-chat-elapsed]');
+      if (t.pending) showElapsed(reply);
     }
     const status = reply ? progressText[reply.stage] : latestAnswer && !fresh ? 'Respuesta completa.' : '';
     if (v.activity.textContent !== status) v.activity.textContent = status;
     if (reply) {
-      if (v.progress.lastElementChild.textContent !== status) v.progress.lastElementChild.textContent = status;
+      if (v.stage.textContent !== status) v.stage.textContent = status;
+      v.elapsed.hidden = !t.pending;
       v.progress.firstElementChild.hidden = !t.pending;
       if (v.shownText !== reply.text) {
         renderPartial(v.partial,reply.text,!fresh && !!t.pending);
@@ -438,10 +454,14 @@
     const viewContext = window.WorkStationChatContext?.get() || {};
     const history = contextHistory(t);
     const payload = {scope,message:question,history,viewContext,memory:conversationMemory(t,history)};
-    const request = {question, controller:new AbortController(), text:'', stage:'sending'};
+    const request = {question, controller:new AbortController(), text:'', stage:'sending', startedAt:Date.now()};
     t.pending = request;
     t.incomplete = null; t.draft = ''; t.error = null;
     paint();
+    function tick() {
+      if (t.pending === request) request.clock = setTimeout(tick, showElapsed(request));
+    }
+    tick();
     let scheduled = false;
     function update(event) {
       if (t.pending !== request) return;
@@ -472,6 +492,7 @@
         t.error = {code:err?.code, message:err?.message || 'No se pudo completar la consulta.'};
       }
     } finally {
+      clearTimeout(request.clock);
       if (t.pending === request) {
         t.pending = null;
         const restoreFocus = view?.page.isConnected && view.thread === t && document.activeElement === view.stop;
@@ -501,7 +522,7 @@
       '<label class="jchat-scope"><span>Consultar en</span><select data-chat-scope>'+
       [...scopes].map(([key,label])=>'<option value="'+key+'">'+label+'</option>').join('')+'</select></label>'+
       '<button type="button" class="btn ghost" data-chat-new title="Empezar de nuevo en el ámbito seleccionado" disabled>'+
-      icon('plus',15)+'<span>Nueva conversación</span></button></div>'+
+      icon('plus',15)+'<span>Nuevo Chat</span></button></div>'+
       '<div class="jchat-scroll" data-chat-scroll><div data-chat-empty></div>'+
       '<div class="jchat-log" role="log" aria-label="Mensajes de la conversación" aria-live="polite" aria-relevant="additions" data-chat-log></div></div>'+
       '<div class="jchat-footer"><span class="jchat-sr" role="status" data-chat-activity></span>'+

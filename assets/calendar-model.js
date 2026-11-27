@@ -12,6 +12,8 @@
     {id:'coordinacion',name:'Coordinación',color:'#8566A7'},
     {id:'tramites',name:'Trámites',color:'#B16F3C'}
   ];
+  // El separador ":" no se admite en los identificadores de calendarios y eventos guardados.
+  const activityCalendar = Object.freeze({id:'source:activities', name:'Actividades', color:'#405D72'});
   const reminderOptions = Object.freeze([0,5,10,15,30,60,1440]);
   const limits = Object.freeze({name:80, title:180, location:240, description:6000});
   const idPattern = /^[A-Za-z0-9_-]{1,128}$/;
@@ -40,11 +42,46 @@
     return state.eventCategories;
   }
 
+  function objectiveCategory(goal) {
+    return {id:'goal:'+goal.id, name:goal.title, color:goal.color};
+  }
+
+  function calendarsForView(state, view) {
+    const list = calendars(state);
+    if (view !== 'month') return [...list, activityCalendar];
+    const workhub = list.find(cal => cal.name.trim().toLowerCase() === 'workhub') ||
+      list.find(cal => cal.name.replace(/\s+/g,'').toLowerCase() === 'workhub');
+    return workhub ? [workhub] : [];
+  }
+
+  function activityItems(state, first, last) {
+    const items = [];
+    for (const task of state.tasks || []) {
+      if ((first && task.date < first) || (last && task.date > last)) continue;
+      const entry = {calendarId:activityCalendar.id, kind:task.kind === 'space' ? 'space' : 'activity',
+        sourceTaskId:task.id, title:task.title, description:task.context, categoryId:task.goalId ? 'goal:'+task.goalId : '',
+        startDate:task.date, endDate:task.date, allDay:false};
+      for (const segment of task.segments.length ? task.segments : [null]) {
+        const startTime = segment?.start || '';
+        items.push({...entry, id:'task:'+task.id+':'+(startTime || 'unscheduled'), startTime, endTime:segment?.end || ''});
+      }
+    }
+    return items;
+  }
+
   function eventCategory(state, event) {
+    if (event.calendarId === activityCalendar.id) {
+      if (!event.categoryId) return null;
+      const goal = (state.goals || []).find(item => 'goal:'+item.id === event.categoryId);
+      return goal ? objectiveCategory(goal) : null;
+    }
     return event.categoryId ? categories(state).find(category => category.id === event.categoryId) || null : null;
   }
 
   function eventColor(state, event) {
+    if (event.calendarId === activityCalendar.id) {
+      return eventCategory(state,event)?.color || (event.kind === 'space' ? '#94642C' : '#778A9A');
+    }
     return eventCategory(state,event)?.color || '#687F8A';
   }
 
@@ -272,5 +309,6 @@
   }
 
   globalThis.JCalendarModel = Object.freeze({limits, calendars, categories, events, eventCategory, eventColor, reminderOptions,
+    activityCalendar, activityItems, objectiveCategory, calendarsForView,
     validate, saveCalendar, removeCalendar, getCategoryToken, setCategoryToken, saveCategory, removeCategory, saveEvent, removeEvent, occursOn});
 })();

@@ -34,16 +34,16 @@
   <a href="../index.html">Volver a Work Station</a>
   <h1>Activar el chat de Work Station</h1>
   <p>El chat consulta tus registros mediante tu sesión de Work Station. Para activarlo por primera vez, guarda una clave de la API de OpenAI en tu proyecto de Supabase, publica la función <code>workhub-chat</code> y sube la actualización de la web.</p>
-  <h2>Si tu chat ya funciona</h2>
+  <h2>Actualizar el saldo por usuario</h2>
   <ol>
-    <li>Descomprime el ZIP. En tu proyecto de Supabase abre <strong>Edge Functions → workhub-chat → Code</strong> y selecciona <code>index.ts</code>. Reemplaza su contenido con el archivo <code>instalacion/workhub-chat/index.ts</code> del nuevo ZIP. Pulsa <strong>Deploy updates</strong> o <strong>Deploy function</strong> y espera la confirmación. Puedes seguir usando la misma clave y el mismo modelo.</li>
-    <li>Copia el contenido del ZIP en la raíz de tu repositorio, junto al <code>index.html</code> actual. Acepta el reemplazo de los archivos coincidentes. En GitHub Desktop pulsa <strong>Commit to main → Push origin</strong>. Después de la publicación de Pages, vuelve a cargar Work Station.</li>
-    <li>Abre <strong>Actividades → Semana</strong> y abre el widget. Prueba <em>«¿Qué debería hacer mañana?»</em>. El chat puede consultar la agenda del día y los avances recientes para proponer un plan. Abre las citas para comprobar el comentario o el compromiso que respalda cada sugerencia. Para consultar la vista con sus filtros, pregunta <em>«¿Qué cambió aquí según mis comentarios?»</em>.</li>
+    <li>Descomprime el ZIP. En tu proyecto de Supabase abre <strong>SQL Editor → New query</strong>. Pega el contenido completo de <code>supabase/chat-budget.sql</code> y pulsa <strong>Run</strong>. Este paso se realiza una vez para todo el proyecto.</li>
+    <li>Copia el contenido del ZIP en la raíz del repositorio donde está <code>index.html</code>, conservando las subcarpetas. En GitHub Desktop pulsa <strong>Commit to main</strong> y luego <strong>Push origin</strong>.</li>
+    <li>Cuando se publique la web, abre Work Station con tu misma cuenta en cada equipo donde usaste el chat. Cada navegador aporta los consumos que todavía conserva. En la pestaña Chat, abre el indicador de créditos para comprobar el saldo compartido.</li>
   </ol>
   <h2>Configurar el indicador de créditos</h2>
   <p>Abre <strong>Saldo del chat → Actualizar saldo</strong>. Copia el <em>Credit balance</em> en USD que ves en Billing de OpenAI e indica cuándo lo consultaste. En el móvil, activa la edición para guardar el saldo. <a href="https://platform.openai.com/settings/organization/billing/overview">Abrir Billing de OpenAI</a></p>
   <p>Con tres preguntas medidas del mismo modelo, la pestaña muestra los créditos estimados. Un crédito equivale al costo medio de una consulta, calculado con hasta 30 respuestas recientes. En el widget, el anillo muestra qué proporción del último saldo registrado queda disponible. Es verde por encima del 50 %, amarillo entre el 15 % y el 50 % inclusive y rojo por debajo del 15 %. Si falta el saldo o hay consumo sin medir, aparece un anillo gris discontinuo.</p>
-  <p>Toca el indicador para ver el detalle. El cálculo cubre esta cuenta en este navegador. Actualiza la referencia después de una recarga o de consumir saldo desde otro dispositivo o aplicación.</p>
+  <p>Toca el indicador para ver el detalle. Al iniciar sesión con la misma cuenta de Work Station, tus equipos comparten la referencia y el consumo registrado por el chat. Actualiza la referencia cuando recargues tu cuenta de OpenAI o uses la misma clave en otra aplicación.</p>
   <p>Si un intento queda sin medición o falta la tarifa del modelo, el indicador te pedirá revisar el saldo. Para un modelo con una tarifa especial, puedes definir <code>WORKHUB_CHAT_RATES_JSON</code> en los secretos de la función con las tarifas de tu proyecto en USD por millón de tokens. El formato es <code>{"identificador-del-modelo":{"input":1,"cached":0.2,"output":4}}</code>. Los importes de ese ejemplo son ilustrativos.</p>
 
   <h2>1. Conseguir la clave de OpenAI</h2>
@@ -60,7 +60,7 @@
   <details><summary>Elegir otro modelo (opcional)</summary><p>El chat usa <code>gpt-6.2-sol</code> de forma predeterminada. Para cambiarlo, crea en el mismo panel un secreto llamado <code>OPENAI_MODEL</code> y usa como valor el identificador de un modelo habilitado en tu proyecto que admita Responses API y llamadas a funciones. <a href="https://developers.openai.com/api/docs/models/gpt-6.2-sol">Ficha del modelo predeterminado</a></p></details>
 
   <h2>3. Comprobar la función del chat</h2>
-  <p>En <strong>Edge Functions → Functions</strong>, busca <code>workhub-chat</code>. Si ya existe, sigue la sección <strong>Si tu chat ya funciona</strong> para actualizarla. Usa los pasos siguientes para su primera instalación.</p>
+  <p>En <strong>Edge Functions → Functions</strong>, busca <code>workhub-chat</code>. Si ya responde a tus consultas, puedes pasar a la sección de saldo por usuario. Sigue estos pasos para instalarla por primera vez.</p>
   <ol>
     <li>En <strong>Edge Functions → Functions</strong>, pulsa <strong>Deploy a new function → Via Editor</strong>. El editor abrirá una función nueva con código de ejemplo. La función que debes crear en este paso se llama <code>workhub-chat</code>.</li>
     <li>Descomprime el ZIP de la actualización y abre <code>instalacion/workhub-chat/index.ts</code> con el Bloc de notas o tu editor de texto. Copia todo su contenido. En el editor de Supabase, selecciona el archivo <strong>index.ts</strong> y reemplaza todo el código de ejemplo por el que acabas de copiar. Este archivo reúne el código completo para el editor.

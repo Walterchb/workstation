@@ -244,6 +244,15 @@
 .wc-agenda-detail strong { font-size:.82rem; font-weight:740; line-height:1.35; color:var(--navy); }
 .wc-agenda-meta,.wc-agenda-detail small { font-size:.7rem; line-height:1.4; color:var(--muted); }
 .wc-agenda-meta { font-weight:580; }
+.wc-month-scope {
+  margin:0; padding:6px 14px; border-bottom:1px solid var(--line);
+  color:var(--muted); font-size:.74rem; line-height:1.5;
+}
+.wc-objective-heading {
+  padding:9px 13px 0; margin:0; border-top:1px solid var(--line);
+  color:var(--muted); font-size:.7rem; font-weight:650;
+}
+.wc-auto-source { font-size:.68rem; color:var(--muted); }
 @container work-calendar (max-width:800px) {
   .wc-month-agenda { grid-column:1 / -1; }
 }

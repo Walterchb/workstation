@@ -24,8 +24,8 @@ function workSession() {
   let clock = Date.now(), renewed = 0;
   class Clock extends Date { static now() {return clock;} }
   const credentials = new Map();
-  const requests = [], metering = [];
-  const api = {chat:()=>response(200,answer),beforeRefresh:()=>{},requests,metering};
+  const requests = [], metering = [], attempts = [];
+  const api = {chat:()=>response(200,answer),beforeRefresh:()=>{},requests,metering,attempts};
   const empty = ()=>({version:1,goals:[],tasks:[]});
   const login = name => response(200,{
     user:{id:name,email:name+'@prueba.invalid'},
@@ -39,6 +39,8 @@ function workSession() {
   };
   runtime.window=runtime;
   runtime.WorkStationChatBudget={
+    beginAttempt:(...args)=>attempts.push(['start',...args]),
+    settleUnbilled:(...args)=>attempts.push(['unbilled',...args]),
     record:(...args)=>metering.push(['record',...args]),
     markUnknown:(...args)=>metering.push(['unknown',...args])
   };
@@ -261,17 +263,22 @@ test('Interrupciones reales dejan consumo incierto; un rechazo antes del modelo 
   api.chat=()=>response(400,{code:'CHAT_INPUT'});
   await assert.rejects(store.askChat(payload),hasCode('CHAT_INPUT'));
   assert.equal(api.metering.length,0);
+  assert.deepEqual(api.attempts.map(row=>row[0]),['start','unbilled']);
+  assert.equal(api.attempts[0][2],api.attempts[1][2]);
   const stopped=new AbortController();stopped.abort();
   await assert.rejects(store.askChat(payload,stopped.signal),hasCode('CHAT_ABORTED'));
   assert.equal(api.metering.length,0);
+  assert.equal(api.attempts.length,2);
   const fixture=streamFixture();
   api.chat=()=>fixture.response;
   const stop=new AbortController();
   const query=store.askChat(payload,stop.signal,()=>{});
+  assert.equal(api.attempts.at(-1)[0],'start');
   fixture.write('{"type":"status","stage":"searching"}\n');
   await waitForFetch(); stop.abort();
   await assert.rejects(query,hasCode('CHAT_ABORTED'));
   assert.deepEqual(api.metering.map(row=>row.slice(0,2)),[['unknown','ana']]);
+  assert.equal(api.metering[0][2],api.attempts.at(-1)[2]);
 });
 
 test('Un flujo cortado, excesivo o fallido nunca se confirma ni se vuelve a enviar automáticamente',async()=>{

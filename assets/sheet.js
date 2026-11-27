@@ -179,6 +179,21 @@
     const dirty = () => JSON.stringify(draft.rows.filter(row=>savedIds.has(row.id) || !sheet.isUnused(draft,row))) !== baseline;
     const selectedRow = () => draft.rows[selected];
 
+    function suggestionRow(cell) {
+      if (!cell.matches('textarea[data-col="1"]') || pending || busy || ctx.canEdit?.() === false) return;
+      const row = draft.rows[Number(cell.closest('tr').dataset.index)];
+      if (row && !savedIds.has(row.id) && row.kind !== 'space') return row;
+    }
+
+    const suggestions = window.JActivitySuggest.bind(dialog,ctx.state,suggestionRow,(cell,details) => {
+      const row = suggestionRow(cell);
+      Object.assign(row,details);
+      cell.value = details.title;
+      finishEdit();
+      readCell(cell);
+      if (panel === 'details') drawPanel();
+    });
+
     function finishEdit(cancel=false) {
       if (!editing) return;
       const {cell,original,segments} = editing;
@@ -342,6 +357,7 @@
     }
 
     function drawTable(focus = null) {
+      suggestions.close();
       finishEdit(); clearSelection(); dialog.dataset.cellMode='navigate';
       const left = scroll.scrollLeft, top = scroll.scrollTop;
       tbody.innerHTML = draft.rows.map((row,i)=>rowMarkup(row,i,selected)).join('');

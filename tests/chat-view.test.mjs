@@ -43,3 +43,19 @@ test('los filtros estructurados limitan los registros antes de calcular totales'
   const partial=queryWorkspace(doc,{type:'event',selection:{kind:'calendar',mode:'partial'}});
   assert.ok(partial.error); assert.equal(partial.total,undefined);
 });
+
+test('la referencia del chat en Mes sigue el calendario Workhub efectivo incluso sin eventos',()=>{
+  const virtual='source:activities';
+  window.JCalendarModel={activityCalendar:{id:virtual}};
+  window.JWorkCalendar={visibleCalendarIds:(state,mode)=>state[mode]};
+  const inputs=[calendar('one',true),calendar('two',true),calendar(virtual,true)];
+  const getInfo=(list,mode='month')=>window.JChatView.read('calendar','2028-02-29',
+    stage({'[data-wc-mode][aria-pressed="true"]':{dataset:{wcMode:mode}}},inputs),{[mode]:list});
+  const info=getInfo(['two']);
+  assert.equal(info.selection.mode,'include');
+  assert.deepEqual([...info.selection.ids],['two']);
+  const empty=getInfo([]);
+  assert.equal(empty.selection.mode,'include');
+  assert.deepEqual([...empty.selection.ids],[]);
+  assert.equal(getInfo([virtual],'day').selection.kind,'agenda');
+});

@@ -12,6 +12,59 @@ const meeting = (more = {}) => ({id:'meet-1', title:'Revisión de cierre', calen
 const physicalLines = file => file.split('\r\n');
 const unfolded = file => file.replace(/\r\n /g,'');
 
+test('Actividades proyecta cada tramo, los abiertos y los registros sin horario, sin guardarlos como eventos', () => {
+  const state=empty(), date='2026-11-24', goal={id:'gestion',title:'Atención',color:'#918273'};
+  state.goals=[goal];
+  const task={id:'a:1',date,title:'Visita',context:'Sede norte',goalId:goal.id,
+    segments:[{start:'09:00',end:'10:00'},{start:'16:00',end:''}]};
+  state.tasks=[task,{...task,id:'a:2',kind:'space',goalId:'',title:'Almuerzo',segments:[]},
+    {...task,id:'a:3',date:'2026-11-25',segments:[]}];
+  const original=structuredClone(state);
+  const project=()=>calendarModel.activityItems(state,date,date);
+  const [first,open,unplaced]=project();
+  assert.deepEqual(project().map(e=>[e.title,e.startTime,e.endTime,e.allDay]),[
+    ['Visita','09:00','10:00',false],['Visita','16:00','',false],['Almuerzo','','',false]]);
+  assert.equal(first.description,task.context);
+  assert.notEqual(first.id,open.id);
+  assert.equal(first.calendarId,calendarModel.activityCalendar.id);
+  assert.equal(calendarModel.eventCategory(state,first).name,goal.title);
+  assert.equal(calendarModel.eventColor(state,first),goal.color);
+  assert.equal(calendarModel.eventCategory(state,unplaced),null);
+  assert.deepEqual(calendarModel.events(state),[]);
+  assert.ok(!calendarModel.calendars(state).some(c=>c.id===first.calendarId));
+  assert.ok(!calendarModel.categories(state).some(c=>c.id===first.categoryId));
+  assert.deepEqual(state,original);
+  assert.throws(()=>calendarModel.saveEvent(state,meeting({calendarId:first.calendarId}),stamp));
+  assert.throws(()=>calendarModel.saveEvent(state,meeting({id:first.id}),stamp));
+  task.segments.reverse();
+  assert.deepEqual(project().slice(0,2).map(e=>e.id),[open.id,first.id]);
+  task.title='Llamada'; task.context='Nueva sede'; task.segments[0].end='17:15';
+  goal.color='#B31459'; goal.title='Nuevo objetivo';
+  assert.deepEqual([project()[0].title,project()[0].description,project()[0].endTime],['Llamada','Nueva sede','17:15']);
+  assert.equal(calendarModel.eventCategory(state,project()[0]).name,goal.title);
+  assert.equal(calendarModel.eventColor(state,project()[0]),goal.color);
+  task.date='2026-11-23';
+  assert.deepEqual(project().map(e=>e.id),[unplaced.id]);
+  state.tasks=[];
+  assert.deepEqual(project(),[]);
+});
+
+test('Mes reconoce solo el calendario guardado Workhub, también al renombrarlo. Día conserva las demás fuentes', () => {
+  const state=empty(), monthly=()=>calendarModel.calendarsForView(state,'month').map(cal=>cal.id);
+  assert.deepEqual(monthly(),[]);
+  const custom=calendarModel.saveCalendar(state,{id:'custom',name:'Equipo',color:'#113344'});
+  calendarModel.saveCalendar(state,{id:custom.id,name:'WORK   HUB'});
+  assert.deepEqual(monthly(),[custom.id]);
+  calendarModel.saveCalendar(state,{id:'personal',name:'Workhub'});
+  assert.deepEqual(monthly(),['personal']);
+  const daily=calendarModel.calendarsForView(state,'day').map(cal=>cal.id);
+  assert.deepEqual(daily,['work','personal',custom.id,calendarModel.activityCalendar.id]);
+  calendarModel.saveCalendar(state,{id:'personal',name:'Workhub personal'});
+  assert.deepEqual(monthly(),[custom.id]);
+  calendarModel.removeCalendar(state,custom.id);
+  assert.deepEqual(monthly(),[]);
+});
+
 test('Una agenda anterior recibe calendarios virtuales independientes y conserva sus registros al crear o editar calendarios', () => {
   const state = empty();
   state.notes = [{id:'nota'}];
