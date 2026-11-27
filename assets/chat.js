@@ -119,12 +119,6 @@
     return history;
   }
 
-  function referenceCaption(context) {
-    const first = readableDate(context.from), last = readableDate(context.to);
-    const period = first && last && first !== last ? first+' – '+last : first || last;
-    return [context.view,period,...(context.filters || [])].filter(Boolean).join(' · ');
-  }
-
   // Los IDs apuntan al registro original aunque haya cambiado su texto. El servidor
   // vuelve a comprobar el acceso y consulta el contenido vigente cuando corresponde.
   function conversationMemory(t, history) {
@@ -175,9 +169,6 @@
 
   function refreshContext(v) {
     const context = window.WorkStationChatContext?.get() || {};
-    const caption = referenceCaption(context);
-    v.context.hidden = !caption;
-    v.context.textContent = caption ? 'Vista de referencia · '+caption : '';
     v.viewContext = context;
     v.examples = exampleItems(context);
     if (v.thread && !v.thread.turns.length) v.empty.innerHTML = examplesHTML(v.ctx.icon,v.examples);
@@ -511,7 +502,6 @@
       [...scopes].map(([key,label])=>'<option value="'+key+'">'+label+'</option>').join('')+'</select></label>'+
       '<button type="button" class="btn ghost" data-chat-new title="Empezar de nuevo en el ámbito seleccionado" disabled>'+
       icon('plus',15)+'<span>Nueva conversación</span></button></div>'+
-      '<p class="jchat-view-context" data-chat-context hidden></p>'+
       '<div class="jchat-scroll" data-chat-scroll><div data-chat-empty></div>'+
       '<div class="jchat-log" role="log" aria-label="Mensajes de la conversación" aria-live="polite" aria-relevant="additions" data-chat-log></div></div>'+
       '<div class="jchat-footer"><span class="jchat-sr" role="status" data-chat-activity></span>'+
@@ -531,7 +521,7 @@
     const get = selector => page.querySelector(selector);
     const v = {page,ctx,compact,log:get('[data-chat-log]'),scroll:get('[data-chat-scroll]'),empty:get('[data-chat-empty]'),
       error:get('[data-chat-error]'),activity:get('[data-chat-activity]'),input:get('textarea'),select:get('[data-chat-scope]'),clear:get('[data-chat-new]'),
-      send:get('[data-chat-send]'),stop:get('[data-chat-stop]'),context:get('[data-chat-context]'),
+      send:get('[data-chat-send]'),stop:get('[data-chat-stop]'),
       followups:get('[data-chat-followups]'),thread:null,seen:0,interim:null};
     view = v;
     refreshContext(v);

@@ -40,11 +40,10 @@
   font-size: .76rem; font-weight: 650;
 }
 .jchat-scroll { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; padding: 20px var(--chat-pad); }
-.jchat-view-context { margin: 0; padding: 5px var(--chat-pad); font-size: .73rem; line-height: 1.45; color: #526671; overflow-wrap: anywhere; border-bottom: 1px solid var(--chat-rule); }
 .jchat-followups { display: flex; flex-wrap: wrap; gap: 4px 6px; margin-bottom: 7px; }
 .jchat-followups button { padding: 4px 8px; background: white; border: 1px solid var(--chat-rule); border-radius: 5px; color: #435b66; font: inherit; font-size: .73rem; line-height: 1.4; cursor: pointer; }
 .jchat-followups button:hover { color: var(--chat-green); background: var(--chat-soft); }
-.jchat-view-context[hidden], .jchat-followups[hidden] { display: none; }
+.jchat-followups[hidden] { display: none; }
 @container work-chat (max-width: 440px) {
   .jchat-followups { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: thin; }
   .jchat-followups button { white-space: nowrap; }

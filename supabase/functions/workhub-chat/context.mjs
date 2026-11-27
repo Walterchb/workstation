@@ -72,7 +72,7 @@ function eventRecord(item,calendars,categories) {
     location:str(item.location),description:str(item.description),
     reminderMinutes:Number.isSafeInteger(item.reminderMinutes) && item.reminderMinutes >= 0 ? item.reminderMinutes : null});
 }
-function matchesDates(row,from,to) {
+export function matchesDates(row,from,to) {
   if (!from && !to) return true;
   if (!row.date || (to && row.date > to)) return false;
   if (!from) return true;
@@ -335,8 +335,10 @@ export function queryWorkspace(document,query={},scope='all',today='') {
       const ids=seen.get(kind);
       if (ids.has(item.id)) continue;
       ids.add(item.id);
-      const row=toRecord(item);
-      if (!matchesDates(row,from,to) || !matchesStatus(row,status)) continue;
+      const original=toRecord(item);
+      if (!matchesDates(original,from,to)) continue;
+      const row=query.projectRecord ? query.projectRecord(original) : original;
+      if (!row || !matchesStatus(row,status)) continue;
       if (variants.length) {
         const fields=searchableFields(row,lookForReview);
         let best=null;
@@ -409,4 +411,36 @@ export function queryWorkspace(document,query={},scope='all',today='') {
       : [{text:'',reason:'review_scope_dates_or_search_without_terms'}];
   }
   return result;
+}
+
+// Reutiliza las proyecciones y el ámbito de consultar para la lectura transversal de planificación.
+export function* planningRows(document, {scope='all',selection,from,to,today,includeCurrent=false}) {
+  const allowed=scopeTypes.get(scope);
+  if (!allowed) throw new Error('El ámbito de consulta no es válido.');
+  if (selection?.kind==='calendar' && selection.mode==='partial') return;
+  const doc=document || {}, visible=viewPredicate(selection,doc);
+  const goals=labelMap(doc.goals,'title');
+  const calendars=labelMap(doc.calendars ?? defaultCalendars,'name');
+  const categories=labelMap(doc.eventCategories ?? defaultEventCategories,'name');
+  const seen=new Set();
+  function* collect(items,kindFor,project) {
+    for (const item of array(items)) {
+      if (!item || !str(item.id).trim()) continue;
+      const kind=kindFor(item);
+      if (!allowed.includes(kind) || !visible(item,kind)) continue;
+      const identity=kind+'\0'+item.id;
+      if (seen.has(identity)) continue;
+      seen.add(identity);
+      const row=project(item);
+      const current=includeCurrent && ((kind==='note' && item.lane!=='resolved' && (!row.date || row.date<=today)) ||
+        (kind==='goal' && !row.date && row.status==='En curso'));
+      if (current || matchesDates(row,from,to)) yield row;
+    }
+  }
+  if (allowed.includes('task') || allowed.includes('space')) {
+    yield* collect(doc.tasks,item=>item.kind==='space'?'space':'task',item=>({...taskRecord(item,goals),goalId:str(item.goalId)}));
+  }
+  if (allowed.includes('event')) yield* collect(doc.events,()=>'event',item=>eventRecord(item,calendars,categories));
+  if (allowed.includes('goal')) yield* collect(doc.goals,()=>'goal',goalRecord);
+  if (allowed.includes('note')) yield* collect(doc.notes,()=>'note',item=>noteRecord(item,today));
 }
